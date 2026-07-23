@@ -182,8 +182,6 @@ func routeEvent(operation routeplan.Operation) (logging.EventName, error) {
 		return logging.EventCorporateRoute, nil
 	case routeplan.RoleGitLabHTTPS:
 		return logging.EventGitLabHTTPSRoute, nil
-	case routeplan.RoleGitLabSSH:
-		return logging.EventGitLabSSHRoute, nil
 	case routeplan.RoleCodexFallback:
 		return logging.EventCodexRoute, nil
 	default:

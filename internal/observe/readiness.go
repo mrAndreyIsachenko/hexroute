@@ -21,9 +21,17 @@ const (
 	TransportSOCKS5TLS Transport = "socks5_tls"
 )
 
+type CertificatePolicy string
+
+const (
+	CertificateVerify        CertificatePolicy = "verify"
+	CertificateHandshakeOnly CertificatePolicy = "handshake_only"
+)
+
 type Endpoint struct {
 	Name         string
 	Transport    Transport
+	Certificate  CertificatePolicy
 	Address      netip.AddrPort
 	ProxyAddress netip.AddrPort
 	ServerName   string
@@ -38,6 +46,11 @@ func (endpoint Endpoint) Validate() error {
 		endpoint.Timeout <= 0 ||
 		endpoint.Timeout > 30*time.Second {
 		return errors.New("invalid readiness endpoint")
+	}
+	if endpoint.Certificate != "" &&
+		endpoint.Certificate != CertificateVerify &&
+		endpoint.Certificate != CertificateHandshakeOnly {
+		return errors.New("invalid certificate policy")
 	}
 	switch endpoint.Transport {
 	case "", TransportDirectTLS:
@@ -89,10 +102,7 @@ func (connector TLSConnector) Connect(ctx context.Context, endpoint Endpoint) er
 	}
 	tlsDialer := tls.Dialer{
 		NetDialer: dialer,
-		Config: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ServerName: endpoint.ServerName,
-		},
+		Config:    endpoint.tlsConfig(),
 	}
 	connection, err := tlsDialer.DialContext(ctx, "tcp", endpoint.Address.String())
 	if err != nil {
@@ -129,15 +139,22 @@ func (connector SOCKS5TLSConnector) Connect(ctx context.Context, endpoint Endpoi
 		return err
 	}
 
-	tlsConnection := tls.Client(connection, &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		ServerName: endpoint.ServerName,
-	})
+	tlsConnection := tls.Client(connection, endpoint.tlsConfig())
 	if err := tlsConnection.HandshakeContext(ctx); err != nil {
 		_ = connection.Close()
 		return err
 	}
 	return tlsConnection.Close()
+}
+
+func (endpoint Endpoint) tlsConfig() *tls.Config {
+	// Handshake-only is restricted to explicitly configured legacy probes that
+	// already use an IP endpoint without certificate validation.
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		ServerName:         endpoint.ServerName,
+		InsecureSkipVerify: endpoint.Certificate == CertificateHandshakeOnly, // #nosec G402
+	}
 }
 
 type ReadinessObservation struct {

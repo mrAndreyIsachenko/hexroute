@@ -29,11 +29,6 @@
       "role": "gitlab_https"
     },
     {
-      "name": "gitlab-ssh",
-      "address": "198.51.100.22",
-      "role": "gitlab_ssh"
-    },
-    {
       "name": "codex-fallback",
       "address": "203.0.113.20",
       "role": "codex_fallback"
@@ -44,6 +39,7 @@
       "name": "outer-ready",
       "purpose": "outer_ready",
       "transport": "direct_tls",
+      "certificate_policy": "handshake_only",
       "address": "198.51.100.30:443",
       "server_name": "outer.example.invalid",
       "timeout_seconds": 4
@@ -52,6 +48,7 @@
       "name": "normal-codex",
       "purpose": "normal_codex",
       "transport": "direct_tls",
+      "certificate_policy": "verify",
       "address": "203.0.113.40:443",
       "server_name": "normal.example.invalid",
       "timeout_seconds": 4
@@ -60,6 +57,7 @@
       "name": "fallback-codex",
       "purpose": "twilight_codex",
       "transport": "socks5_tls",
+      "certificate_policy": "verify",
       "address": "203.0.113.41:443",
       "proxy_address": "127.0.0.1:2080",
       "server_name": "fallback.example.invalid",

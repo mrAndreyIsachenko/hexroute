@@ -41,7 +41,6 @@ const (
 	EventIngressRoute     EventName = "ingress_route_proposed"
 	EventCorporateRoute   EventName = "corporate_route_proposed"
 	EventGitLabHTTPSRoute EventName = "gitlab_https_route_proposed"
-	EventGitLabSSHRoute   EventName = "gitlab_ssh_route_proposed"
 	EventCodexRoute       EventName = "codex_fallback_route_proposed"
 )
 
@@ -164,7 +163,7 @@ func validEvent(value EventName) bool {
 	switch value {
 	case EventCommandStatus, EventStartupCheck, EventVersionRequested, EventArgumentRejected, EventIPCRejected,
 		EventDaemonStarted, EventDaemonStopped, EventObservationCycle, EventIngressRoute,
-		EventCorporateRoute, EventGitLabHTTPSRoute, EventGitLabSSHRoute, EventCodexRoute:
+		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute:
 		return true
 	default:
 		return false

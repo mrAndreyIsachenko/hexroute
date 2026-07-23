@@ -25,10 +25,13 @@ func testInput() Input {
 			{Name: "ingress-a", Destination: netip.MustParseAddr("192.0.2.20"), Role: RoleIngress},
 			{Name: "corporate-a", Destination: netip.MustParseAddr("198.51.100.10"), Role: RoleCorporate},
 			{Name: "gitlab-https", Destination: netip.MustParseAddr("198.51.100.11"), Role: RoleGitLabHTTPS},
-			{Name: "gitlab-ssh", Destination: netip.MustParseAddr("198.51.100.12"), Role: RoleGitLabSSH},
 			{Name: "codex-a", Destination: netip.MustParseAddr("203.0.113.20"), Role: RoleCodexFallback},
 		},
 		Codex: CodexState{NormalReady: true, TwilightReady: true},
+		GitLabSSH: &GitLabSSHObservation{
+			BindInterface:     "en7",
+			PhysicalInterface: "en7",
+		},
 		Current: map[netip.Addr]ObservedRoute{
 			netip.MustParseAddr("192.0.2.20"): {
 				Destination: netip.MustParseAddr("192.0.2.20"),
@@ -42,11 +45,6 @@ func testInput() Input {
 			netip.MustParseAddr("198.51.100.11"): {
 				Destination: netip.MustParseAddr("198.51.100.11"),
 				Interface:   tun.Interface,
-			},
-			netip.MustParseAddr("198.51.100.12"): {
-				Destination: netip.MustParseAddr("198.51.100.12"),
-				Interface:   physical.Interface,
-				Gateway:     physical.Gateway,
 			},
 		},
 	}
@@ -65,6 +63,9 @@ func TestBuildPreservesApprovedScopedRoutePolicy(t *testing.T) {
 	if len(plan.Operations) != 0 {
 		t.Fatalf("Build() operations = %+v, want none", plan.Operations)
 	}
+	if plan.GitLabSSH != PolicyCompliant {
+		t.Fatalf("GitLab SSH policy = %q, want compliant", plan.GitLabSSH)
+	}
 }
 
 func TestBuildPlansOnlyRequiredHostRouteRepairs(t *testing.T) {
@@ -75,9 +76,10 @@ func TestBuildPlansOnlyRequiredHostRouteRepairs(t *testing.T) {
 		Interface:   input.Physical.Interface,
 		Gateway:     input.Physical.Gateway,
 	}
-	input.Current[netip.MustParseAddr("198.51.100.12")] = ObservedRoute{
-		Destination: netip.MustParseAddr("198.51.100.12"),
-		Interface:   input.TUN.Interface,
+	input.Current[netip.MustParseAddr("198.51.100.11")] = ObservedRoute{
+		Destination: netip.MustParseAddr("198.51.100.11"),
+		Interface:   input.Physical.Interface,
+		Gateway:     input.Physical.Gateway,
 	}
 
 	plan, err := Build(input)
@@ -95,17 +97,49 @@ func TestBuildPlansOnlyRequiredHostRouteRepairs(t *testing.T) {
 			t.Fatalf("operation is not an IPv4 host route: %+v", operation)
 		}
 		switch operation.Role {
-		case RoleIngress, RoleGitLabSSH:
+		case RoleIngress:
 			if operation.Path.Interface != input.Physical.Interface {
 				t.Fatalf("physical role captured by TUN: %+v", operation)
 			}
-		case RoleCorporate:
+		case RoleCorporate, RoleGitLabHTTPS:
 			if operation.Path.Interface != input.TUN.Interface {
 				t.Fatalf("corporate role not assigned to TUN: %+v", operation)
 			}
 		default:
 			t.Fatalf("unexpected repaired role: %+v", operation)
 		}
+	}
+}
+
+func TestBuildModelsGitLabSSHAsBindPolicyNotHostRoute(t *testing.T) {
+	input := testInput()
+	input.GitLabSSH = &GitLabSSHObservation{
+		BindInterface:     "utun3",
+		PhysicalInterface: input.Physical.Interface,
+	}
+
+	plan, err := Build(input)
+	if err != nil {
+		t.Fatalf("Build() error: %v", err)
+	}
+	if plan.GitLabSSH != PolicyDegraded {
+		t.Fatalf("GitLab SSH policy = %q, want degraded", plan.GitLabSSH)
+	}
+	if len(plan.Operations) != 0 {
+		t.Fatalf("GitLab SSH bind mismatch produced route operations: %+v", plan.Operations)
+	}
+}
+
+func TestBuildRejectsGitLabSSHAsRouteTarget(t *testing.T) {
+	input := testInput()
+	input.Targets = append(input.Targets, Target{
+		Name:        "invalid-ssh-route",
+		Destination: netip.MustParseAddr("198.51.100.11"),
+		Role:        Role("gitlab_ssh"),
+	})
+
+	if _, err := Build(input); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Build() error = %v, want %v", err, ErrInvalidInput)
 	}
 }
 
@@ -189,9 +223,9 @@ func TestBuildRejectsIngressSelfRoute(t *testing.T) {
 func TestBuildRejectsConflictingRolesForOneDestination(t *testing.T) {
 	input := testInput()
 	input.Targets = append(input.Targets, Target{
-		Name:        "conflicting-ssh",
+		Name:        "conflicting-owner",
 		Destination: netip.MustParseAddr("198.51.100.11"),
-		Role:        RoleGitLabSSH,
+		Role:        RoleCorporate,
 	})
 
 	_, err := Build(input)

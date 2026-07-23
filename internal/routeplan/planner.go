@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
 )
@@ -16,7 +17,6 @@ const (
 	RoleIngress       Role = "ingress"
 	RoleCorporate     Role = "corporate"
 	RoleGitLabHTTPS   Role = "gitlab_https"
-	RoleGitLabSSH     Role = "gitlab_ssh"
 	RoleCodexFallback Role = "codex_fallback"
 )
 
@@ -45,13 +45,27 @@ type CodexState struct {
 	TwilightReady bool
 }
 
+type GitLabSSHObservation struct {
+	BindInterface     string
+	PhysicalInterface string
+}
+
+type PolicyStatus string
+
+const (
+	PolicyUnknown   PolicyStatus = "unknown"
+	PolicyCompliant PolicyStatus = "compliant"
+	PolicyDegraded  PolicyStatus = "degraded"
+)
+
 type Input struct {
-	Targets  []Target
-	Physical Path
-	Upstream *Path
-	TUN      Path
-	Current  map[netip.Addr]ObservedRoute
-	Codex    CodexState
+	Targets   []Target
+	Physical  Path
+	Upstream  *Path
+	TUN       Path
+	Current   map[netip.Addr]ObservedRoute
+	Codex     CodexState
+	GitLabSSH *GitLabSSHObservation
 }
 
 type OperationKind string
@@ -82,6 +96,7 @@ type Operation struct {
 type Plan struct {
 	ObserveOnly bool
 	Operations  []Operation
+	GitLabSSH   PolicyStatus
 }
 
 var (
@@ -155,7 +170,17 @@ func Build(input Input) (Plan, error) {
 		return Plan{}, err
 	}
 
-	plan := Plan{ObserveOnly: true}
+	plan := Plan{
+		ObserveOnly: true,
+		GitLabSSH:   PolicyUnknown,
+	}
+	if input.GitLabSSH != nil {
+		status, err := EvaluateGitLabSSH(*input.GitLabSSH)
+		if err != nil {
+			return Plan{}, err
+		}
+		plan.GitLabSSH = status
+	}
 	for _, route := range desired {
 		current, present := input.Current[route.target.Destination]
 		if !route.active {
@@ -204,8 +229,6 @@ func Build(input Input) (Plan, error) {
 
 func desiredPath(target Target, input Input) (Path, bool, error) {
 	switch target.Role {
-	case RoleGitLabSSH:
-		return input.Physical, true, nil
 	case RoleIngress:
 		switch target.Preferred {
 		case "", safety.LinkPhysical:
@@ -244,7 +267,7 @@ func validateTarget(target Target) error {
 	switch target.Role {
 	case RoleIngress:
 		return nil
-	case RoleCorporate, RoleGitLabHTTPS, RoleGitLabSSH, RoleCodexFallback:
+	case RoleCorporate, RoleGitLabHTTPS, RoleCodexFallback:
 		if target.Preferred != "" {
 			return ErrInvalidInput
 		}
@@ -252,6 +275,23 @@ func validateTarget(target Target) error {
 	default:
 		return ErrInvalidInput
 	}
+}
+
+func EvaluateGitLabSSH(observation GitLabSSHObservation) (PolicyStatus, error) {
+	if !interfaceNamePattern.MatchString(observation.PhysicalInterface) ||
+		strings.HasPrefix(observation.PhysicalInterface, "utun") {
+		return PolicyUnknown, ErrInvalidInput
+	}
+	if observation.BindInterface == "" {
+		return PolicyDegraded, nil
+	}
+	if !interfaceNamePattern.MatchString(observation.BindInterface) {
+		return PolicyUnknown, ErrInvalidInput
+	}
+	if observation.BindInterface != observation.PhysicalInterface {
+		return PolicyDegraded, nil
+	}
+	return PolicyCompliant, nil
 }
 
 func validatePath(path Path, tun bool) error {

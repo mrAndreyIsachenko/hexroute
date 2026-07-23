@@ -121,9 +121,6 @@ func healthyCycleFixtures(t *testing.T) (
 			}
 		case routeplan.RoleCorporate, routeplan.RoleGitLabHTTPS, routeplan.RoleCodexFallback:
 			route.Interface = tun.Name
-		case routeplan.RoleGitLabSSH:
-			route.Interface = physical.Interface
-			route.Gateway = physical.Gateway
 		}
 		network.routes[target.Destination] = route
 	}

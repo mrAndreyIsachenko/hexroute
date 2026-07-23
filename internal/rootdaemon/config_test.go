@@ -38,6 +38,7 @@ const validConfig = `{
       "name": "outer-ready",
       "purpose": "outer_ready",
       "transport": "direct_tls",
+      "certificate_policy": "handshake_only",
       "address": "198.51.100.20:443",
       "server_name": "outer.example.invalid",
       "timeout_seconds": 4
@@ -46,6 +47,7 @@ const validConfig = `{
       "name": "normal-codex",
       "purpose": "normal_codex",
       "transport": "direct_tls",
+      "certificate_policy": "verify",
       "address": "203.0.113.40:443",
       "server_name": "normal.example.invalid",
       "timeout_seconds": 4
@@ -54,6 +56,7 @@ const validConfig = `{
       "name": "twilight-codex",
       "purpose": "twilight_codex",
       "transport": "socks5_tls",
+      "certificate_policy": "verify",
       "address": "203.0.113.41:443",
       "proxy_address": "127.0.0.1:2080",
       "server_name": "fallback.example.invalid",

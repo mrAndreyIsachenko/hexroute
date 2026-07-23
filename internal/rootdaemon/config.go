@@ -53,13 +53,14 @@ type RouteConfig struct {
 }
 
 type EndpointConfig struct {
-	Name           string            `json:"name"`
-	Purpose        EndpointPurpose   `json:"purpose"`
-	Transport      observe.Transport `json:"transport"`
-	Address        string            `json:"address"`
-	ProxyAddress   string            `json:"proxy_address,omitempty"`
-	ServerName     string            `json:"server_name"`
-	TimeoutSeconds uint32            `json:"timeout_seconds"`
+	Name           string                    `json:"name"`
+	Purpose        EndpointPurpose           `json:"purpose"`
+	Transport      observe.Transport         `json:"transport"`
+	Certificate    observe.CertificatePolicy `json:"certificate_policy"`
+	Address        string                    `json:"address"`
+	ProxyAddress   string                    `json:"proxy_address,omitempty"`
+	ServerName     string                    `json:"server_name"`
+	TimeoutSeconds uint32                    `json:"timeout_seconds"`
 }
 
 type RuntimeConfig struct {
@@ -184,7 +185,9 @@ func (config Config) runtime() (RuntimeConfig, error) {
 	endpointNames := make(map[string]struct{})
 	for _, endpointConfig := range config.Endpoints {
 		purpose := endpointConfig.Purpose
-		if !validPurpose(purpose) || endpointConfig.Transport == "" {
+		if !validPurpose(purpose) ||
+			endpointConfig.Transport == "" ||
+			endpointConfig.Certificate == "" {
 			return RuntimeConfig{}, ErrInvalidConfig
 		}
 		address, err := netip.ParseAddrPort(endpointConfig.Address)
@@ -201,6 +204,7 @@ func (config Config) runtime() (RuntimeConfig, error) {
 		endpoint := observe.Endpoint{
 			Name:         endpointConfig.Name,
 			Transport:    endpointConfig.Transport,
+			Certificate:  endpointConfig.Certificate,
 			Address:      address,
 			ProxyAddress: proxyAddress,
 			ServerName:   endpointConfig.ServerName,
@@ -226,11 +230,13 @@ func (config Config) runtime() (RuntimeConfig, error) {
 	for _, endpoint := range runtime.Endpoints {
 		switch endpoint.Purpose {
 		case PurposeNormalCodex:
-			if endpoint.Endpoint.Transport != observe.TransportDirectTLS {
+			if endpoint.Endpoint.Transport != observe.TransportDirectTLS ||
+				endpoint.Endpoint.Certificate != observe.CertificateVerify {
 				return RuntimeConfig{}, ErrInvalidConfig
 			}
 		case PurposeTwilightCodex:
-			if endpoint.Endpoint.Transport != observe.TransportSOCKS5TLS {
+			if endpoint.Endpoint.Transport != observe.TransportSOCKS5TLS ||
+				endpoint.Endpoint.Certificate != observe.CertificateVerify {
 				return RuntimeConfig{}, ErrInvalidConfig
 			}
 		}

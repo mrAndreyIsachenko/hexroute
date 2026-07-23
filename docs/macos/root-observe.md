@@ -5,6 +5,10 @@ read macOS route, interface, power and process state and can perform bounded
 TLS readiness checks. It cannot apply a route, restart a process, load a
 configuration or alter another launchd job.
 
+GitLab HTTPS remains a scoped TUN route. GitLab SSH physical-path policy is a
+separate `BindInterface` observation and is never represented as a competing
+host route.
+
 ## Build And Validate
 
 ```sh

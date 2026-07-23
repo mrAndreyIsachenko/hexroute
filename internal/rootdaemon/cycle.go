@@ -202,7 +202,7 @@ func routeMatchesTarget(
 	switch target.Role {
 	case routeplan.RoleCodexFallback:
 		return observation.Interface == tun.Name
-	case routeplan.RoleIngress, routeplan.RoleGitLabSSH:
+	case routeplan.RoleIngress:
 		return observation.Interface == physical.Interface && observation.Gateway == physical.Gateway
 	case routeplan.RoleCorporate, routeplan.RoleGitLabHTTPS:
 		return observation.Interface == tun.Name

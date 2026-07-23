@@ -74,11 +74,12 @@ func TestReadinessFailureIsAnObservationNotRawError(t *testing.T) {
 
 func TestEndpointValidatesTransportSpecificProxy(t *testing.T) {
 	base := Endpoint{
-		Name:       "outer-ready",
-		Transport:  TransportDirectTLS,
-		Address:    netip.MustParseAddrPort("198.51.100.20:443"),
-		ServerName: "probe.example.invalid",
-		Timeout:    time.Second,
+		Name:        "outer-ready",
+		Transport:   TransportDirectTLS,
+		Certificate: CertificateVerify,
+		Address:     netip.MustParseAddrPort("198.51.100.20:443"),
+		ServerName:  "probe.example.invalid",
+		Timeout:     time.Second,
 	}
 	if err := base.Validate(); err != nil {
 		t.Fatalf("direct endpoint Validate() error: %v", err)
@@ -100,5 +101,19 @@ func TestEndpointValidatesTransportSpecificProxy(t *testing.T) {
 	socks.ProxyAddress = netip.MustParseAddrPort("127.0.0.1:2080")
 	if err := socks.Validate(); err != nil {
 		t.Fatalf("SOCKS endpoint Validate() error: %v", err)
+	}
+}
+
+func TestEndpointRejectsUnknownCertificatePolicy(t *testing.T) {
+	endpoint := Endpoint{
+		Name:        "outer-ready",
+		Transport:   TransportDirectTLS,
+		Certificate: CertificatePolicy("disabled"),
+		Address:     netip.MustParseAddrPort("198.51.100.20:443"),
+		ServerName:  "probe.example.invalid",
+		Timeout:     time.Second,
+	}
+	if err := endpoint.Validate(); err == nil {
+		t.Fatal("Endpoint.Validate() accepted unknown certificate policy")
 	}
 }
