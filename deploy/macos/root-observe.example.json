@@ -1,0 +1,69 @@
+{
+  "schema": "hexroute.root-observe.v1",
+  "mode": "observe-only",
+  "observation_interval_seconds": 60,
+  "physical_interface": "en7",
+  "managed_tun_address": "198.51.100.1",
+  "upstream_probe_address": "203.0.113.53",
+  "routes": [
+    {
+      "name": "ingress-primary",
+      "address": "192.0.2.20",
+      "role": "ingress",
+      "preferred_link": "physical"
+    },
+    {
+      "name": "ingress-secondary",
+      "address": "192.0.2.21",
+      "role": "ingress",
+      "preferred_link": "upstream_vpn"
+    },
+    {
+      "name": "corporate-outer",
+      "address": "198.51.100.20",
+      "role": "corporate"
+    },
+    {
+      "name": "gitlab-https",
+      "address": "198.51.100.21",
+      "role": "gitlab_https"
+    },
+    {
+      "name": "gitlab-ssh",
+      "address": "198.51.100.22",
+      "role": "gitlab_ssh"
+    },
+    {
+      "name": "codex-fallback",
+      "address": "203.0.113.20",
+      "role": "codex_fallback"
+    }
+  ],
+  "endpoints": [
+    {
+      "name": "outer-ready",
+      "purpose": "outer_ready",
+      "transport": "direct_tls",
+      "address": "198.51.100.30:443",
+      "server_name": "outer.example.invalid",
+      "timeout_seconds": 4
+    },
+    {
+      "name": "normal-codex",
+      "purpose": "normal_codex",
+      "transport": "direct_tls",
+      "address": "203.0.113.40:443",
+      "server_name": "normal.example.invalid",
+      "timeout_seconds": 4
+    },
+    {
+      "name": "fallback-codex",
+      "purpose": "twilight_codex",
+      "transport": "socks5_tls",
+      "address": "203.0.113.41:443",
+      "proxy_address": "127.0.0.1:2080",
+      "server_name": "fallback.example.invalid",
+      "timeout_seconds": 4
+    }
+  ]
+}

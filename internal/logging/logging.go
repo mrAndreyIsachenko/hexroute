@@ -35,15 +35,26 @@ const (
 	EventVersionRequested EventName = "version_requested"
 	EventArgumentRejected EventName = "argument_rejected"
 	EventIPCRejected      EventName = "ipc_request_rejected"
+	EventDaemonStarted    EventName = "daemon_started"
+	EventDaemonStopped    EventName = "daemon_stopped"
+	EventObservationCycle EventName = "observation_cycle"
+	EventIngressRoute     EventName = "ingress_route_proposed"
+	EventCorporateRoute   EventName = "corporate_route_proposed"
+	EventGitLabHTTPSRoute EventName = "gitlab_https_route_proposed"
+	EventGitLabSSHRoute   EventName = "gitlab_ssh_route_proposed"
+	EventCodexRoute       EventName = "codex_fallback_route_proposed"
 )
 
 type Result string
 
 const (
-	ResultOK       Result = "ok"
-	ResultReported Result = "reported"
-	ResultRejected Result = "rejected"
-	ResultSkeleton Result = "skeleton"
+	ResultOK        Result = "ok"
+	ResultReported  Result = "reported"
+	ResultRejected  Result = "rejected"
+	ResultSkeleton  Result = "skeleton"
+	ResultDegraded  Result = "degraded"
+	ResultSuspended Result = "suspended"
+	ResultProposed  Result = "proposed"
 )
 
 type Reason string
@@ -59,6 +70,7 @@ const (
 	ReasonMissingGeneration     Reason = "missing_generation"
 	ReasonGenerationConflict    Reason = "generation_conflict"
 	ReasonSafetyPolicyViolation Reason = "safety_policy_violation"
+	ReasonInvalidConfiguration  Reason = "invalid_configuration"
 )
 
 type wireEvent struct {
@@ -150,7 +162,9 @@ func validLevel(value Level) bool {
 
 func validEvent(value EventName) bool {
 	switch value {
-	case EventCommandStatus, EventStartupCheck, EventVersionRequested, EventArgumentRejected, EventIPCRejected:
+	case EventCommandStatus, EventStartupCheck, EventVersionRequested, EventArgumentRejected, EventIPCRejected,
+		EventDaemonStarted, EventDaemonStopped, EventObservationCycle, EventIngressRoute,
+		EventCorporateRoute, EventGitLabHTTPSRoute, EventGitLabSSHRoute, EventCodexRoute:
 		return true
 	default:
 		return false
@@ -159,7 +173,8 @@ func validEvent(value EventName) bool {
 
 func validResult(value Result) bool {
 	switch value {
-	case ResultOK, ResultReported, ResultRejected, ResultSkeleton:
+	case ResultOK, ResultReported, ResultRejected, ResultSkeleton, ResultDegraded,
+		ResultSuspended, ResultProposed:
 		return true
 	default:
 		return false
@@ -171,7 +186,7 @@ func validReason(value Reason) bool {
 	case "", ReasonInvalidFlags, ReasonUnexpectedArguments, ReasonUnauthorizedPeer,
 		ReasonMalformedRequest, ReasonOversizedRequest, ReasonUnsupportedAction,
 		ReasonUnsupportedVersion, ReasonMissingGeneration, ReasonGenerationConflict,
-		ReasonSafetyPolicyViolation:
+		ReasonSafetyPolicyViolation, ReasonInvalidConfiguration:
 		return true
 	default:
 		return false

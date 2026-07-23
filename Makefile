@@ -1,9 +1,13 @@
 .DEFAULT_GOAL := check
 
-.PHONY: build check fmt race secret-test shell-test test vet
+.PHONY: build build-observe-root check fmt race secret-test shell-test test vet
 
 build:
 	go build ./cmd/...
+
+build-observe-root:
+	mkdir -p bin
+	go build -o bin/hexrouted ./cmd/hexrouted
 
 test:
 	go test ./...
@@ -17,10 +21,11 @@ vet:
 fmt:
 	@test -z "$$(gofmt -l .)" || { gofmt -d .; exit 1; }
 
-shell-test:
-	bash -n scripts/baseline/*.sh tests/*.sh
+shell-test: build-observe-root
+	bash -n scripts/baseline/*.sh scripts/macos/*.sh tests/*.sh
 	tests/baseline_archives_test.sh
 	tests/emergency_restore_test.sh
+	tests/observe_root_launchd_test.sh
 
 secret-test:
 	go test ./internal/secretguard -run TestRepositorySecretCanaries -count=1
