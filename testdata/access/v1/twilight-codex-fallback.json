@@ -1,0 +1,24 @@
+{
+  "schema": "hexroute.access-regression.v1",
+  "name": "twilight-codex-fallback",
+  "input": {
+    "normal_codex": "failed",
+    "twilight_socks": "healthy",
+    "twilight_doh": "healthy",
+    "target": "chatgpt.openai.example",
+    "current_route": "physical",
+    "pritunl_state": "not_applicable",
+    "pritunl_client_address": false,
+    "inner_probe": "not_applicable"
+  },
+  "expected": {
+    "route_action": "install_codex_scoped",
+    "route_owner": "twilight_tun",
+    "chatgpt_proxy": "unchanged",
+    "system_proxy_change": false,
+    "adguard_action": "none",
+    "pritunl_outer_ready": false,
+    "pritunl_connected": false,
+    "pritunl_reconnect": false
+  }
+}

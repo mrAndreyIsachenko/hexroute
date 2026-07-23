@@ -1,0 +1,5 @@
+{"schema":"hexroute.trace-event.v1","trace":"pritunl-disconnect","seq":1,"offset_ms":0,"component":"root","kind":"verification","state":"HEALTHY","reason":"outer_tls_ready","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"pritunl-disconnect","seq":2,"offset_ms":1000,"component":"pritunl","kind":"observation","state":"DEGRADED","reason":"profile_inactive","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"pritunl-disconnect","seq":3,"offset_ms":61000,"component":"user","kind":"decision","state":"RECOVERING","reason":"reconnect_threshold_reached","action":"reconnect_pritunl"}
+{"schema":"hexroute.trace-event.v1","trace":"pritunl-disconnect","seq":4,"offset_ms":62000,"component":"pritunl","kind":"observation","state":"RECOVERING","reason":"profile_active_with_address","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"pritunl-disconnect","seq":5,"offset_ms":122000,"component":"user","kind":"transition","state":"HEALTHY","reason":"stability_window_passed","action":"none"}

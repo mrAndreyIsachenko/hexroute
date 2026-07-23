@@ -1,0 +1,24 @@
+.DS_Store
+/.idea/
+/.zencoder/
+
+# Local operational evidence can contain live infrastructure identifiers.
+/.local/
+/private/
+*.raw
+*.inventory
+*.inventory.sha256
+
+# Build and coverage output.
+/bin/
+/dist/
+/coverage/
+*.coverprofile
+
+# Local environment and Terraform state.
+.env
+.env.*
+!.env.example
+*.tfstate
+*.tfstate.*
+.terraform/

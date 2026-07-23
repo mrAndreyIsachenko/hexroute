@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexroute.invalid/schemas/test-fixture/access-regression-v1.schema.json",
+  "title": "Hexroute access regression fixture v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "name", "input", "expected"],
+  "properties": {
+    "schema": {
+      "const": "hexroute.access-regression.v1"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "maxLength": 80
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "normal_codex",
+        "twilight_socks",
+        "twilight_doh",
+        "target",
+        "current_route",
+        "pritunl_state",
+        "pritunl_client_address",
+        "inner_probe"
+      ],
+      "properties": {
+        "normal_codex": {
+          "$ref": "#/$defs/probe"
+        },
+        "twilight_socks": {
+          "$ref": "#/$defs/probe"
+        },
+        "twilight_doh": {
+          "$ref": "#/$defs/probe"
+        },
+        "target": {
+          "type": "string",
+          "format": "hostname"
+        },
+        "current_route": {
+          "enum": ["physical", "twilight_tun", "other_tun", "none"]
+        },
+        "pritunl_state": {
+          "enum": ["Active", "Connecting", "Inactive", "not_applicable"]
+        },
+        "pritunl_client_address": {
+          "type": "boolean"
+        },
+        "inner_probe": {
+          "$ref": "#/$defs/probe"
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route_action",
+        "route_owner",
+        "chatgpt_proxy",
+        "system_proxy_change",
+        "adguard_action",
+        "pritunl_outer_ready",
+        "pritunl_connected",
+        "pritunl_reconnect"
+      ],
+      "properties": {
+        "route_action": {
+          "enum": [
+            "none",
+            "install_codex_scoped",
+            "repair_twilight_scoped",
+            "preserve_physical"
+          ]
+        },
+        "route_owner": {
+          "enum": ["unchanged", "physical", "twilight_tun"]
+        },
+        "chatgpt_proxy": {
+          "enum": ["unchanged", "launch_twilight_isolated"]
+        },
+        "system_proxy_change": {
+          "const": false
+        },
+        "adguard_action": {
+          "const": "none"
+        },
+        "pritunl_outer_ready": {
+          "type": "boolean"
+        },
+        "pritunl_connected": {
+          "type": "boolean"
+        },
+        "pritunl_reconnect": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "probe": {
+      "enum": ["healthy", "failed", "not_applicable"]
+    }
+  }
+}

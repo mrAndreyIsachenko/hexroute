@@ -1,0 +1,9 @@
+{"schema":"hexroute.trace-event.v1","trace":"sleep-wake","seq":1,"offset_ms":0,"component":"root","kind":"observation","state":"HEALTHY","reason":"user_session_active","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sleep-wake","seq":2,"offset_ms":1000,"component":"network","kind":"transition","state":"SUSPENDED","reason":"lid_sleep","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sleep-wake","seq":3,"offset_ms":60000,"component":"network","kind":"observation","state":"SUSPENDED","reason":"dark_wake","action":"skip_probe"}
+{"schema":"hexroute.trace-event.v1","trace":"sleep-wake","seq":4,"offset_ms":3600000,"component":"network","kind":"observation","state":"SUSPENDED","reason":"full_user_wake","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sleep-wake","seq":5,"offset_ms":3605000,"component":"root","kind":"verification","state":"RECOVERING","reason":"physical_network_ready","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sleep-wake","seq":6,"offset_ms":3606000,"component":"route","kind":"decision","state":"RECOVERING","reason":"scoped_routes_required","action":"apply_scoped_routes"}
+{"schema":"hexroute.trace-event.v1","trace":"sleep-wake","seq":7,"offset_ms":3607000,"component":"root","kind":"verification","state":"RECOVERING","reason":"outer_tls_ready","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sleep-wake","seq":8,"offset_ms":3617000,"component":"user","kind":"decision","state":"RECOVERING","reason":"pritunl_reconnect_allowed","action":"reconnect_pritunl"}
+{"schema":"hexroute.trace-event.v1","trace":"sleep-wake","seq":9,"offset_ms":3620000,"component":"root","kind":"transition","state":"HEALTHY","reason":"dependencies_ready","action":"none"}

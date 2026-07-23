@@ -1,0 +1,24 @@
+{
+  "schema": "hexroute.access-regression.v1",
+  "name": "pritunl-active-inner-failure",
+  "input": {
+    "normal_codex": "not_applicable",
+    "twilight_socks": "healthy",
+    "twilight_doh": "healthy",
+    "target": "inner.corp.example",
+    "current_route": "twilight_tun",
+    "pritunl_state": "Active",
+    "pritunl_client_address": true,
+    "inner_probe": "failed"
+  },
+  "expected": {
+    "route_action": "none",
+    "route_owner": "twilight_tun",
+    "chatgpt_proxy": "unchanged",
+    "system_proxy_change": false,
+    "adguard_action": "none",
+    "pritunl_outer_ready": true,
+    "pritunl_connected": true,
+    "pritunl_reconnect": false
+  }
+}

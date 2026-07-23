@@ -1,0 +1,24 @@
+{
+  "schema": "hexroute.access-regression.v1",
+  "name": "pritunl-outer-readiness",
+  "input": {
+    "normal_codex": "not_applicable",
+    "twilight_socks": "healthy",
+    "twilight_doh": "healthy",
+    "target": "vpn.corp.example",
+    "current_route": "twilight_tun",
+    "pritunl_state": "Inactive",
+    "pritunl_client_address": false,
+    "inner_probe": "not_applicable"
+  },
+  "expected": {
+    "route_action": "none",
+    "route_owner": "twilight_tun",
+    "chatgpt_proxy": "unchanged",
+    "system_proxy_change": false,
+    "adguard_action": "none",
+    "pritunl_outer_ready": true,
+    "pritunl_connected": false,
+    "pritunl_reconnect": true
+  }
+}

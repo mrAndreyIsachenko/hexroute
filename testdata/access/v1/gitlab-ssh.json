@@ -1,0 +1,24 @@
+{
+  "schema": "hexroute.access-regression.v1",
+  "name": "gitlab-ssh",
+  "input": {
+    "normal_codex": "not_applicable",
+    "twilight_socks": "healthy",
+    "twilight_doh": "healthy",
+    "target": "ssh.gitlab.corp.example",
+    "current_route": "physical",
+    "pritunl_state": "not_applicable",
+    "pritunl_client_address": false,
+    "inner_probe": "not_applicable"
+  },
+  "expected": {
+    "route_action": "preserve_physical",
+    "route_owner": "physical",
+    "chatgpt_proxy": "unchanged",
+    "system_proxy_change": false,
+    "adguard_action": "none",
+    "pritunl_outer_ready": false,
+    "pritunl_connected": false,
+    "pritunl_reconnect": false
+  }
+}

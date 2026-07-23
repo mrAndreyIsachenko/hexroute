@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexroute.invalid/schemas/test-fixture/trace-event-v1.schema.json",
+  "title": "Hexroute normalized trace event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "trace",
+    "seq",
+    "offset_ms",
+    "component",
+    "kind",
+    "state",
+    "reason",
+    "action"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hexroute.trace-event.v1"
+    },
+    "trace": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "maxLength": 80
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "offset_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "component": {
+      "enum": ["root", "user", "network", "sing_box", "route", "pritunl"]
+    },
+    "kind": {
+      "enum": ["observation", "transition", "decision", "verification"]
+    },
+    "state": {
+      "enum": ["SUSPENDED", "HEALTHY", "DEGRADED", "RECOVERING", "SAFE_MODE"]
+    },
+    "reason": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "maxLength": 80
+    },
+    "action": {
+      "enum": [
+        "none",
+        "skip_probe",
+        "apply_scoped_routes",
+        "select_next_ingress",
+        "restart_sing_box",
+        "reconnect_pritunl"
+      ]
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{"schema":"hexroute.trace-event.v1","trace":"physical-network-recovery","seq":1,"offset_ms":0,"component":"root","kind":"observation","state":"HEALTHY","reason":"physical_network_ready","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"physical-network-recovery","seq":2,"offset_ms":1000,"component":"network","kind":"transition","state":"SUSPENDED","reason":"physical_carrier_lost","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"physical-network-recovery","seq":3,"offset_ms":61000,"component":"root","kind":"decision","state":"SUSPENDED","reason":"physical_network_unavailable","action":"skip_probe"}
+{"schema":"hexroute.trace-event.v1","trace":"physical-network-recovery","seq":4,"offset_ms":121000,"component":"network","kind":"observation","state":"SUSPENDED","reason":"physical_network_ready","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"physical-network-recovery","seq":5,"offset_ms":126000,"component":"route","kind":"decision","state":"RECOVERING","reason":"scoped_routes_required","action":"apply_scoped_routes"}
+{"schema":"hexroute.trace-event.v1","trace":"physical-network-recovery","seq":6,"offset_ms":127000,"component":"root","kind":"verification","state":"RECOVERING","reason":"outer_tls_ready","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"physical-network-recovery","seq":7,"offset_ms":187000,"component":"root","kind":"transition","state":"HEALTHY","reason":"stability_window_passed","action":"none"}

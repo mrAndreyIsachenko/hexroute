@@ -1,0 +1,6 @@
+{"schema":"hexroute.trace-event.v1","trace":"sing-box-exit","seq":1,"offset_ms":0,"component":"root","kind":"observation","state":"HEALTHY","reason":"outer_tls_ready","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sing-box-exit","seq":2,"offset_ms":1000,"component":"sing_box","kind":"observation","state":"DEGRADED","reason":"process_exited","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sing-box-exit","seq":3,"offset_ms":1100,"component":"root","kind":"decision","state":"RECOVERING","reason":"process_exit_recovery_allowed","action":"restart_sing_box"}
+{"schema":"hexroute.trace-event.v1","trace":"sing-box-exit","seq":4,"offset_ms":1500,"component":"route","kind":"decision","state":"RECOVERING","reason":"scoped_routes_required","action":"apply_scoped_routes"}
+{"schema":"hexroute.trace-event.v1","trace":"sing-box-exit","seq":5,"offset_ms":2500,"component":"root","kind":"verification","state":"RECOVERING","reason":"outer_tls_ready","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sing-box-exit","seq":6,"offset_ms":62500,"component":"root","kind":"transition","state":"HEALTHY","reason":"stability_window_passed","action":"none"}

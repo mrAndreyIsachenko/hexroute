@@ -1,0 +1,7 @@
+{"schema":"hexroute.trace-event.v1","trace":"sustained-ingress-loss","seq":1,"offset_ms":0,"component":"root","kind":"observation","state":"HEALTHY","reason":"primary_ingress_ready","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sustained-ingress-loss","seq":2,"offset_ms":60000,"component":"network","kind":"observation","state":"HEALTHY","reason":"primary_ingress_failed_once","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sustained-ingress-loss","seq":3,"offset_ms":120000,"component":"network","kind":"observation","state":"HEALTHY","reason":"primary_ingress_failed_twice","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sustained-ingress-loss","seq":4,"offset_ms":180000,"component":"root","kind":"transition","state":"DEGRADED","reason":"ingress_failure_threshold","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sustained-ingress-loss","seq":5,"offset_ms":180100,"component":"root","kind":"decision","state":"RECOVERING","reason":"alternate_ingress_ready","action":"select_next_ingress"}
+{"schema":"hexroute.trace-event.v1","trace":"sustained-ingress-loss","seq":6,"offset_ms":181000,"component":"root","kind":"verification","state":"RECOVERING","reason":"outer_tls_ready","action":"none"}
+{"schema":"hexroute.trace-event.v1","trace":"sustained-ingress-loss","seq":7,"offset_ms":241000,"component":"root","kind":"transition","state":"HEALTHY","reason":"stability_window_passed","action":"none"}
