@@ -12,18 +12,23 @@ var (
 	ErrUnknownAction   = errors.New("action is not allowlisted")
 )
 
-var allowedActions = map[control.Action]struct{}{
-	{Kind: control.ActionRestart, Target: control.TargetSingBox}:                {},
-	{Kind: control.ActionApplyScopedRoutes, Target: control.TargetScopedRoutes}: {},
-	{Kind: control.ActionSelectIngress, Target: control.TargetIngress}:          {},
-	{Kind: control.ActionRestart, Target: control.TargetPritunlService}:         {},
+type actionKey struct {
+	kind   control.ActionKind
+	target control.ActionTarget
+}
+
+var allowedActions = map[actionKey]struct{}{
+	{kind: control.ActionRestart, target: control.TargetSingBox}:                {},
+	{kind: control.ActionApplyScopedRoutes, target: control.TargetScopedRoutes}: {},
+	{kind: control.ActionSelectIngress, target: control.TargetIngress}:          {},
+	{kind: control.ActionRestart, target: control.TargetPritunlService}:         {},
 }
 
 func ValidateAction(action control.Action) error {
 	if action.Target == control.ActionTarget("adguard") {
 		return ErrForbiddenTarget
 	}
-	if _, ok := allowedActions[action]; !ok {
+	if _, ok := allowedActions[actionKey{kind: action.Kind, target: action.Target}]; !ok {
 		return fmt.Errorf("%w: kind=%q target=%q", ErrUnknownAction, action.Kind, action.Target)
 	}
 	return nil

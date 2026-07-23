@@ -37,7 +37,13 @@ func TestValidateActionRejectsArbitraryAction(t *testing.T) {
 }
 
 func TestValidateActionAllowsKnownScopedActions(t *testing.T) {
-	for action := range allowedActions {
+	for key := range allowedActions {
+		action := control.Action{
+			Kind:       key.kind,
+			Target:     key.target,
+			Generation: 42,
+			Reason:     control.ReasonProbeFailed,
+		}
 		if err := ValidateAction(action); err != nil {
 			t.Fatalf("ValidateAction(%+v) unexpected error: %v", action, err)
 		}

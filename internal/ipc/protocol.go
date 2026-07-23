@@ -75,7 +75,7 @@ func (request Request) Validate() error {
 			return ErrInvalidTarget
 		}
 	case ActionRescuePritunlService:
-		if request.Target != "" && request.Target != control.ComponentPritunl {
+		if request.Target != control.ComponentPritunl {
 			return ErrInvalidTarget
 		}
 	default:

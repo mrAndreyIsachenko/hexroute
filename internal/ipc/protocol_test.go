@@ -111,6 +111,37 @@ func TestAuthorizePeerUID(t *testing.T) {
 	}
 }
 
+func TestPritunlRescueRequiresExplicitTargetAndRejectsCredentialFields(t *testing.T) {
+	request := Request{
+		Version:            ProtocolVersion,
+		RequestID:          "request-rescue-01",
+		Action:             ActionRescuePritunlService,
+		Target:             control.ComponentPritunl,
+		ExpectedGeneration: 12,
+	}
+	if err := request.Validate(); err != nil {
+		t.Fatalf("valid rescue request error: %v", err)
+	}
+
+	request.Target = ""
+	if err := request.Validate(); !errors.Is(err, ErrInvalidTarget) {
+		t.Fatalf("empty rescue target error = %v, want %v", err, ErrInvalidTarget)
+	}
+
+	for _, field := range []string{"pin", "totp_seed", "otp", "profile_id"} {
+		payload := []byte(
+			`{"version":1,"request_id":"request-rescue-01","action":"rescue_pritunl_service",` +
+				`"target":"pritunl","expected_generation":12,"` + field + `":"forbidden"}`,
+		)
+		if _, err := ReadRequest(bytes.NewReader(rawFrame(payload))); !errors.Is(
+			err,
+			ErrMalformedFrame,
+		) {
+			t.Fatalf("credential field %q error = %v, want %v", field, err, ErrMalformedFrame)
+		}
+	}
+}
+
 func rawFrame(payload []byte) []byte {
 	frame := make([]byte, 4+len(payload))
 	binary.BigEndian.PutUint32(frame[:4], uint32(len(payload)))
