@@ -49,6 +49,7 @@ func awake(at control.Tick) Observation {
 			State:            userobserve.ProfileActive,
 			HasClientAddress: true,
 		},
+		OptionalInner:       OptionalInnerUnknown,
 		OTPSecondsRemaining: 20,
 	}
 }
@@ -116,6 +117,11 @@ func TestPlannerRejectsInvalidPolicyAndObservation(t *testing.T) {
 	observation.OTPSecondsRemaining = testPolicy().OTPPeriod + 1
 	if _, err := planner.Plan(observation); err == nil {
 		t.Fatal("invalid OTP observation accepted")
+	}
+	observation = awake(1)
+	observation.OptionalInner = OptionalInnerState("unsupported")
+	if _, err := planner.Plan(observation); err == nil {
+		t.Fatal("invalid optional inner state accepted")
 	}
 }
 
@@ -222,6 +228,52 @@ func TestOuterReadinessBlocksThresholdAndReconnect(t *testing.T) {
 			plan.Snapshot.Attempts != 0 {
 			t.Fatalf("Plan() = %+v", plan)
 		}
+	}
+}
+
+func TestActiveWithClientAddressIgnoresOptionalInnerFailure(t *testing.T) {
+	policy := testPolicy()
+	policy.WakeSettle = 0
+	policy.Recovery.FailureThreshold = 1
+	planner := newPlanner(t, policy)
+	observation := awake(0)
+	observation.OptionalInner = OptionalInnerFailed
+
+	for observation.At = 0; observation.At < 3; observation.At++ {
+		plan, err := planner.Plan(observation)
+		if err != nil {
+			t.Fatalf("Plan() error: %v", err)
+		}
+		if plan.State != control.StateHealthy ||
+			plan.Action != ActionNone ||
+			plan.Reason != ReasonProfileConnected ||
+			plan.Snapshot.ConsecutiveFailures != 0 ||
+			plan.Snapshot.Attempts != 0 {
+			t.Fatalf("Plan() = %+v", plan)
+		}
+	}
+}
+
+func TestOptionalInnerSuccessCannotReplaceMissingClientAddress(t *testing.T) {
+	policy := testPolicy()
+	policy.WakeSettle = 0
+	policy.Recovery.FailureThreshold = 1
+	planner := newPlanner(t, policy)
+	observation := awake(0)
+	observation.Profile = userobserve.ProfileObservation{
+		Found: true,
+		State: userobserve.ProfileActive,
+	}
+	observation.OptionalInner = OptionalInnerReady
+
+	plan, err := planner.Plan(observation)
+	if err != nil {
+		t.Fatalf("Plan() error: %v", err)
+	}
+	if plan.Action != ActionReconnect ||
+		plan.State != control.StateRecovering ||
+		plan.Reason != ReasonReconnectAllowed {
+		t.Fatalf("Plan() = %+v", plan)
 	}
 }
 

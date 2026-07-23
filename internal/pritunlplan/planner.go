@@ -35,6 +35,15 @@ const (
 	ReasonReconnectAllowed    Reason = "reconnect_allowed"
 )
 
+type OptionalInnerState string
+
+const (
+	OptionalInnerUnspecified OptionalInnerState = ""
+	OptionalInnerUnknown     OptionalInnerState = "unknown"
+	OptionalInnerReady       OptionalInnerState = "ready"
+	OptionalInnerFailed      OptionalInnerState = "failed"
+)
+
 type Policy struct {
 	Recovery        control.Policy
 	WakeSettle      control.Tick
@@ -44,11 +53,14 @@ type Policy struct {
 }
 
 type Observation struct {
-	At                  control.Tick
-	Session             userobserve.SessionState
-	Wake                userobserve.WakeObservation
-	OuterReady          bool
-	Profile             userobserve.ProfileObservation
+	At         control.Tick
+	Session    userobserve.SessionState
+	Wake       userobserve.WakeObservation
+	OuterReady bool
+	Profile    userobserve.ProfileObservation
+	// OptionalInner is diagnostic-only. Pritunl's Active state plus a client
+	// address remains authoritative for reconnect decisions.
+	OptionalInner       OptionalInnerState
 	OTPSecondsRemaining uint32
 }
 
@@ -103,6 +115,7 @@ func (planner *Planner) Plan(observation Observation) (Plan, error) {
 	if planner == nil ||
 		planner.machine == nil ||
 		observation.At < 0 ||
+		!observation.OptionalInner.valid() ||
 		observation.OTPSecondsRemaining > planner.policy.OTPPeriod {
 		return Plan{}, ErrInvalidInput
 	}
@@ -244,6 +257,15 @@ func (planner *Planner) Plan(observation Observation) (Plan, error) {
 		ActionNone,
 		planner.machine.Snapshot().NextActionAt,
 	), nil
+}
+
+func (state OptionalInnerState) valid() bool {
+	switch state {
+	case OptionalInnerUnspecified, OptionalInnerUnknown, OptionalInnerReady, OptionalInnerFailed:
+		return true
+	default:
+		return false
+	}
 }
 
 func (planner *Planner) suspend(at control.Tick, reason Reason) (Plan, error) {
