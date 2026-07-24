@@ -17,6 +17,7 @@ func TestPostgreSQLMigrationManifest(t *testing.T) {
 		"operations",
 		"access_delivery_and_slo",
 		"access_roles",
+		"ingest_readiness_grant",
 	}
 	if len(migrations) != len(wantNames) {
 		t.Fatalf("migration count = %d, want %d", len(migrations), len(wantNames))
@@ -115,7 +116,9 @@ func TestPostgreSQLDownMigrationsAreExplicit(t *testing.T) {
 	}
 	for _, migration := range migrations {
 		down := strings.ToLower(migration.Down)
-		if !strings.Contains(down, "drop table") && !strings.Contains(down, "drop role") {
+		if !strings.Contains(down, "drop table") &&
+			!strings.Contains(down, "drop role") &&
+			!strings.Contains(down, "revoke") {
 			t.Fatalf("migration %06d has no explicit test rollback", migration.Version)
 		}
 	}

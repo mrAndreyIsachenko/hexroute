@@ -133,6 +133,8 @@ expect_allowed hexroute_ingest \
    )"
 expect_allowed hexroute_ingest \
   'UPDATE nodes SET last_seen_at = CURRENT_TIMESTAMP WHERE FALSE'
+expect_allowed hexroute_ingest \
+  'SELECT heartbeat_at FROM worker_heartbeats LIMIT 0'
 expect_allowed hexroute_dashboard \
   'SELECT incident_id FROM incidents LIMIT 0'
 expect_allowed hexroute_dashboard \
@@ -180,7 +182,9 @@ docker exec "$container" psql \
   --dbname postgres \
   --set ON_ERROR_STOP=1 \
   --command "CREATE ROLE hexroute_test_ingest LOGIN;
-             GRANT hexroute_ingest TO hexroute_test_ingest;" >/dev/null
+             GRANT hexroute_ingest TO hexroute_test_ingest;
+             CREATE ROLE hexroute_test_maintenance LOGIN;
+             GRANT hexroute_maintenance TO hexroute_test_maintenance;" >/dev/null
 
 published_address="$(docker port "$container" 5432/tcp | tail -n 1)"
 postgres_port="${published_address##*:}"
@@ -191,11 +195,20 @@ GOCACHE=/tmp/hexroute-postgres-go-cache \
     -run TestPostgresStorePersistsDeduplicatesAndTracksSequenceGaps \
     -count=1
 
+HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_INGEST_DSN="postgres://hexroute_test_ingest@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_MAINTENANCE_DSN="postgres://hexroute_test_maintenance@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+GOCACHE=/tmp/hexroute-postgres-go-cache \
+  go test ./internal/cloudhealth \
+    -run TestPostgresHeartbeatDrivesReadiness \
+    -count=1
+
 docker exec "$container" psql \
   --username postgres \
   --dbname postgres \
   --set ON_ERROR_STOP=1 \
-  --command "DROP ROLE hexroute_test_ingest;" >/dev/null
+  --command "DROP ROLE hexroute_test_ingest;
+             DROP ROLE hexroute_test_maintenance;" >/dev/null
 
 while IFS= read -r migration; do
   docker exec -i "$container" psql \

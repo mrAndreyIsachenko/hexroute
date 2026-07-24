@@ -6,7 +6,8 @@ ordered, append-only expansion migrations:
 1. node identity, signing keys and idempotent event ingestion;
 2. current operational state, sleep intervals, incidents and deployments;
 3. passkey public credentials, alert delivery state and SLO aggregates;
-4. ownership and least-privilege group-role grants.
+4. ownership and least-privilege group-role grants;
+5. the API's narrow worker-readiness grant.
 
 The schema stores public verification keys and passkey public credentials. It
 does not model VPN credentials, private signing keys, OTP material, packet
