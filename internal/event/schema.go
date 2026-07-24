@@ -29,6 +29,7 @@ const (
 	SchemaDeployment    Schema = "deployment.lifecycle"
 	SchemaConfigVersion Schema = "config.lifecycle"
 	SchemaDiagnostic    Schema = "runtime.diagnostic"
+	SchemaSleep         Schema = "node.sleep"
 )
 
 type Priority string
@@ -176,6 +177,26 @@ type Diagnostic struct {
 	DurationMS uint32            `json:"duration_ms"`
 }
 
+type SleepPhase string
+
+const (
+	SleepStarted SleepPhase = "started"
+	SleepEnded   SleepPhase = "ended"
+)
+
+type SleepReason string
+
+const (
+	SleepReasonLidClosed   SleepReason = "lid_closed"
+	SleepReasonSystemSleep SleepReason = "system_sleep"
+	SleepReasonFullWake    SleepReason = "full_wake"
+)
+
+type Sleep struct {
+	Phase  SleepPhase  `json:"phase"`
+	Reason SleepReason `json:"reason"`
+}
+
 var (
 	ErrUnknownSchema      = errors.New("unknown event schema")
 	ErrUnsupportedVersion = errors.New("unsupported event schema version")
@@ -194,7 +215,8 @@ func DefinitionFor(schema Schema) (Definition, bool) {
 		priority = PriorityOperational
 	case SchemaDiagnostic:
 		priority = PriorityDiagnostic
-	case SchemaTransition, SchemaAction, SchemaIncident, SchemaDeployment, SchemaConfigVersion:
+	case SchemaTransition, SchemaAction, SchemaIncident, SchemaDeployment,
+		SchemaConfigVersion, SchemaSleep:
 		priority = PriorityCritical
 	default:
 		return Definition{}, false
@@ -306,6 +328,8 @@ func newPayload(schema Schema) any {
 		return &ConfigVersion{}
 	case SchemaDiagnostic:
 		return &Diagnostic{}
+	case SchemaSleep:
+		return &Sleep{}
 	default:
 		return nil
 	}
@@ -354,6 +378,11 @@ func validatePayload(schema Schema, payload any) error {
 	case SchemaDiagnostic:
 		value, ok := asDiagnostic(payload)
 		if !ok || !validComponent(value.Component) || !validDiagnosticCode(value.Code) {
+			return ErrInvalidField
+		}
+	case SchemaSleep:
+		value, ok := asSleep(payload)
+		if !ok || !validSleep(value) {
 			return ErrInvalidField
 		}
 	default:
@@ -505,6 +534,18 @@ func validDiagnosticCode(value DiagnosticCode) bool {
 	}
 }
 
+func validSleep(value Sleep) bool {
+	switch value.Phase {
+	case SleepStarted:
+		return value.Reason == SleepReasonLidClosed ||
+			value.Reason == SleepReasonSystemSleep
+	case SleepEnded:
+		return value.Reason == SleepReasonFullWake
+	default:
+		return false
+	}
+}
+
 func asObservation(payload any) (Observation, bool) {
 	switch value := payload.(type) {
 	case Observation:
@@ -594,4 +635,17 @@ func asDiagnostic(payload any) (Diagnostic, bool) {
 	default:
 	}
 	return Diagnostic{}, false
+}
+
+func asSleep(payload any) (Sleep, bool) {
+	switch value := payload.(type) {
+	case Sleep:
+		return value, true
+	case *Sleep:
+		if value != nil {
+			return *value, true
+		}
+	default:
+	}
+	return Sleep{}, false
 }

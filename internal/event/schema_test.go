@@ -93,6 +93,13 @@ func TestRegisteredSchemasRoundTrip(t *testing.T) {
 				DurationMS: 500,
 			},
 		},
+		{
+			schema: SchemaSleep,
+			payload: Sleep{
+				Phase:  SleepStarted,
+				Reason: SleepReasonLidClosed,
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -196,6 +203,7 @@ func TestEverySchemaHasFixedVersionPriorityAndPayloadLimit(t *testing.T) {
 		SchemaDeployment,
 		SchemaConfigVersion,
 		SchemaDiagnostic,
+		SchemaSleep,
 	}
 	for _, schema := range schemas {
 		definition, ok := DefinitionFor(schema)
@@ -209,6 +217,18 @@ func TestEverySchemaHasFixedVersionPriorityAndPayloadLimit(t *testing.T) {
 			definition.Priority != PriorityOperational &&
 			definition.Priority != PriorityDiagnostic {
 			t.Fatalf("DefinitionFor(%q) has invalid priority %q", schema, definition.Priority)
+		}
+	}
+}
+
+func TestSleepSchemaRejectsAmbiguousTransitions(t *testing.T) {
+	for _, payload := range []Sleep{
+		{Phase: SleepStarted, Reason: SleepReasonFullWake},
+		{Phase: SleepEnded, Reason: SleepReasonLidClosed},
+		{Phase: "unknown", Reason: SleepReasonSystemSleep},
+	} {
+		if _, err := Encode(SchemaSleep, payload); !errors.Is(err, ErrInvalidField) {
+			t.Fatalf("Encode(%+v) error = %v, want %v", payload, err, ErrInvalidField)
 		}
 	}
 }

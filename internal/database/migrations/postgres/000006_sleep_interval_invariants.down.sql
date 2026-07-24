@@ -1,0 +1,3 @@
+DROP INDEX sleep_intervals_end_event_idx;
+DROP INDEX sleep_intervals_start_event_idx;
+DROP INDEX sleep_intervals_one_open_per_node_idx;
