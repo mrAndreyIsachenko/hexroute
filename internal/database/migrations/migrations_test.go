@@ -21,6 +21,7 @@ func TestPostgreSQLMigrationManifest(t *testing.T) {
 		"sleep_interval_invariants",
 		"alert_delivery_leases",
 		"retention_indexes",
+		"incident_bundle_expiry",
 	}
 	if len(migrations) != len(wantNames) {
 		t.Fatalf("migration count = %d, want %d", len(migrations), len(wantNames))

@@ -10,7 +10,8 @@ ordered, append-only expansion migrations:
 5. the API's narrow worker-readiness grant;
 6. idempotent sleep-interval projection invariants;
 7. crash-recoverable alert-delivery leases;
-8. bounded-retention lookup indexes.
+8. bounded-retention lookup indexes;
+9. incident-bundle deduplication and crash-recoverable expiry leases.
 
 The schema stores public verification keys and passkey public credentials. It
 does not model VPN credentials, private signing keys, OTP material, packet
@@ -57,6 +58,9 @@ share the repository directory with containers.
   holding a database transaction across an HTTPS request.
 - Bounded retention deletes only expired detail and terminal history; open
   work and durable incidents, deployments and SLO aggregates are excluded.
+- Private incident bundles are content-addressed, deduplicated and deleted
+  only after object storage confirms deletion; failed expiry attempts retain a
+  bounded retry lease and generic result code.
 - SLO aggregates link back to incidents that explain failures and exclusions.
 
 The role migration creates fixed `NOLOGIN` group roles without credentials:
