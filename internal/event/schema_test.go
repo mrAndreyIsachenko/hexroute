@@ -175,6 +175,16 @@ func TestEncodeRejectsMismatchedAndOversizedFields(t *testing.T) {
 	if _, err := Decode(oversized); !errors.Is(err, ErrEventTooLarge) {
 		t.Fatalf("Decode(oversized event) error = %v, want %v", err, ErrEventTooLarge)
 	}
+
+	if _, err := Encode(SchemaIncident, Incident{
+		IncidentID: "incident-zero-generation",
+		Status:     IncidentOpened,
+		Severity:   SeverityCritical,
+		Category:   IncidentAvailability,
+		Component:  control.ComponentTunnel,
+	}); !errors.Is(err, ErrInvalidField) {
+		t.Fatalf("zero-generation incident error = %v, want %v", err, ErrInvalidField)
+	}
 }
 
 func TestEverySchemaHasFixedVersionPriorityAndPayloadLimit(t *testing.T) {

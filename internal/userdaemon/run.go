@@ -14,8 +14,10 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
+	"github.com/mrAndreyIsachenko/hexroute/internal/notification"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlplan"
@@ -33,6 +35,14 @@ type Cycler interface {
 
 type StateStore interface {
 	Save(control.Snapshot) error
+}
+
+type IncidentNotifier interface {
+	Dispatch(
+		context.Context,
+		notification.Input,
+		time.Time,
+	) (notification.Outcome, error)
 }
 
 type snapshotStore struct {
@@ -184,6 +194,20 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return 1
 	}
+	macOSNotifier, err := notification.NewDefaultMacOSNotifier()
+	if err != nil {
+		return 1
+	}
+	notifications, err := notification.NewService(
+		notification.Policy{
+			NightStartHour: 23,
+			NightEndHour:   8,
+		},
+		macOSNotifier,
+	)
+	if err != nil {
+		return 1
+	}
 	var requests <-chan operator.Envelope
 	var serverDone <-chan error
 	var server *ipc.Server
@@ -234,6 +258,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		cycle,
 		store,
 		controller,
+		notifications,
 		requests,
 		serverDone,
 		infoLog,
@@ -328,6 +353,7 @@ func observeLoop(
 	cycler Cycler,
 	store StateStore,
 	controller *operator.Controller,
+	notifications IncidentNotifier,
 	requests <-chan operator.Envelope,
 	serverDone <-chan error,
 	logger *logging.Logger,
@@ -338,6 +364,7 @@ func observeLoop(
 		cycler == nil ||
 		store == nil ||
 		controller == nil ||
+		notifications == nil ||
 		logger == nil {
 		return ErrInvalidConfig
 	}
@@ -349,6 +376,7 @@ func observeLoop(
 	); err != nil {
 		return err
 	}
+	lastState := control.State("")
 	for {
 		now := time.Now()
 		at := nowTick()
@@ -362,6 +390,15 @@ func observeLoop(
 		); err != nil {
 			return err
 		}
+		dispatchPritunlNotification(
+			ctx,
+			notifications,
+			lastState,
+			summary.Plan.Snapshot,
+			now,
+			logger,
+		)
+		lastState = summary.Plan.Snapshot.State
 		if err := emitSummary(logger, summary); err != nil {
 			return err
 		}
@@ -401,6 +438,68 @@ func observeLoop(
 				break wait
 			}
 		}
+	}
+}
+
+func dispatchPritunlNotification(
+	ctx context.Context,
+	notifications IncidentNotifier,
+	previous control.State,
+	snapshot control.Snapshot,
+	at time.Time,
+	logger *logging.Logger,
+) {
+	if ctx == nil ||
+		notifications == nil ||
+		logger == nil ||
+		previous == snapshot.State {
+		return
+	}
+
+	status := event.IncidentStatus("")
+	severity := event.SeverityInfo
+	switch {
+	case snapshot.State == control.StateSafeMode:
+		status = event.IncidentOpened
+		severity = event.SeverityWarning
+	case previous == control.StateSafeMode:
+		status = event.IncidentResolved
+	default:
+		return
+	}
+	notifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	outcome, err := notifications.Dispatch(
+		notifyCtx,
+		notification.Input{
+			Incident: event.Incident{
+				IncidentID: "pritunl-safe-mode",
+				Status:     status,
+				Severity:   severity,
+				Category:   event.IncidentRecoveryBudget,
+				Component:  control.ComponentPritunl,
+				Generation: snapshot.Generation,
+			},
+			External: notification.ExternalNotRequired,
+		},
+		at,
+	)
+	if err != nil {
+		_ = logger.Emit(
+			logging.LevelWarn,
+			logging.EventLocalNotification,
+			logging.ResultDegraded,
+			"",
+		)
+		return
+	}
+	if outcome.LocalDelivery == notification.LocalDelivered {
+		_ = logger.Emit(
+			logging.LevelInfo,
+			logging.EventLocalNotification,
+			logging.ResultReported,
+			"",
+		)
 	}
 }
 

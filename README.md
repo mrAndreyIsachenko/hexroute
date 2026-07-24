@@ -24,6 +24,8 @@ macOS state and emit route proposals without mutation authority. See
 `docs/macos/root-observe.md`. A local typed operator surface provides bounded
 status, redacted diagnostics and generation-guarded safe-mode resume without
 exposing arbitrary commands; see `docs/macos/operator.md`.
+Actionable user incidents use fixed, redacted macOS notification templates;
+see `docs/macos/notifications.md`.
 
 ## License
 

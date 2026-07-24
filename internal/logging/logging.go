@@ -30,20 +30,21 @@ const (
 type EventName string
 
 const (
-	EventCommandStatus    EventName = "command_status"
-	EventStartupCheck     EventName = "startup_check"
-	EventVersionRequested EventName = "version_requested"
-	EventArgumentRejected EventName = "argument_rejected"
-	EventIPCRejected      EventName = "ipc_request_rejected"
-	EventDaemonStarted    EventName = "daemon_started"
-	EventDaemonStopped    EventName = "daemon_stopped"
-	EventObservationCycle EventName = "observation_cycle"
-	EventIngressRoute     EventName = "ingress_route_proposed"
-	EventCorporateRoute   EventName = "corporate_route_proposed"
-	EventGitLabHTTPSRoute EventName = "gitlab_https_route_proposed"
-	EventCodexRoute       EventName = "codex_fallback_route_proposed"
-	EventPritunlReconnect EventName = "pritunl_reconnect_proposed"
-	EventSentinelEvidence EventName = "sentinel_restart_evidence"
+	EventCommandStatus     EventName = "command_status"
+	EventStartupCheck      EventName = "startup_check"
+	EventVersionRequested  EventName = "version_requested"
+	EventArgumentRejected  EventName = "argument_rejected"
+	EventIPCRejected       EventName = "ipc_request_rejected"
+	EventDaemonStarted     EventName = "daemon_started"
+	EventDaemonStopped     EventName = "daemon_stopped"
+	EventObservationCycle  EventName = "observation_cycle"
+	EventIngressRoute      EventName = "ingress_route_proposed"
+	EventCorporateRoute    EventName = "corporate_route_proposed"
+	EventGitLabHTTPSRoute  EventName = "gitlab_https_route_proposed"
+	EventCodexRoute        EventName = "codex_fallback_route_proposed"
+	EventPritunlReconnect  EventName = "pritunl_reconnect_proposed"
+	EventSentinelEvidence  EventName = "sentinel_restart_evidence"
+	EventLocalNotification EventName = "local_notification"
 )
 
 type Result string
@@ -166,7 +167,7 @@ func validEvent(value EventName) bool {
 	case EventCommandStatus, EventStartupCheck, EventVersionRequested, EventArgumentRejected, EventIPCRejected,
 		EventDaemonStarted, EventDaemonStopped, EventObservationCycle, EventIngressRoute,
 		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect,
-		EventSentinelEvidence:
+		EventSentinelEvidence, EventLocalNotification:
 		return true
 	default:
 		return false

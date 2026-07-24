@@ -47,6 +47,10 @@ Build `hexroutectl` and use the commands in
 changes a persisted candidate `SAFE_MODE` snapshot back to `DEGRADED`; in
 observe-only mode it does not connect Pritunl.
 
+The user daemon also emits a bounded local notification when its Pritunl
+planner enters `SAFE_MODE`. Notification delivery is best effort and cannot
+stop the observation loop. See [`notifications.md`](notifications.md).
+
 `pritunl_reconnect_proposed` means the candidate would have requested a
 reconnect. It does not mean Hexroute performed one. Compare its timestamp with
 the existing watchdog's recovery log while that watchdog remains active.

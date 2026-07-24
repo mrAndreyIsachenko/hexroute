@@ -336,7 +336,7 @@ func validatePayload(schema Schema, payload any) error {
 		value, ok := asIncident(payload)
 		if !ok || !validReference(value.IncidentID) || !validIncidentStatus(value.Status) ||
 			!validSeverity(value.Severity) || !validCategory(value.Category) ||
-			!validComponent(value.Component) {
+			!validComponent(value.Component) || value.Generation == 0 {
 			return ErrInvalidField
 		}
 	case SchemaDeployment:

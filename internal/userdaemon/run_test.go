@@ -3,6 +3,7 @@ package userdaemon
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,14 +11,31 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
+	"github.com/mrAndreyIsachenko/hexroute/internal/notification"
 	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlplan"
 )
 
 type fixedUserCycler struct {
 	summary Summary
+}
+
+type fakeIncidentNotifier struct {
+	calls   []notification.Input
+	outcome notification.Outcome
+	err     error
+}
+
+func (notifier *fakeIncidentNotifier) Dispatch(
+	_ context.Context,
+	input notification.Input,
+	_ time.Time,
+) (notification.Outcome, error) {
+	notifier.calls = append(notifier.calls, input)
+	return notifier.outcome, notifier.err
 }
 
 func (cycler fixedUserCycler) Observe(
@@ -128,6 +146,7 @@ func TestObserveLoopPersistsCandidateStateAndEmitsRedactedProposal(t *testing.T)
 		cycler,
 		store,
 		controller,
+		&fakeIncidentNotifier{},
 		nil,
 		nil,
 		logger,
@@ -146,6 +165,84 @@ func TestObserveLoopPersistsCandidateStateAndEmitsRedactedProposal(t *testing.T)
 	}
 	if persisted != snapshot {
 		t.Fatalf("persisted snapshot = %+v, want %+v", persisted, snapshot)
+	}
+}
+
+func TestPritunlSafeModeEmitsOneRedactedLocalNotification(t *testing.T) {
+	var output bytes.Buffer
+	logger, err := logging.New(&output, logging.ComponentUser)
+	if err != nil {
+		t.Fatalf("logging.New() error: %v", err)
+	}
+	notifier := &fakeIncidentNotifier{
+		outcome: notification.Outcome{
+			LocalDelivery: notification.LocalDelivered,
+		},
+	}
+	snapshot := control.NewSnapshot(control.StateSafeMode)
+	snapshot.Generation = 7
+
+	dispatchPritunlNotification(
+		context.Background(),
+		notifier,
+		control.StateRecovering,
+		snapshot,
+		time.Now(),
+		logger,
+	)
+	dispatchPritunlNotification(
+		context.Background(),
+		notifier,
+		control.StateSafeMode,
+		snapshot,
+		time.Now(),
+		logger,
+	)
+
+	if len(notifier.calls) != 1 {
+		t.Fatalf("notification calls = %d, want 1", len(notifier.calls))
+	}
+	incident := notifier.calls[0].Incident
+	if incident.Status != event.IncidentOpened ||
+		incident.Category != event.IncidentRecoveryBudget ||
+		incident.Component != control.ComponentPritunl ||
+		incident.Generation != 7 {
+		t.Fatalf("incident = %+v", incident)
+	}
+	logged := output.String()
+	if !strings.Contains(logged, `"event":"local_notification"`) ||
+		!strings.Contains(logged, `"result":"reported"`) ||
+		strings.Contains(logged, incident.IncidentID) {
+		t.Fatalf("notification log = %q", logged)
+	}
+}
+
+func TestNotificationFailureDoesNotEscapeOrExposeAdapterError(t *testing.T) {
+	var output bytes.Buffer
+	logger, err := logging.New(&output, logging.ComponentUser)
+	if err != nil {
+		t.Fatalf("logging.New() error: %v", err)
+	}
+	notifier := &fakeIncidentNotifier{
+		err: errors.New("HEXROUTE_CANARY_SENSITIVE_VALUE"),
+	}
+	snapshot := control.NewSnapshot(control.StateSafeMode)
+	snapshot.Generation = 3
+
+	dispatchPritunlNotification(
+		context.Background(),
+		notifier,
+		control.StateDegraded,
+		snapshot,
+		time.Now(),
+		logger,
+	)
+
+	logged := output.String()
+	if !strings.Contains(logged, `"event":"local_notification"`) ||
+		!strings.Contains(logged, `"result":"degraded"`) ||
+		strings.Contains(logged, "HEXROUTE_CANARY_SENSITIVE_VALUE") {
+		t.Fatalf("notification failure log = %q", logged)
 	}
 }
 
