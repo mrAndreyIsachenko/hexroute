@@ -10,6 +10,11 @@ failed data-path probe alone are insufficient. When both signals persist, the
 sentinel records `sentinel_restart_evidence`; it does not propose or perform a
 restart at this stage.
 
+The compiled active-control boundary accepts only the fixed root candidate
+launchd target, one attempt, a verification window and a cooldown of at least
+ten minutes. The observe-only command does not construct that adapter.
+Activation remains a separate cutover step after stale-loop fault testing.
+
 ```sh
 go build -o bin/hexroute-sentinel ./cmd/hexroute-sentinel
 bin/hexroute-sentinel \
