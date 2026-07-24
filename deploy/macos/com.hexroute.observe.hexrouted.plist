@@ -10,6 +10,8 @@
 		<string>--observe</string>
 		<string>--config</string>
 		<string>/Library/Application Support/Hexroute/observe-root/config/root-observe.json</string>
+		<string>--heartbeat</string>
+		<string>/Library/Application Support/Hexroute/observe-root/state/control-loop.heartbeat.json</string>
 	</array>
 	<key>WorkingDirectory</key>
 	<string>/Library/Application Support/Hexroute/observe-root/state</string>

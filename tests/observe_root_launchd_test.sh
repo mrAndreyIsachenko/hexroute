@@ -19,6 +19,8 @@ grep -q '/Library/Application Support/Hexroute/observe-root' "$PLIST"
 grep -q '/var/run/hexroute-observe/hexrouted.sock' "$PLIST"
 grep -q '/Library/Logs/Hexroute/observe-root' "$PLIST"
 grep -q '<string>--observe</string>' "$PLIST"
+grep -q '<string>--heartbeat</string>' "$PLIST"
+grep -q 'control-loop.heartbeat.json' "$PLIST"
 
 if grep -Eqi 'com\.twilight|/twilight/|pritunl-otp-watchdog|adguard' "$PLIST" "$INSTALLER"; then
   echo "observe-only launchd package overlaps a protected runtime namespace" >&2

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
+	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/heartbeat"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
@@ -18,6 +20,10 @@ import (
 
 type Cycler interface {
 	Observe(context.Context) Summary
+}
+
+type HeartbeatPublisher interface {
+	Publish(control.Tick) error
 }
 
 func Run(args []string, stdout, stderr io.Writer) int {
@@ -37,6 +43,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	observeMode := flags.Bool("observe", false, "run the observe-only control loop")
 	once := flags.Bool("once", false, "run one observe-only cycle")
 	configPath := flags.String("config", "", "observe-only configuration")
+	heartbeatPath := flags.String("heartbeat", "", "control-loop heartbeat")
 
 	if err := flags.Parse(args); err != nil {
 		return rejected(errorLog, logging.ReasonInvalidFlags)
@@ -68,7 +75,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if !*observeMode {
-		if *once || *configPath != "" {
+		if *once || *configPath != "" || *heartbeatPath != "" {
 			return rejected(errorLog, logging.ReasonInvalidFlags)
 		}
 		if err := infoLog.Emit(
@@ -81,11 +88,15 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
-	if *configPath == "" {
+	if *configPath == "" || *heartbeatPath == "" {
 		return rejected(errorLog, logging.ReasonInvalidConfiguration)
 	}
 
 	config, err := LoadConfig(*configPath)
+	if err != nil {
+		return rejected(errorLog, logging.ReasonInvalidConfiguration)
+	}
+	publisher, err := heartbeat.OpenPublisher(*heartbeatPath, os.Getpid())
 	if err != nil {
 		return rejected(errorLog, logging.ReasonInvalidConfiguration)
 	}
@@ -108,7 +119,15 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := observeLoop(ctx, config.Interval, *once, cycle, infoLog); err != nil {
+	if err := observeLoop(
+		ctx,
+		config.Interval,
+		*once,
+		publisher.BaseTick(),
+		cycle,
+		publisher,
+		infoLog,
+	); err != nil {
 		return 1
 	}
 	return 0
@@ -118,18 +137,30 @@ func observeLoop(
 	ctx context.Context,
 	interval time.Duration,
 	once bool,
+	baseTick control.Tick,
 	cycler Cycler,
+	publisher HeartbeatPublisher,
 	logger *logging.Logger,
 ) error {
-	if ctx == nil || interval <= 0 || cycler == nil || logger == nil {
+	if ctx == nil ||
+		interval <= 0 ||
+		baseTick < 0 ||
+		cycler == nil ||
+		publisher == nil ||
+		logger == nil {
 		return ErrInvalidConfig
 	}
 	if err := logger.Emit(logging.LevelInfo, logging.EventDaemonStarted, logging.ResultOK, ""); err != nil {
 		return err
 	}
+	started := time.Now()
 	for {
 		summary := cycler.Observe(ctx)
 		if err := emitSummary(logger, summary); err != nil {
+			return err
+		}
+		at := baseTick + control.Tick(time.Since(started)/time.Second)
+		if err := publisher.Publish(at); err != nil {
 			return err
 		}
 		if once {

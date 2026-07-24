@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 )
@@ -20,6 +21,15 @@ type fixedCycler struct {
 
 func (cycler fixedCycler) Observe(context.Context) Summary {
 	return cycler.summary
+}
+
+type fixedHeartbeat struct {
+	ticks []control.Tick
+}
+
+func (heartbeat *fixedHeartbeat) Publish(at control.Tick) error {
+	heartbeat.ticks = append(heartbeat.ticks, at)
+	return nil
 }
 
 func TestRunCheckValidatesConfigWithoutObservingLiveNetwork(t *testing.T) {
@@ -70,8 +80,17 @@ func TestObserveLoopEmitsOnlyRedactedProposals(t *testing.T) {
 			}},
 		},
 	}}
+	heartbeat := &fixedHeartbeat{}
 
-	if err := observeLoop(context.Background(), time.Minute, true, cycler, logger); err != nil {
+	if err := observeLoop(
+		context.Background(),
+		time.Minute,
+		true,
+		7,
+		cycler,
+		heartbeat,
+		logger,
+	); err != nil {
 		t.Fatalf("observeLoop() error: %v", err)
 	}
 	logged := output.String()
@@ -83,5 +102,8 @@ func TestObserveLoopEmitsOnlyRedactedProposals(t *testing.T) {
 	if !strings.Contains(logged, `"event":"codex_fallback_route_proposed"`) ||
 		!strings.Contains(logged, `"result":"proposed"`) {
 		t.Fatalf("observeLoop() output = %q", logged)
+	}
+	if len(heartbeat.ticks) != 1 || heartbeat.ticks[0] < 7 {
+		t.Fatalf("heartbeat ticks = %v", heartbeat.ticks)
 	}
 }

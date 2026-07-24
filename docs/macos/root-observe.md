@@ -5,6 +5,11 @@ read macOS route, interface, power and process state and can perform bounded
 TLS readiness checks. It cannot apply a route, restart a process, load a
 configuration or alter another launchd job.
 
+After each completed control-loop cycle it atomically advances
+`state/control-loop.heartbeat.json`. The sequence and monotonic tick contain no
+endpoint or credential values. A future sentinel measures how long that
+sequence remains unchanged using its own monotonic clock.
+
 GitLab HTTPS remains a scoped TUN route. GitLab SSH physical-path policy is a
 separate `BindInterface` observation and is never represented as a competing
 host route.
