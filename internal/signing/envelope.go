@@ -37,6 +37,7 @@ type KeyStatus string
 
 const (
 	KeyActive  KeyStatus = "active"
+	KeyRetired KeyStatus = "retired"
 	KeyRevoked KeyStatus = "revoked"
 )
 
@@ -142,9 +143,10 @@ func (verifier *Verifier) Verify(
 	if registered.Status == KeyRevoked {
 		return ErrRevokedKey
 	}
-	signature, err := base64.RawURLEncoding.DecodeString(signed.Signature)
-	if err != nil || len(signature) != ed25519.SignatureSize ||
-		!ed25519.Verify(registered.PublicKey, canonical, signature) {
+	if registered.Status == KeyRetired {
+		return ErrRevokedKey
+	}
+	if err := verifySignature(signed, canonical, registered); err != nil {
 		return ErrInvalidSignature
 	}
 	if _, replayed := verifier.seen[signed.Envelope.RequestID]; replayed {
@@ -152,6 +154,34 @@ func (verifier *Verifier) Verify(
 	}
 	verifier.seen[signed.Envelope.RequestID] = timestamp
 	return nil
+}
+
+func VerifyAuthenticity(
+	signed SignedEnvelope,
+	body []byte,
+	now time.Time,
+	tolerance time.Duration,
+	registered RegisteredKey,
+) error {
+	if tolerance <= 0 {
+		return ErrTimestamp
+	}
+	canonical, timestamp, err := validateSignedEnvelope(signed, body)
+	if err != nil {
+		return err
+	}
+	if timestamp.Before(now.Add(-tolerance)) || timestamp.After(now.Add(tolerance)) {
+		return ErrTimestamp
+	}
+	if err := validateRegisteredKey(registered); err != nil ||
+		registered.KeyID != signed.Envelope.KeyID ||
+		registered.NodeID != signed.Envelope.NodeID {
+		return ErrUnknownKey
+	}
+	if registered.Status != KeyActive {
+		return ErrRevokedKey
+	}
+	return verifySignature(signed, canonical, registered)
 }
 
 func (verifier *Verifier) Revoke(keyID metadata.UUID) error {
@@ -210,8 +240,21 @@ func validateRegisteredKey(key RegisteredKey) error {
 		}
 	}
 	if len(key.PublicKey) != ed25519.PublicKeySize ||
-		(key.Status != KeyActive && key.Status != KeyRevoked) {
+		(key.Status != KeyActive && key.Status != KeyRetired && key.Status != KeyRevoked) {
 		return ErrInvalidKeyFile
+	}
+	return nil
+}
+
+func verifySignature(
+	signed SignedEnvelope,
+	canonical []byte,
+	registered RegisteredKey,
+) error {
+	signature, err := base64.RawURLEncoding.DecodeString(signed.Signature)
+	if err != nil || len(signature) != ed25519.SignatureSize ||
+		!ed25519.Verify(registered.PublicKey, canonical, signature) {
+		return ErrInvalidSignature
 	}
 	return nil
 }

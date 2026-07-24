@@ -13,6 +13,7 @@ trap cleanup EXIT
 docker run --detach --rm \
   --name "$container" \
   --env POSTGRES_HOST_AUTH_METHOD=trust \
+  --publish 127.0.0.1::5432 \
   postgres:17-alpine >/dev/null
 
 docker exec "$container" mkdir -p /migrations
@@ -173,6 +174,28 @@ expect_denied hexroute_maintenance \
   'ALTER TABLE incidents ADD COLUMN forbidden_maintenance_column TEXT'
 expect_denied hexroute_maintenance \
   'GRANT hexroute_dashboard TO hexroute_maintenance'
+
+docker exec "$container" psql \
+  --username postgres \
+  --dbname postgres \
+  --set ON_ERROR_STOP=1 \
+  --command "CREATE ROLE hexroute_test_ingest LOGIN;
+             GRANT hexroute_ingest TO hexroute_test_ingest;" >/dev/null
+
+published_address="$(docker port "$container" 5432/tcp | tail -n 1)"
+postgres_port="${published_address##*:}"
+HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_INGEST_DSN="postgres://hexroute_test_ingest@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+GOCACHE=/tmp/hexroute-postgres-go-cache \
+  go test ./internal/cloudingest \
+    -run TestPostgresStorePersistsDeduplicatesAndTracksSequenceGaps \
+    -count=1
+
+docker exec "$container" psql \
+  --username postgres \
+  --dbname postgres \
+  --set ON_ERROR_STOP=1 \
+  --command "DROP ROLE hexroute_test_ingest;" >/dev/null
 
 while IFS= read -r migration; do
   docker exec -i "$container" psql \

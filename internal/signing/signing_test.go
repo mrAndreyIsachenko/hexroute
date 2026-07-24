@@ -150,6 +150,38 @@ func TestVerifierRejectsInvalidSignatureAndStaleTimestamp(t *testing.T) {
 	}
 }
 
+func TestStatelessAuthenticityVerificationDoesNotConsumeRequestID(t *testing.T) {
+	key := testKey(t)
+	now := time.Date(2026, time.July, 23, 19, 0, 0, 0, time.UTC)
+	body := []byte("body")
+	signed, err := Sign(key, signingRequestID, now, body)
+	if err != nil {
+		t.Fatalf("Sign() error = %v", err)
+	}
+	registered := RegisteredKey{
+		NodeID:    key.NodeID,
+		KeyID:     key.KeyID,
+		PublicKey: key.PublicKey(),
+		Status:    KeyActive,
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := VerifyAuthenticity(signed, body, now, time.Minute, registered); err != nil {
+			t.Fatalf("VerifyAuthenticity(attempt %d) error = %v", attempt+1, err)
+		}
+	}
+
+	registered.Status = KeyRetired
+	if err := VerifyAuthenticity(
+		signed,
+		body,
+		now,
+		time.Minute,
+		registered,
+	); !errors.Is(err, ErrRevokedKey) {
+		t.Fatalf("VerifyAuthenticity(retired) error = %v, want %v", err, ErrRevokedKey)
+	}
+}
+
 func testKey(t *testing.T) Key {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "node.json")
