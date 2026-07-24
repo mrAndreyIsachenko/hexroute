@@ -111,6 +111,13 @@ func NewPlanner(policy Policy, snapshot control.Snapshot) (*Planner, error) {
 	}, nil
 }
 
+func (planner *Planner) Snapshot() control.Snapshot {
+	if planner == nil || planner.machine == nil {
+		return control.Snapshot{}
+	}
+	return planner.machine.Snapshot()
+}
+
 func (planner *Planner) Plan(observation Observation) (Plan, error) {
 	if planner == nil ||
 		planner.machine == nil ||
