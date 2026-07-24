@@ -5,7 +5,8 @@ ordered, append-only expansion migrations:
 
 1. node identity, signing keys and idempotent event ingestion;
 2. current operational state, sleep intervals, incidents and deployments;
-3. passkey public credentials, alert delivery state and SLO aggregates.
+3. passkey public credentials, alert delivery state and SLO aggregates;
+4. ownership and least-privilege group-role grants.
 
 The schema stores public verification keys and passkey public credentials. It
 does not model VPN credentials, private signing keys, OTP material, packet
@@ -48,6 +49,16 @@ share the repository directory with containers.
   clear a pending Telegram delivery.
 - SLO aggregates link back to incidents that explain failures and exclusions.
 
-Database grants are deliberately not part of these schema migrations. The next
-migration stage creates and tests separate migrator, ingest, dashboard and
-maintenance privileges.
+The role migration creates fixed `NOLOGIN` group roles without credentials:
+
+- `hexroute_migrator` owns the schema and is the only role with DDL authority;
+- `hexroute_ingest` can authenticate nodes and write bounded ingest/current
+  state, but cannot read passkeys or write incidents;
+- `hexroute_dashboard` has `SELECT` only on dashboard and passkey public data,
+  with no access to raw event payloads;
+- `hexroute_maintenance` can run retention, correlation, delivery and rollups,
+  but cannot read passkeys or mutate the schema.
+
+Private infrastructure creates login identities, grants membership in exactly
+one applicable group role and supplies credentials at runtime. No login secret
+or provider-specific identity appears in the public migration.

@@ -56,6 +56,124 @@ for table in "${required_tables[@]}"; do
   }
 done
 
+restricted_roles=(
+  hexroute_migrator hexroute_ingest hexroute_dashboard hexroute_maintenance
+)
+restricted_count="$(docker exec "$container" psql --username postgres --dbname postgres \
+  --tuples-only --no-align --command \
+  "SELECT count(*) FROM pg_roles
+   WHERE rolname IN ('hexroute_migrator', 'hexroute_ingest', 'hexroute_dashboard', 'hexroute_maintenance')
+     AND NOT rolcanlogin
+     AND NOT rolsuper
+     AND NOT rolcreatedb
+     AND NOT rolcreaterole
+     AND NOT rolreplication
+     AND NOT rolbypassrls;")"
+[[ "$restricted_count" == "4" ]] || {
+  printf 'PostgreSQL role hardening mismatch: %s\n' "$restricted_count" >&2
+  exit 1
+}
+
+public_create="$(docker exec "$container" psql --username postgres --dbname postgres \
+  --tuples-only --no-align --command \
+  "SELECT has_schema_privilege('hexroute_dashboard', 'public', 'CREATE');")"
+[[ "$public_create" == "f" ]] || {
+  printf 'dashboard unexpectedly has public schema CREATE\n' >&2
+  exit 1
+}
+
+owned_count="$(docker exec "$container" psql --username postgres --dbname postgres \
+  --tuples-only --no-align --command \
+  "SELECT count(*) FROM pg_class
+   WHERE relnamespace = 'public'::regnamespace
+     AND relkind IN ('r', 'p')
+     AND pg_get_userbyid(relowner) = 'hexroute_migrator';")"
+[[ "$owned_count" == "${#required_tables[@]}" ]] || {
+  printf 'migrator owns %s tables, expected %s\n' \
+    "$owned_count" "${#required_tables[@]}" >&2
+  exit 1
+}
+
+run_as() {
+  local role="$1"
+  local statement="$2"
+  docker exec "$container" psql \
+    --username postgres \
+    --dbname postgres \
+    --set ON_ERROR_STOP=1 \
+    --command "BEGIN; SET LOCAL ROLE $role; $statement; ROLLBACK;" >/dev/null
+}
+
+expect_allowed() {
+  local role="$1"
+  local statement="$2"
+  if ! run_as "$role" "$statement"; then
+    printf 'expected PostgreSQL operation to be allowed for %s\n' "$role" >&2
+    exit 1
+  fi
+}
+
+expect_denied() {
+  local role="$1"
+  local statement="$2"
+  if run_as "$role" "$statement" 2>/dev/null; then
+    printf 'expected PostgreSQL operation to be denied for %s\n' "$role" >&2
+    exit 1
+  fi
+}
+
+expect_allowed hexroute_migrator \
+  'CREATE TABLE role_ddl_probe (probe_id BIGINT PRIMARY KEY)'
+expect_allowed hexroute_ingest \
+  "INSERT INTO security_audit_records (
+     audit_record_id, category, reason_code
+   ) VALUES (
+     '10000000-0000-4000-8000-000000000001', 'schema', 'integration_probe'
+   )"
+expect_allowed hexroute_ingest \
+  'UPDATE nodes SET last_seen_at = CURRENT_TIMESTAMP WHERE FALSE'
+expect_allowed hexroute_dashboard \
+  'SELECT incident_id FROM incidents LIMIT 0'
+expect_allowed hexroute_dashboard \
+  'SELECT credential_id, cose_public_key FROM passkey_credentials LIMIT 0'
+expect_allowed hexroute_maintenance \
+  "INSERT INTO worker_heartbeats (
+     worker_name, instance_id, application_version, started_at, heartbeat_at
+   ) VALUES (
+     'integration-probe',
+     '20000000-0000-4000-8000-000000000002',
+     'test',
+     CURRENT_TIMESTAMP,
+     CURRENT_TIMESTAMP
+   )"
+expect_allowed hexroute_maintenance \
+  'DELETE FROM events WHERE FALSE'
+expect_allowed hexroute_maintenance \
+  "UPDATE latest_component_states
+   SET reason_code = 'worker_probe'
+   WHERE FALSE"
+
+expect_denied hexroute_ingest \
+  'SELECT principal_id FROM passkey_credentials LIMIT 0'
+expect_denied hexroute_ingest \
+  "UPDATE nodes SET lifecycle_status = 'revoked' WHERE FALSE"
+expect_denied hexroute_ingest \
+  'ALTER TABLE events ADD COLUMN forbidden_ingest_column TEXT'
+expect_denied hexroute_dashboard \
+  'SELECT payload FROM events LIMIT 0'
+expect_denied hexroute_dashboard \
+  "INSERT INTO security_audit_records (
+     audit_record_id, category, reason_code
+   ) VALUES (
+     '30000000-0000-4000-8000-000000000003', 'schema', 'forbidden'
+   )"
+expect_denied hexroute_maintenance \
+  'SELECT credential_id FROM passkey_credentials LIMIT 0'
+expect_denied hexroute_maintenance \
+  'ALTER TABLE incidents ADD COLUMN forbidden_maintenance_column TEXT'
+expect_denied hexroute_maintenance \
+  'GRANT hexroute_dashboard TO hexroute_maintenance'
+
 while IFS= read -r migration; do
   docker exec -i "$container" psql \
     --username postgres \

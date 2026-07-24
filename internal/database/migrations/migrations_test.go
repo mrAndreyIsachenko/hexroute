@@ -16,6 +16,7 @@ func TestPostgreSQLMigrationManifest(t *testing.T) {
 		"identity_and_ingest",
 		"operations",
 		"access_delivery_and_slo",
+		"access_roles",
 	}
 	if len(migrations) != len(wantNames) {
 		t.Fatalf("migration count = %d, want %d", len(migrations), len(wantNames))
@@ -82,6 +83,10 @@ func TestPostgreSQLMigrationsDefineRequiredCloudData(t *testing.T) {
 		"credential_id bytea",
 		"cose_public_key bytea",
 		"check (granularity in ('hour', 'day'))",
+		"create role %i nologin nosuperuser",
+		"grant select on nodes, node_public_keys to hexroute_ingest",
+		"to hexroute_dashboard",
+		"to hexroute_maintenance",
 	}
 	for _, fragment := range requiredFragments {
 		if !strings.Contains(schema, fragment) {
@@ -103,13 +108,14 @@ func TestPostgreSQLMigrationsDoNotModelCredentialsOrRawLogs(t *testing.T) {
 	}
 }
 
-func TestPostgreSQLDownMigrationsAreExplicitAndReverseOrdered(t *testing.T) {
+func TestPostgreSQLDownMigrationsAreExplicit(t *testing.T) {
 	migrations, err := PostgreSQL()
 	if err != nil {
 		t.Fatalf("PostgreSQL() error = %v", err)
 	}
 	for _, migration := range migrations {
-		if !strings.Contains(strings.ToLower(migration.Down), "drop table") {
+		down := strings.ToLower(migration.Down)
+		if !strings.Contains(down, "drop table") && !strings.Contains(down, "drop role") {
 			t.Fatalf("migration %06d has no explicit test rollback", migration.Version)
 		}
 	}
