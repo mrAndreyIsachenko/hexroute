@@ -26,6 +26,8 @@ status, redacted diagnostics and generation-guarded safe-mode resume without
 exposing arbitrary commands; see `docs/macos/operator.md`.
 Actionable user incidents use fixed, redacted macOS notification templates;
 see `docs/macos/notifications.md`.
+The cloud API and worker share a pinned, non-root `scratch` image contract with
+a read-only root filesystem; see `docs/cloud/containers.md`.
 
 ## License
 

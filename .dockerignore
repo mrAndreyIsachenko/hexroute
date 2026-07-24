@@ -1,0 +1,9 @@
+**
+!Dockerfile
+!go.mod
+!go.sum
+!cmd/
+!cmd/hexroute-ingest/
+!cmd/hexroute-ingest/**
+!internal/
+!internal/**

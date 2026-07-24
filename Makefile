@@ -1,6 +1,8 @@
 .DEFAULT_GOAL := check
 
-.PHONY: build build-ctl build-observe-root build-observe-user check fmt postgres-test race secret-test shell-test test vet
+CONTAINER_IMAGE ?= hexroute-ingest:contract
+
+.PHONY: build build-ctl build-observe-root build-observe-user check container-build container-test fmt postgres-test race secret-test shell-test test vet
 
 build:
 	go build ./cmd/...
@@ -16,6 +18,12 @@ build-observe-user:
 build-ctl:
 	mkdir -p bin
 	go build -o bin/hexroutectl ./cmd/hexroutectl
+
+container-build:
+	docker build -t "$(CONTAINER_IMAGE)" .
+
+container-test:
+	tests/container_runtime_test.sh "$(CONTAINER_IMAGE)"
 
 test:
 	go test ./...
@@ -36,6 +44,7 @@ shell-test: build-observe-root build-observe-user
 	bash -n scripts/baseline/*.sh scripts/macos/*.sh tests/*.sh
 	tests/baseline_archives_test.sh
 	tests/emergency_restore_test.sh
+	tests/container_contract_test.sh
 	tests/observe_root_launchd_test.sh
 	tests/observe_user_launchd_test.sh
 

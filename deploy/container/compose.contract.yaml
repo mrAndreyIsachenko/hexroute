@@ -1,0 +1,30 @@
+name: hexroute-container-contract
+
+x-hexroute-runtime: &hexroute-runtime
+  image: ${HEXROUTE_CONTAINER_IMAGE:-hexroute-ingest:contract}
+  read_only: true
+  user: "65532:65532"
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  network_mode: none
+  pids_limit: 128
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=16777216,uid=65532,gid=65532,mode=0700
+  restart: "no"
+
+services:
+  api:
+    <<: *hexroute-runtime
+    environment:
+      HEXROUTE_COMPONENT: api
+    command:
+      - --check
+
+  worker:
+    <<: *hexroute-runtime
+    environment:
+      HEXROUTE_COMPONENT: worker
+    command:
+      - --check
