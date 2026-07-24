@@ -26,7 +26,8 @@ require_regular_file() {
 }
 
 set_plist_string() {
-  /usr/bin/plutil -replace "$1" -string "$2" "$PLIST_DEST"
+  local key="${1//./:}"
+  /usr/libexec/PlistBuddy -c "Set :$key $2" "$PLIST_DEST"
 }
 
 install_observer() {

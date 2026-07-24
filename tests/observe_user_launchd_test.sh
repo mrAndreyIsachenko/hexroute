@@ -19,6 +19,43 @@ grep -q -- '<string>--observe</string>' "$PLIST"
 grep -q -- '<string>--state</string>' "$PLIST"
 grep -q '__HEXROUTE_USERD_BINARY__' "$PLIST"
 grep -q 'observe-user' "$INSTALLER"
+grep -q '/usr/libexec/PlistBuddy' "$INSTALLER"
+
+if grep -q 'plutil -replace.*ProgramArguments' "$INSTALLER"; then
+  echo "plist renderer inserts array elements instead of replacing them" >&2
+  exit 1
+fi
+
+rendered="$(mktemp "${TMPDIR:-/tmp}/hexroute-userd-plist.XXXXXX")"
+trap 'rm -f "$rendered"' EXIT
+cp "$PLIST" "$rendered"
+/usr/libexec/PlistBuddy -c \
+  "Set :ProgramArguments:0 /Users/example user/Hexroute/bin/hexroute-userd" \
+  "$rendered"
+/usr/libexec/PlistBuddy -c \
+  "Set :ProgramArguments:3 /Users/example user/Hexroute/config/user-observe.json" \
+  "$rendered"
+/usr/libexec/PlistBuddy -c \
+  "Set :ProgramArguments:5 /Users/example user/Hexroute/state/pritunl-planner.json" \
+  "$rendered"
+for entry in \
+  "WorkingDirectory:/Users/example user/Hexroute/state" \
+  "StandardOutPath:/Users/example user/Hexroute/log/userd.log" \
+  "StandardErrorPath:/Users/example user/Hexroute/log/userd.err.log"; do
+  key="${entry%%:*}"
+  value="${entry#*:}"
+  /usr/libexec/PlistBuddy -c "Set :$key $value" "$rendered"
+done
+if grep -q '__HEXROUTE_USERD_' "$rendered"; then
+  echo "rendered plist retains a placeholder" >&2
+  exit 1
+fi
+argument_count="$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments' "$rendered" |
+  awk '/^    /{count++} END{print count+0}')"
+if [[ "$argument_count" != "6" ]]; then
+  echo "rendered plist has $argument_count arguments, expected 6" >&2
+  exit 1
+fi
 
 if grep -Eqi 'com\.twilight|/twilight/|pritunl-otp-watchdog|adguard' "$PLIST" "$INSTALLER"; then
   echo "observe-only user package overlaps a protected runtime namespace" >&2
