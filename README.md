@@ -21,7 +21,9 @@ private `hexroute-infra` repository.
 The repository is pre-cutover. Twilight remains the production owner. The
 root runtime currently supports an isolated observe-only mode that can inspect
 macOS state and emit route proposals without mutation authority. See
-`docs/macos/root-observe.md`.
+`docs/macos/root-observe.md`. A local typed operator surface provides bounded
+status, redacted diagnostics and generation-guarded safe-mode resume without
+exposing arbitrary commands; see `docs/macos/operator.md`.
 
 ## License
 

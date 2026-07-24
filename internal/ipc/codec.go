@@ -74,8 +74,8 @@ func ReadResponse(reader io.Reader) (Response, error) {
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return Response{}, ErrMalformedFrame
 	}
-	if response.Version != ProtocolVersion || !validRequestID(response.RequestID) {
-		return Response{}, ErrMalformedFrame
+	if err := response.Validate(); err != nil {
+		return Response{}, err
 	}
 	return response, nil
 }

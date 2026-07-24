@@ -25,6 +25,10 @@ bin/hexrouted --check --config private/root-observe.json
 Replace only the synthetic values in the untracked private configuration.
 Never add the live file to Git.
 
+Set `operator_uid` to the numeric UID of the login user allowed to query the
+root typed socket. The root-owned socket directory remains non-writable by that
+user.
+
 ## Install
 
 ```sh
@@ -41,6 +45,9 @@ state, socket namespace and logs are under candidate-only Hexroute paths.
 sudo scripts/macos/observe-root-launchd.sh status
 sudo scripts/macos/observe-root-launchd.sh logs
 ```
+
+Build `hexroutectl` and use the commands in
+[`operator.md`](operator.md) for typed status and redacted diagnostics.
 
 ## Rollback
 

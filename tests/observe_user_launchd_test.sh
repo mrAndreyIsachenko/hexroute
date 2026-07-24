@@ -17,6 +17,7 @@ fi
 grep -q '<string>com.hexroute.observe.userd</string>' "$PLIST"
 grep -q -- '<string>--observe</string>' "$PLIST"
 grep -q -- '<string>--state</string>' "$PLIST"
+grep -q -- '<string>--socket</string>' "$PLIST"
 grep -q '__HEXROUTE_USERD_BINARY__' "$PLIST"
 grep -q 'observe-user' "$INSTALLER"
 grep -q '/usr/libexec/PlistBuddy' "$INSTALLER"
@@ -38,6 +39,9 @@ cp "$PLIST" "$rendered"
 /usr/libexec/PlistBuddy -c \
   "Set :ProgramArguments:5 /Users/example user/Hexroute/state/pritunl-planner.json" \
   "$rendered"
+/usr/libexec/PlistBuddy -c \
+  "Set :ProgramArguments:7 /Users/example user/Hexroute/state/userd.sock" \
+  "$rendered"
 for entry in \
   "WorkingDirectory:/Users/example user/Hexroute/state" \
   "StandardOutPath:/Users/example user/Hexroute/log/userd.log" \
@@ -52,8 +56,8 @@ if grep -q '__HEXROUTE_USERD_' "$rendered"; then
 fi
 argument_count="$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments' "$rendered" |
   awk '/^    /{count++} END{print count+0}')"
-if [[ "$argument_count" != "6" ]]; then
-  echo "rendered plist has $argument_count arguments, expected 6" >&2
+if [[ "$argument_count" != "8" ]]; then
+  echo "rendered plist has $argument_count arguments, expected 8" >&2
   exit 1
 fi
 

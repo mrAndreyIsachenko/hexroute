@@ -12,6 +12,8 @@
 		<string>/Library/Application Support/Hexroute/observe-root/config/root-observe.json</string>
 		<string>--heartbeat</string>
 		<string>/Library/Application Support/Hexroute/observe-root/state/control-loop.heartbeat.json</string>
+		<string>--socket</string>
+		<string>/var/run/hexroute-observe/hexrouted.sock</string>
 	</array>
 	<key>WorkingDirectory</key>
 	<string>/Library/Application Support/Hexroute/observe-root/state</string>

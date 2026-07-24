@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
+	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlplan"
 )
 
@@ -105,14 +107,29 @@ func TestObserveLoopPersistsCandidateStateAndEmitsRedactedProposal(t *testing.T)
 			Snapshot:    snapshot,
 		},
 	}}
+	controller, err := operator.NewController(
+		ipc.RoleUser,
+		ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentPritunl},
+		control.NewSnapshot(control.StateHealthy),
+		control.ReasonNone,
+		nil,
+		func() control.Tick { return 0 },
+	)
+	if err != nil {
+		t.Fatalf("operator.NewController() error: %v", err)
+	}
 
 	if err := observeLoop(
 		context.Background(),
 		time.Minute,
 		true,
-		0,
+		func() control.Tick { return 0 },
 		cycler,
 		store,
+		controller,
+		nil,
+		nil,
 		logger,
 	); err != nil {
 		t.Fatalf("observeLoop() error: %v", err)
@@ -145,5 +162,22 @@ func TestOpenSnapshotStoreRejectsSymlink(t *testing.T) {
 
 	if _, _, err := openSnapshotStore(path); err == nil {
 		t.Fatal("openSnapshotStore() accepted a symlink")
+	}
+}
+
+func TestUserSocketMustRemainBesidePrivateState(t *testing.T) {
+	directory := t.TempDir()
+	statePath := filepath.Join(directory, stateFileName)
+	socketPath := filepath.Join(directory, socketFileName)
+	if err := validateUserSocketPath(socketPath, statePath, os.Geteuid()); err != nil {
+		t.Fatalf("validateUserSocketPath() error: %v", err)
+	}
+	for _, path := range []string{
+		filepath.Join(t.TempDir(), socketFileName),
+		filepath.Join(directory, "arbitrary.sock"),
+	} {
+		if err := validateUserSocketPath(path, statePath, os.Geteuid()); err == nil {
+			t.Fatalf("validateUserSocketPath(%q) accepted", path)
+		}
 	}
 }

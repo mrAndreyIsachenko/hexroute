@@ -37,6 +37,7 @@ type Config struct {
 	Schema                string           `json:"schema"`
 	Mode                  string           `json:"mode"`
 	ObservationIntervalS  uint32           `json:"observation_interval_seconds"`
+	OperatorUID           int              `json:"operator_uid,omitempty"`
 	PhysicalInterface     string           `json:"physical_interface"`
 	ManagedTUNAddress     string           `json:"managed_tun_address"`
 	UpstreamProbeAddress  string           `json:"upstream_probe_address,omitempty"`
@@ -65,6 +66,7 @@ type EndpointConfig struct {
 
 type RuntimeConfig struct {
 	Interval              time.Duration
+	OperatorUID           int
 	PhysicalInterface     string
 	ManagedTUNAddress     netip.Addr
 	UpstreamProbeAddress  netip.Addr
@@ -122,6 +124,7 @@ func (config Config) runtime() (RuntimeConfig, error) {
 		len(config.Routes) > maxTargets ||
 		len(config.Endpoints) == 0 ||
 		len(config.Endpoints) > maxEndpoints ||
+		config.OperatorUID < 0 ||
 		config.ExpectedSingBoxParent < 0 {
 		return RuntimeConfig{}, ErrInvalidConfig
 	}
@@ -141,6 +144,7 @@ func (config Config) runtime() (RuntimeConfig, error) {
 
 	runtime := RuntimeConfig{
 		Interval:              interval,
+		OperatorUID:           config.OperatorUID,
 		PhysicalInterface:     config.PhysicalInterface,
 		ManagedTUNAddress:     tunAddress,
 		UpstreamProbeAddress:  upstreamAddress,

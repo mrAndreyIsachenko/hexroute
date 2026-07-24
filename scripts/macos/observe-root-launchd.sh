@@ -34,12 +34,16 @@ install_observer() {
   require_regular_file "$PLIST_SOURCE"
 
   /usr/bin/install -d -o root -g wheel -m 0700 \
-    "$ROOT_DIR" "$BIN_DIR" "$CONFIG_DIR" "$STATE_DIR" "$SOCKET_DIR" "$LOG_DIR"
+    "$ROOT_DIR" "$BIN_DIR" "$CONFIG_DIR" "$STATE_DIR" "$LOG_DIR"
+  /usr/bin/install -d -o root -g wheel -m 0711 "$SOCKET_DIR"
   /usr/bin/install -o root -g wheel -m 0755 "$binary" "$BIN_DIR/hexrouted"
   /usr/bin/install -o root -g wheel -m 0600 "$config" "$CONFIG_DIR/root-observe.json"
   /usr/bin/install -o root -g wheel -m 0644 "$PLIST_SOURCE" "$PLIST_DEST"
 
-  "$BIN_DIR/hexrouted" --check --config "$CONFIG_DIR/root-observe.json"
+  "$BIN_DIR/hexrouted" \
+    --check \
+    --config "$CONFIG_DIR/root-observe.json" \
+    --socket "$SOCKET_DIR/hexrouted.sock"
   /bin/launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true
   /bin/launchctl bootstrap system "$PLIST_DEST"
   /bin/launchctl kickstart -k "system/$LABEL"

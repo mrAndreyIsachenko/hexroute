@@ -141,6 +141,65 @@ func TestPlannerRejectsNonMonotonicObservationOnNoEventBranch(t *testing.T) {
 	}
 }
 
+func TestExplicitResumePersistsAtomically(t *testing.T) {
+	policy := testPolicy()
+	snapshot := control.NewSnapshot(control.StateSafeMode)
+	snapshot.Generation = 7
+	snapshot.Attempts = policy.Recovery.ActionBudget
+	snapshot.LastTick = 100
+	snapshot.SafeUntil = 700
+	planner, err := NewPlanner(policy, snapshot)
+	if err != nil {
+		t.Fatalf("NewPlanner() error: %v", err)
+	}
+
+	persisted := control.Snapshot{}
+	after, err := planner.Resume(
+		7,
+		101,
+		func(value control.Snapshot) error {
+			persisted = value
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("Resume() error: %v", err)
+	}
+	if after.State != control.StateDegraded ||
+		after.Generation != 8 ||
+		after.Attempts != 0 ||
+		after.SafeUntil != 0 ||
+		persisted != after ||
+		planner.Snapshot() != after {
+		t.Fatalf("after=%+v persisted=%+v current=%+v", after, persisted, planner.Snapshot())
+	}
+}
+
+func TestExplicitResumeRollsBackWhenPersistenceFails(t *testing.T) {
+	policy := testPolicy()
+	snapshot := control.NewSnapshot(control.StateSafeMode)
+	snapshot.Generation = 4
+	snapshot.Attempts = policy.Recovery.ActionBudget
+	snapshot.LastTick = 50
+	snapshot.SafeUntil = 650
+	planner, err := NewPlanner(policy, snapshot)
+	if err != nil {
+		t.Fatalf("NewPlanner() error: %v", err)
+	}
+	persistErr := errors.New("synthetic persistence failure")
+
+	if _, err := planner.Resume(
+		4,
+		51,
+		func(control.Snapshot) error { return persistErr },
+	); !errors.Is(err, persistErr) {
+		t.Fatalf("Resume() error = %v, want %v", err, persistErr)
+	}
+	if planner.Snapshot() != snapshot {
+		t.Fatalf("failed persistence left mutated snapshot: %+v", planner.Snapshot())
+	}
+}
+
 func TestSleepDarkWakeAndSettleDoNotConsumeRecoveryBudget(t *testing.T) {
 	planner := newPlanner(t, testPolicy())
 	tests := []struct {

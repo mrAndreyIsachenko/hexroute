@@ -12,6 +12,8 @@
 		<string>__HEXROUTE_USERD_CONFIG__</string>
 		<string>--state</string>
 		<string>__HEXROUTE_USERD_STATE__</string>
+		<string>--socket</string>
+		<string>__HEXROUTE_USERD_SOCKET__</string>
 	</array>
 	<key>WorkingDirectory</key>
 	<string>__HEXROUTE_USERD_STATE_DIR__</string>

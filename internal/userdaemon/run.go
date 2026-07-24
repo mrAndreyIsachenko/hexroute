@@ -14,13 +14,18 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
+	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlplan"
 	"github.com/mrAndreyIsachenko/hexroute/internal/userobserve"
 )
 
-const stateFileName = "pritunl-planner.json"
+const (
+	stateFileName  = "pritunl-planner.json"
+	socketFileName = "userd.sock"
+)
 
 type Cycler interface {
 	Observe(context.Context, control.Tick, int64) Summary
@@ -53,6 +58,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	once := flags.Bool("once", false, "run one observe-only cycle")
 	configPath := flags.String("config", "", "observe-only configuration")
 	statePath := flags.String("state", "", "candidate state snapshot")
+	socketPath := flags.String("socket", "", "typed local operator socket")
 
 	if err := flags.Parse(args); err != nil {
 		return rejected(errorLog, logging.ReasonInvalidFlags)
@@ -78,8 +84,19 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if *check {
+		var config RuntimeConfig
 		if *configPath != "" {
-			if _, err := LoadConfig(*configPath); err != nil {
+			config, err = LoadConfig(*configPath)
+			if err != nil {
+				return rejected(errorLog, logging.ReasonInvalidConfiguration)
+			}
+		}
+		if (*socketPath == "") != (*statePath == "") {
+			return rejected(errorLog, logging.ReasonInvalidFlags)
+		}
+		if *socketPath != "" {
+			if *configPath == "" ||
+				validateUserSocketPath(*socketPath, *statePath, config.ExpectedUID) != nil {
 				return rejected(errorLog, logging.ReasonInvalidConfiguration)
 			}
 		}
@@ -94,7 +111,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if !*observeMode {
-		if *once || *configPath != "" || *statePath != "" {
+		if *once || *configPath != "" || *statePath != "" || *socketPath != "" {
 			return rejected(errorLog, logging.ReasonInvalidFlags)
 		}
 		if err := infoLog.Emit(
@@ -140,20 +157,101 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	signalCtx, stopSignals := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stopSignals()
+	ctx, cancel := context.WithCancel(signalCtx)
+	defer cancel()
+
+	started := time.Now()
+	nowTick := func() control.Tick {
+		return snapshot.LastTick + control.Tick(time.Since(started)/time.Second)
+	}
+	controller, err := operator.NewController(
+		ipc.RoleUser,
+		ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentPritunl},
+		snapshot,
+		control.ReasonNone,
+		func(expected uint64, at control.Tick) (control.Snapshot, error) {
+			return planner.Resume(expected, at, store.Save)
+		},
+		nowTick,
+	)
+	if err != nil {
+		return 1
+	}
+	var requests <-chan operator.Envelope
+	var serverDone <-chan error
+	var server *ipc.Server
+	if *socketPath != "" {
+		if err := validateUserSocketPath(*socketPath, *statePath, config.ExpectedUID); err != nil {
+			return rejected(errorLog, logging.ReasonInvalidConfiguration)
+		}
+		broker, err := operator.NewBroker(ctx)
+		if err != nil {
+			return 1
+		}
+		dispatcher, err := operator.NewDispatcher(controller, broker)
+		if err != nil {
+			return 1
+		}
+		reporter, err := operator.NewRejectionLogger(errorLog)
+		if err != nil {
+			return 1
+		}
+		server, err = ipc.Listen(
+			*socketPath,
+			uint32(config.ExpectedUID),
+			uint32(config.ExpectedUID),
+			dispatcher,
+			reporter,
+		)
+		if err != nil {
+			return rejected(errorLog, logging.ReasonInvalidConfiguration)
+		}
+		requests = broker.Requests()
+		done := make(chan error, 1)
+		serverDone = done
+		go func() {
+			defer close(done)
+			done <- server.Serve(ctx)
+		}()
+		defer func() {
+			cancel()
+			_ = server.Close()
+			<-done
+		}()
+	}
 	if err := observeLoop(
 		ctx,
 		config.Interval,
 		*once,
-		snapshot.LastTick,
+		nowTick,
 		cycle,
 		store,
+		controller,
+		requests,
+		serverDone,
 		infoLog,
 	); err != nil {
 		return 1
 	}
 	return 0
+}
+
+func validateUserSocketPath(path string, statePath string, expectedUID int) error {
+	if expectedUID != os.Geteuid() ||
+		!filepath.IsAbs(path) ||
+		filepath.Clean(path) != path ||
+		filepath.Base(path) != socketFileName ||
+		filepath.Dir(path) != filepath.Dir(statePath) {
+		return ErrInvalidConfig
+	}
+	return nil
 }
 
 func openSnapshotStore(path string) (*snapshotStore, control.Snapshot, error) {
@@ -226,16 +324,20 @@ func observeLoop(
 	ctx context.Context,
 	interval time.Duration,
 	once bool,
-	baseTick control.Tick,
+	nowTick func() control.Tick,
 	cycler Cycler,
 	store StateStore,
+	controller *operator.Controller,
+	requests <-chan operator.Envelope,
+	serverDone <-chan error,
 	logger *logging.Logger,
 ) error {
 	if ctx == nil ||
 		interval <= 0 ||
-		baseTick < 0 ||
+		nowTick == nil ||
 		cycler == nil ||
 		store == nil ||
+		controller == nil ||
 		logger == nil {
 		return ErrInvalidConfig
 	}
@@ -247,12 +349,17 @@ func observeLoop(
 	); err != nil {
 		return err
 	}
-	started := time.Now()
 	for {
 		now := time.Now()
-		at := baseTick + control.Tick(now.Sub(started)/time.Second)
+		at := nowTick()
 		summary := cycler.Observe(ctx, at, now.Unix())
 		if err := store.Save(summary.Plan.Snapshot); err != nil {
+			return err
+		}
+		if err := controller.Update(
+			summary.Plan.Snapshot,
+			operatorReason(summary.Plan.Reason),
+		); err != nil {
 			return err
 		}
 		if err := emitSummary(logger, summary); err != nil {
@@ -268,19 +375,56 @@ func observeLoop(
 		}
 
 		timer := time.NewTimer(interval)
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
+	wait:
+		for {
+			select {
+			case <-ctx.Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
+				return logger.Emit(
+					logging.LevelInfo,
+					logging.EventDaemonStopped,
+					logging.ResultOK,
+					"",
+				)
+			case err := <-serverDone:
+				if err != nil {
+					return err
+				}
+				return ErrInvalidConfig
+			case envelope := <-requests:
+				if envelope.Active() {
+					envelope.Respond(controller.Handle(envelope.Request))
+				}
+			case <-timer.C:
+				break wait
 			}
-			return logger.Emit(
-				logging.LevelInfo,
-				logging.EventDaemonStopped,
-				logging.ResultOK,
-				"",
-			)
-		case <-timer.C:
 		}
+	}
+}
+
+func operatorReason(reason pritunlplan.Reason) control.Reason {
+	switch reason {
+	case pritunlplan.ReasonProfileConnected,
+		pritunlplan.ReasonRecoveryVerifying:
+		return control.ReasonProbeSucceeded
+	case pritunlplan.ReasonProfileNotConnected:
+		return control.ReasonProbeFailed
+	case pritunlplan.ReasonReconnectAllowed:
+		return control.ReasonRecoveryAllowed
+	case pritunlplan.ReasonRecoveryBudget:
+		return control.ReasonRecoveryBudget
+	case pritunlplan.ReasonSessionInactive,
+		pritunlplan.ReasonLidClosed,
+		pritunlplan.ReasonDarkWake,
+		pritunlplan.ReasonWakeUnknown,
+		pritunlplan.ReasonWakeSettling:
+		return control.ReasonIntentionalSleep
+	case pritunlplan.ReasonOuterNotReady:
+		return control.ReasonDependenciesNotReady
+	default:
+		return control.ReasonNone
 	}
 }
 

@@ -41,6 +41,12 @@ scripts/macos/observe-user-launchd.sh status
 scripts/macos/observe-user-launchd.sh logs
 ```
 
+The installer also creates the private `state/userd.sock` operator endpoint.
+Build `hexroutectl` and use the commands in
+[`operator.md`](operator.md) to inspect typed state. Explicit resume only
+changes a persisted candidate `SAFE_MODE` snapshot back to `DEGRADED`; in
+observe-only mode it does not connect Pritunl.
+
 `pritunl_reconnect_proposed` means the candidate would have requested a
 reconnect. It does not mean Hexroute performed one. Compare its timestamp with
 the existing watchdog's recovery log while that watchdog remains active.

@@ -62,7 +62,28 @@ const (
 	ReasonDependenciesReady    Reason = "dependencies_ready"
 	ReasonDependenciesNotReady Reason = "dependencies_not_ready"
 	ReasonIntentionalSleep     Reason = "intentional_sleep"
+	ReasonOperatorResume       Reason = "operator_resume"
 )
+
+func (reason Reason) Valid() bool {
+	switch reason {
+	case ReasonNone,
+		ReasonProbeSucceeded,
+		ReasonProbeFailed,
+		ReasonFailureThreshold,
+		ReasonRecoveryAllowed,
+		ReasonRecoveryBudget,
+		ReasonVerificationPassed,
+		ReasonCooldownElapsed,
+		ReasonDependenciesReady,
+		ReasonDependenciesNotReady,
+		ReasonIntentionalSleep,
+		ReasonOperatorResume:
+		return true
+	default:
+		return false
+	}
+}
 
 type Readiness string
 

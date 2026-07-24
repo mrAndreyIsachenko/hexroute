@@ -11,6 +11,7 @@ const validConfig = `{
   "schema": "hexroute.root-observe.v1",
   "mode": "observe-only",
   "observation_interval_seconds": 60,
+  "operator_uid": 501,
   "physical_interface": "en7",
   "managed_tun_address": "198.51.100.1",
   "upstream_probe_address": "203.0.113.53",
@@ -71,6 +72,7 @@ func TestDecodeConfigAcceptsSyntheticObserveOnlyConfig(t *testing.T) {
 		t.Fatalf("DecodeConfig() error: %v", err)
 	}
 	if config.Interval != time.Minute ||
+		config.OperatorUID != 501 ||
 		config.PhysicalInterface != "en7" ||
 		len(config.Targets) != 3 ||
 		len(config.Endpoints) != 3 {
@@ -81,6 +83,7 @@ func TestDecodeConfigAcceptsSyntheticObserveOnlyConfig(t *testing.T) {
 func TestDecodeConfigRejectsMutationModeAndUnknownFields(t *testing.T) {
 	fixtures := []string{
 		strings.Replace(validConfig, `"mode": "observe-only"`, `"mode": "active"`, 1),
+		strings.Replace(validConfig, `"operator_uid": 501`, `"operator_uid": -1`, 1),
 		strings.Replace(validConfig, `"mode": "observe-only"`, `"mode": "observe-only", "command": "route add"`, 1),
 		strings.Replace(validConfig, `"physical_interface": "en7"`, `"physical_interface": "utun8; restart"`, 1),
 	}

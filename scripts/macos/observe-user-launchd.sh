@@ -9,6 +9,7 @@ BIN_DIR="$ROOT_DIR/bin"
 CONFIG_DIR="$ROOT_DIR/config"
 STATE_DIR="$ROOT_DIR/state"
 LOG_DIR="$HOME/Library/Logs/Hexroute/observe-user"
+SOCKET_PATH="$STATE_DIR/userd.sock"
 PLIST_SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/deploy/macos/$LABEL.plist"
 PLIST_DEST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
@@ -51,12 +52,17 @@ install_observer() {
   set_plist_string "ProgramArguments.0" "$BIN_DIR/hexroute-userd"
   set_plist_string "ProgramArguments.3" "$CONFIG_DIR/user-observe.json"
   set_plist_string "ProgramArguments.5" "$STATE_DIR/pritunl-planner.json"
+  set_plist_string "ProgramArguments.7" "$SOCKET_PATH"
   set_plist_string "WorkingDirectory" "$STATE_DIR"
   set_plist_string "StandardOutPath" "$LOG_DIR/hexroute-userd.log"
   set_plist_string "StandardErrorPath" "$LOG_DIR/hexroute-userd.err.log"
   /bin/chmod 0644 "$PLIST_DEST"
 
-  "$BIN_DIR/hexroute-userd" --check --config "$CONFIG_DIR/user-observe.json"
+  "$BIN_DIR/hexroute-userd" \
+    --check \
+    --config "$CONFIG_DIR/user-observe.json" \
+    --state "$STATE_DIR/pritunl-planner.json" \
+    --socket "$SOCKET_PATH"
   /bin/launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
   /bin/launchctl bootstrap "$DOMAIN" "$PLIST_DEST"
   /bin/launchctl kickstart -k "$DOMAIN/$LABEL"

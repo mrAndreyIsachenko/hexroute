@@ -142,6 +142,79 @@ func TestPritunlRescueRequiresExplicitTargetAndRejectsCredentialFields(t *testin
 	}
 }
 
+func TestResponseFrameRoundTripAndUnionValidation(t *testing.T) {
+	response := Response{
+		Version:   ProtocolVersion,
+		RequestID: "status-01",
+		OK:        true,
+		Status: &Status{
+			Role:       RoleRoot,
+			Mode:       ModeObserveOnly,
+			State:      control.StateSafeMode,
+			Generation: 4,
+			SafeMode:   true,
+		},
+	}
+	var frame bytes.Buffer
+	if err := WriteFrame(&frame, response); err != nil {
+		t.Fatalf("WriteFrame() error: %v", err)
+	}
+	decoded, err := ReadResponse(&frame)
+	if err != nil {
+		t.Fatalf("ReadResponse() error: %v", err)
+	}
+	if decoded.Status == nil || *decoded.Status != *response.Status {
+		t.Fatalf("ReadResponse() = %+v, want %+v", decoded, response)
+	}
+
+	diagnostics := Diagnostics{
+		Status: Status{
+			Role:       RoleUser,
+			Mode:       ModeObserveOnly,
+			State:      control.StateDegraded,
+			Generation: 5,
+		},
+		LastReason: control.ReasonProbeFailed,
+	}
+	response.Diagnostics = &diagnostics
+	if err := response.Validate(); !errors.Is(err, ErrMalformedFrame) {
+		t.Fatalf("multiple payloads error = %v, want %v", err, ErrMalformedFrame)
+	}
+
+	response = Response{
+		Version:   ProtocolVersion,
+		RequestID: "error-01",
+		Error:     ErrorStaleGeneration,
+		Status:    response.Status,
+	}
+	if err := response.Validate(); !errors.Is(err, ErrMalformedFrame) {
+		t.Fatalf("error payload error = %v, want %v", err, ErrMalformedFrame)
+	}
+}
+
+func TestReadResponseRejectsUnknownFieldsAndInvalidSafeMode(t *testing.T) {
+	tests := [][]byte{
+		[]byte(
+			`{"version":1,"request_id":"status-1","ok":true,` +
+				`"status":{"role":"root","mode":"observe-only","state":"SAFE_MODE",` +
+				`"generation":1,"safe_mode":false}}`,
+		),
+		[]byte(
+			`{"version":1,"request_id":"status-1","ok":true,` +
+				`"status":{"role":"root","mode":"observe-only","state":"HEALTHY",` +
+				`"generation":1,"safe_mode":false,"pin":"forbidden"}}`,
+		),
+	}
+	for _, payload := range tests {
+		if _, err := ReadResponse(bytes.NewReader(rawFrame(payload))); !errors.Is(
+			err,
+			ErrMalformedFrame,
+		) {
+			t.Fatalf("ReadResponse() error = %v, want %v", err, ErrMalformedFrame)
+		}
+	}
+}
+
 func rawFrame(payload []byte) []byte {
 	frame := make([]byte, 4+len(payload))
 	binary.BigEndian.PutUint32(frame[:4], uint32(len(payload)))

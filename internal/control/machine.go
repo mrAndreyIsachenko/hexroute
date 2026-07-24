@@ -18,6 +18,7 @@ const (
 	EventProbeFailed       Event = "probe_failed"
 	EventBeginRecovery     Event = "begin_recovery"
 	EventCooldownElapsed   Event = "cooldown_elapsed"
+	EventOperatorResume    Event = "operator_resume"
 )
 
 type Policy struct {
@@ -55,11 +56,12 @@ type Machine struct {
 }
 
 var (
-	ErrInvalidPolicy    = errors.New("invalid recovery policy")
-	ErrInvalidSnapshot  = errors.New("invalid state snapshot")
-	ErrStaleGeneration  = errors.New("stale state generation")
-	ErrNonMonotonicTick = errors.New("non-monotonic event tick")
-	ErrInvalidEvent     = errors.New("invalid state event")
+	ErrInvalidPolicy      = errors.New("invalid recovery policy")
+	ErrInvalidSnapshot    = errors.New("invalid state snapshot")
+	ErrStaleGeneration    = errors.New("stale state generation")
+	ErrNonMonotonicTick   = errors.New("non-monotonic event tick")
+	ErrInvalidEvent       = errors.New("invalid state event")
+	ErrResumePrecondition = errors.New("state is not in safe mode")
 )
 
 func NewSnapshot(state State) Snapshot {
@@ -195,6 +197,17 @@ func (machine *Machine) Step(expectedGeneration uint64, at Tick, event Event) (D
 			machine.snapshot.SafeUntil = 0
 			decision.Reason = ReasonCooldownElapsed
 		}
+
+	case EventOperatorResume:
+		if machine.snapshot.State != StateSafeMode {
+			return Decision{}, ErrResumePrecondition
+		}
+		machine.snapshot.State = StateDegraded
+		machine.snapshot.Attempts = 0
+		machine.snapshot.RecoveringSince = 0
+		machine.snapshot.NextActionAt = at
+		machine.snapshot.SafeUntil = 0
+		decision.Reason = ReasonOperatorResume
 
 	default:
 		return Decision{}, fmt.Errorf("%w: %q", ErrInvalidEvent, event)

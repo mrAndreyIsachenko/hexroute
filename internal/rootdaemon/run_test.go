@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
+	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 )
 
@@ -81,14 +83,29 @@ func TestObserveLoopEmitsOnlyRedactedProposals(t *testing.T) {
 		},
 	}}
 	heartbeat := &fixedHeartbeat{}
+	controller, err := operator.NewController(
+		ipc.RoleRoot,
+		ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentTunnel},
+		control.NewSnapshot(control.StateHealthy),
+		control.ReasonNone,
+		nil,
+		func() control.Tick { return 7 },
+	)
+	if err != nil {
+		t.Fatalf("operator.NewController() error: %v", err)
+	}
 
 	if err := observeLoop(
 		context.Background(),
 		time.Minute,
 		true,
-		7,
+		func() control.Tick { return 7 },
 		cycler,
 		heartbeat,
+		controller,
+		nil,
+		nil,
 		logger,
 	); err != nil {
 		t.Fatalf("observeLoop() error: %v", err)
@@ -105,5 +122,19 @@ func TestObserveLoopEmitsOnlyRedactedProposals(t *testing.T) {
 	}
 	if len(heartbeat.ticks) != 1 || heartbeat.ticks[0] < 7 {
 		t.Fatalf("heartbeat ticks = %v", heartbeat.ticks)
+	}
+}
+
+func TestRootOperatorSnapshotContainsOnlyBoundedState(t *testing.T) {
+	current := control.NewSnapshot(control.StateHealthy)
+	next := nextRootOperatorSnapshot(current, Summary{
+		State:    CycleDegraded,
+		Failures: 2,
+	}, 15)
+	if next.State != control.StateDegraded ||
+		next.ConsecutiveFailures != 2 ||
+		next.LastTick != 15 ||
+		next.Generation != 1 {
+		t.Fatalf("nextRootOperatorSnapshot() = %+v", next)
 	}
 }

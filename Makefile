@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := check
 
-.PHONY: build build-observe-root build-observe-user check fmt race secret-test shell-test test vet
+.PHONY: build build-ctl build-observe-root build-observe-user check fmt race secret-test shell-test test vet
 
 build:
 	go build ./cmd/...
@@ -12,6 +12,10 @@ build-observe-root:
 build-observe-user:
 	mkdir -p bin
 	go build -o bin/hexroute-userd ./cmd/hexroute-userd
+
+build-ctl:
+	mkdir -p bin
+	go build -o bin/hexroutectl ./cmd/hexroutectl
 
 test:
 	go test ./...

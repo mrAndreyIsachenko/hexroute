@@ -2,6 +2,7 @@
   "schema": "hexroute.root-observe.v1",
   "mode": "observe-only",
   "observation_interval_seconds": 60,
+  "operator_uid": 501,
   "physical_interface": "en7",
   "managed_tun_address": "198.51.100.1",
   "upstream_probe_address": "203.0.113.53",

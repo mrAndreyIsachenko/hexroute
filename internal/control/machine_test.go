@@ -196,3 +196,46 @@ func TestGenerationAndMonotonicGuards(t *testing.T) {
 		t.Fatalf("non-monotonic error = %v, want %v", err, ErrNonMonotonicTick)
 	}
 }
+
+func TestOperatorResumeRequiresSafeModeAndExactGeneration(t *testing.T) {
+	policy := testPolicy()
+	snapshot := NewSnapshot(StateSafeMode)
+	snapshot.Generation = 9
+	snapshot.Attempts = policy.ActionBudget
+	snapshot.LastTick = 100
+	snapshot.RecoveringSince = 90
+	snapshot.NextActionAt = 120
+	snapshot.SafeUntil = 700
+	machine, err := NewMachine(policy, snapshot)
+	if err != nil {
+		t.Fatalf("NewMachine() error: %v", err)
+	}
+
+	if _, err := machine.Step(8, 101, EventOperatorResume); !errors.Is(
+		err,
+		ErrStaleGeneration,
+	) {
+		t.Fatalf("stale resume error = %v, want %v", err, ErrStaleGeneration)
+	}
+	decision, err := machine.Step(9, 101, EventOperatorResume)
+	if err != nil {
+		t.Fatalf("operator resume error: %v", err)
+	}
+	after := machine.Snapshot()
+	if decision.From != StateSafeMode ||
+		decision.To != StateDegraded ||
+		decision.Reason != ReasonOperatorResume ||
+		after.Generation != 10 ||
+		after.Attempts != 0 ||
+		after.RecoveringSince != 0 ||
+		after.NextActionAt != 101 ||
+		after.SafeUntil != 0 {
+		t.Fatalf("resume decision=%+v snapshot=%+v", decision, after)
+	}
+	if _, err := machine.Step(10, 102, EventOperatorResume); !errors.Is(
+		err,
+		ErrResumePrecondition,
+	) {
+		t.Fatalf("second resume error = %v, want %v", err, ErrResumePrecondition)
+	}
+}

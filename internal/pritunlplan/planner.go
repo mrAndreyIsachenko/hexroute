@@ -86,6 +86,8 @@ type Planner struct {
 
 var ErrInvalidInput = errors.New("invalid Pritunl planner input")
 
+type SnapshotPersister func(control.Snapshot) error
+
 func OTPSecondsRemaining(unixSeconds int64, period uint32) (uint32, error) {
 	if unixSeconds < 0 || period == 0 {
 		return 0, ErrInvalidInput
@@ -264,6 +266,34 @@ func (planner *Planner) Plan(observation Observation) (Plan, error) {
 		ActionNone,
 		planner.machine.Snapshot().NextActionAt,
 	), nil
+}
+
+func (planner *Planner) Resume(
+	expectedGeneration uint64,
+	at control.Tick,
+	persist SnapshotPersister,
+) (control.Snapshot, error) {
+	if planner == nil || planner.machine == nil || at < 0 || persist == nil {
+		return control.Snapshot{}, ErrInvalidInput
+	}
+	before := planner.machine.Snapshot()
+	if _, err := planner.machine.Step(
+		expectedGeneration,
+		at,
+		control.EventOperatorResume,
+	); err != nil {
+		return control.Snapshot{}, err
+	}
+	after := planner.machine.Snapshot()
+	if err := persist(after); err != nil {
+		rollback, rollbackErr := control.NewMachine(planner.policy.Recovery, before)
+		if rollbackErr != nil {
+			return control.Snapshot{}, rollbackErr
+		}
+		planner.machine = rollback
+		return control.Snapshot{}, err
+	}
+	return after, nil
 }
 
 func (state OptionalInnerState) valid() bool {
