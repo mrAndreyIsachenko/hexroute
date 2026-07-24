@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	sleepStartEventID = metadata.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
-	sleepEndEventID   = metadata.UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+	sleepStartEventID  = metadata.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+	sleepEndEventID    = metadata.UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+	unmatchedWakeEvent = metadata.UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
 )
 
 func TestPostgresSleepProjectionSuppressesOnlyExplicitSleep(t *testing.T) {
@@ -48,6 +49,9 @@ func TestPostgresSleepProjectionSuppressesOnlyExplicitSleep(t *testing.T) {
 
 	if err := store.ProjectSleepEvent(ctx, sleepStartEventID); err != nil {
 		t.Fatalf("ProjectSleepEvent(start) error = %v", err)
+	}
+	if err := store.ProjectSleepEvent(ctx, sleepStartEventID); err != nil {
+		t.Fatalf("ProjectSleepEvent(duplicate start) error = %v", err)
 	}
 	decisions, err := store.Decisions(ctx, policy, now.Add(-time.Minute))
 	if err != nil {
@@ -111,6 +115,42 @@ func TestPostgresSleepProjectionSuppressesOnlyExplicitSleep(t *testing.T) {
 		ended == nil ||
 		!ended.Equal(now) {
 		t.Fatalf("sleep interval count=%d start=%v end=%v", count, started, ended)
+	}
+
+	insertSleepEvent(
+		t,
+		ctx,
+		admin,
+		unmatchedWakeEvent,
+		3,
+		now.Add(time.Minute),
+		`{"phase":"ended","reason":"full_wake"}`,
+	)
+	if err := store.ProjectSleepEvent(ctx, unmatchedWakeEvent); err != nil {
+		t.Fatalf("ProjectSleepEvent(unmatched wake) error = %v", err)
+	}
+	decisions, err = store.Decisions(ctx, policy, now.Add(4*time.Minute))
+	if err != nil {
+		t.Fatalf("Decisions(after unmatched wake) error = %v", err)
+	}
+	if len(decisions) != 1 || decisions[0].State != StateSilent {
+		t.Fatalf("unmatched wake suppressed silence: %+v", decisions)
+	}
+	var zeroLengthCount int
+	if err := admin.QueryRow(ctx, `
+		SELECT count(*)
+		FROM sleep_intervals
+		WHERE node_id = $1
+		  AND start_event_id IS NULL
+		  AND end_event_id = $2
+		  AND started_at = ended_at
+	`, string(silentNodeID), string(unmatchedWakeEvent)).Scan(
+		&zeroLengthCount,
+	); err != nil {
+		t.Fatalf("query unmatched wake evidence: %v", err)
+	}
+	if zeroLengthCount != 1 {
+		t.Fatalf("unmatched wake evidence count = %d, want 1", zeroLengthCount)
 	}
 }
 

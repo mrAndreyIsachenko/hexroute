@@ -117,6 +117,26 @@ func TestPostgresHeartbeatDrivesReadiness(t *testing.T) {
 	if status, err := staleChecker.Check(ctx); status != StatusNotReady || err == nil {
 		t.Fatalf("Check(stale) = %q, %v", status, err)
 	}
+
+	recoveredAt := now.Add(2 * time.Minute)
+	recoveredWriter, err := NewWriter(
+		maintenanceStore,
+		"primary",
+		healthInstanceID,
+		"v0.1.0-integration",
+		now.Add(-time.Minute),
+		30*time.Second,
+		func() time.Time { return recoveredAt },
+	)
+	if err != nil {
+		t.Fatalf("NewWriter(recovered) error = %v", err)
+	}
+	if err := recoveredWriter.Once(ctx); err != nil {
+		t.Fatalf("Once(recovered) error = %v", err)
+	}
+	if status, err := staleChecker.Check(ctx); status != StatusReady || err != nil {
+		t.Fatalf("Check(recovered) = %q, %v", status, err)
+	}
 }
 
 func integrationPool(

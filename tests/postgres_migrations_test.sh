@@ -176,6 +176,8 @@ expect_allowed hexroute_maintenance \
 expect_denied hexroute_ingest \
   'SELECT principal_id FROM passkey_credentials LIMIT 0'
 expect_denied hexroute_ingest \
+  'SELECT incident_id FROM incidents LIMIT 0'
+expect_denied hexroute_ingest \
   "UPDATE nodes SET lifecycle_status = 'revoked' WHERE FALSE"
 expect_denied hexroute_ingest \
   'ALTER TABLE events ADD COLUMN forbidden_ingest_column TEXT'
@@ -187,6 +189,8 @@ expect_denied hexroute_dashboard \
   'UPDATE passkey_credentials SET sign_count = sign_count WHERE FALSE'
 expect_denied hexroute_dashboard_auth \
   'SELECT incident_id FROM incidents LIMIT 0'
+expect_denied hexroute_dashboard_auth \
+  'SELECT node_id FROM nodes LIMIT 0'
 expect_denied hexroute_dashboard \
   "INSERT INTO security_audit_records (
      audit_record_id, category, reason_code
@@ -195,6 +199,8 @@ expect_denied hexroute_dashboard \
    )"
 expect_denied hexroute_maintenance \
   'SELECT credential_id FROM passkey_credentials LIMIT 0'
+expect_denied hexroute_maintenance \
+  'UPDATE dashboard_principals SET enabled = enabled WHERE FALSE'
 expect_denied hexroute_maintenance \
   'ALTER TABLE incidents ADD COLUMN forbidden_maintenance_column TEXT'
 expect_denied hexroute_maintenance \
@@ -269,7 +275,7 @@ HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}
 HEXROUTE_TEST_POSTGRES_AUTH_DSN="postgres://hexroute_test_dashboard_auth@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 GOCACHE=/tmp/hexroute-postgres-go-cache \
   go test ./internal/dashboardauth \
-    -run TestPostgresPasskeyStoreUsesNarrowAuthRole \
+    -run 'TestPostgresPasskey(StoreUsesNarrowAuthRole|LoginAuthorizesSessionAndAdvancesCounter)' \
     -count=1
 
 HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \

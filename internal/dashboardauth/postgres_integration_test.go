@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -125,6 +127,106 @@ func TestPostgresPasskeyStoreUsesNarrowAuthRole(t *testing.T) {
 			backupState,
 			lastAuthenticatedAt,
 		)
+	}
+}
+
+func TestPostgresPasskeyLoginAuthorizesSessionAndAdvancesCounter(t *testing.T) {
+	adminDSN := os.Getenv("HEXROUTE_TEST_POSTGRES_ADMIN_DSN")
+	authDSN := os.Getenv("HEXROUTE_TEST_POSTGRES_AUTH_DSN")
+	if adminDSN == "" || authDSN == "" {
+		t.Skip("PostgreSQL integration DSNs are not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	admin := authIntegrationPool(t, ctx, adminDSN)
+	auth := authIntegrationPool(t, ctx, authDSN)
+	resetAuthData(t, ctx, admin)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		resetAuthData(t, cleanupCtx, admin)
+	})
+	now := time.Date(2026, time.July, 25, 13, 0, 0, 0, time.UTC)
+	_, err := admin.Exec(ctx, `
+		INSERT INTO dashboard_principals (
+			principal_id,
+			username,
+			display_name,
+			webauthn_user_handle,
+			enabled,
+			created_at
+		) VALUES ($1, 'operator', 'Operator', $2, TRUE, $3)
+	`, string(authPrincipalID), bytes.Repeat([]byte{1}, 32), now)
+	if err != nil {
+		t.Fatalf("insert principal: %v", err)
+	}
+	store, err := NewPostgresStore(auth, bytes.NewReader(make([]byte, 32)))
+	if err != nil {
+		t.Fatalf("NewPostgresStore() error = %v", err)
+	}
+	user, err := store.LoadUser(ctx, "operator")
+	if err != nil {
+		t.Fatalf("LoadUser() error = %v", err)
+	}
+	credential := credentialFixture()
+	credential.Authenticator.SignCount = 4
+	if err := store.AddCredential(ctx, user, &credential, now); err != nil {
+		t.Fatalf("AddCredential() error = %v", err)
+	}
+	asserted := credential
+	asserted.Authenticator.SignCount = 5
+	handler := authHandlerFixture(
+		t,
+		store,
+		&ceremonyFixture{credential: asserted},
+		now.Add(time.Minute),
+	)
+
+	begin := authRequest(http.MethodPost, "/auth/login/begin", `{"username":"operator"}`)
+	response := httptest.NewRecorder()
+	handler.BeginLogin(response, begin)
+	if response.Code != http.StatusOK {
+		t.Fatalf("BeginLogin() status = %d body=%s", response.Code, response.Body.String())
+	}
+	ceremonyCookie := findCookie(t, response.Result().Cookies(), ceremonyCookieName)
+	finish := authRequest(http.MethodPost, "/auth/login/finish", `{}`)
+	finish.AddCookie(ceremonyCookie)
+	response = httptest.NewRecorder()
+	handler.FinishLogin(response, finish)
+	if response.Code != http.StatusOK {
+		t.Fatalf("FinishLogin() status = %d body=%s", response.Code, response.Body.String())
+	}
+	sessionCookie := findCookie(t, response.Result().Cookies(), sessionCookieName)
+	authorized := httptest.NewRequest(http.MethodGet, "https://status.example/", nil)
+	authorized.AddCookie(sessionCookie)
+	principalID, username, ok := handler.Authorize(authorized)
+	if !ok || principalID != authPrincipalID || username != "operator" {
+		t.Fatalf("Authorize() = %s %q %t", principalID, username, ok)
+	}
+
+	var (
+		signCount           int64
+		lastAuthenticatedAt time.Time
+	)
+	if err := admin.QueryRow(ctx, `
+		SELECT c.sign_count, p.last_authenticated_at
+		FROM passkey_credentials c
+		JOIN dashboard_principals p ON p.principal_id = c.principal_id
+		WHERE c.credential_id = $1
+	`, credential.ID).Scan(&signCount, &lastAuthenticatedAt); err != nil {
+		t.Fatalf("read authenticated credential: %v", err)
+	}
+	if signCount != 5 || !lastAuthenticatedAt.Equal(now.Add(time.Minute)) {
+		t.Fatalf(
+			"authenticated credential = count:%d authenticated:%v",
+			signCount,
+			lastAuthenticatedAt,
+		)
+	}
+
+	unauthorized := httptest.NewRequest(http.MethodGet, "https://status.example/", nil)
+	if _, _, ok := handler.Authorize(unauthorized); ok {
+		t.Fatal("Authorize(without session) succeeded")
 	}
 }
 
