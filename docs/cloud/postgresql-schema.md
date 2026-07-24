@@ -61,6 +61,9 @@ share the repository directory with containers.
 - Private incident bundles are content-addressed, deduplicated and deleted
   only after object storage confirms deletion; failed expiry attempts retain a
   bounded retry lease and generic result code.
+- Hourly and UTC-day SLO aggregates are idempotently recomputed from bounded
+  eligible intervals and retain normalized failure, exclusion and recovery
+  incident links.
 - SLO aggregates link back to incidents that explain failures and exclusions.
 
 The role migration creates fixed `NOLOGIN` group roles without credentials:
