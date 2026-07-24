@@ -46,6 +46,8 @@ share the repository directory with containers.
 - Sequence gaps remain explicit until resolved.
 - Incident evidence links survive as structured relationships; raw adapter
   output is not a fallback evidence format.
+- Incident generations advance only for lifecycle or material policy changes;
+  repeated observations update freshness without manufacturing transitions.
 - Sleep intervals are first-class inputs to silent-node and SLO calculations.
 - Alert channels have separate delivery rows, so a local acknowledgement cannot
   clear a pending Telegram delivery.

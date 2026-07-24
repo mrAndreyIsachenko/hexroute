@@ -56,14 +56,26 @@ func (store *PostgresStore) Decisions(
 			n.expected_heartbeat_seconds,
 			n.created_at,
 			n.last_seen_at,
-			EXISTS (
-				SELECT 1
+			latest.event_id::text,
+			sleep.sleep_interval_id::text,
+			sleep.start_event_id::text
+		FROM nodes n
+		LEFT JOIN LATERAL (
+			SELECT e.event_id
+			FROM events e
+			WHERE e.node_id = n.node_id
+			ORDER BY e.occurred_at DESC, e.sequence DESC
+			LIMIT 1
+		) latest ON TRUE
+		LEFT JOIN LATERAL (
+			SELECT s.sleep_interval_id, s.start_event_id
 				FROM sleep_intervals s
 				WHERE s.node_id = n.node_id
 				  AND s.started_at <= $1
 				  AND (s.ended_at IS NULL OR s.ended_at > $1)
-			)
-		FROM nodes n
+				ORDER BY s.started_at DESC
+				LIMIT 1
+		) sleep ON TRUE
 		ORDER BY n.node_id
 	`, at.UTC())
 	if err != nil {
@@ -80,7 +92,9 @@ func (store *PostgresStore) Decisions(
 			expectedSeconds int64
 			createdAt       time.Time
 			lastSeenAt      *time.Time
-			sleeping        bool
+			latestEventID   *string
+			sleepIntervalID *string
+			sleepEventID    *string
 		)
 		if err := rows.Scan(
 			&nodeIDString,
@@ -89,7 +103,9 @@ func (store *PostgresStore) Decisions(
 			&expectedSeconds,
 			&createdAt,
 			&lastSeenAt,
-			&sleeping,
+			&latestEventID,
+			&sleepIntervalID,
+			&sleepEventID,
 		); err != nil {
 			return nil, err
 		}
@@ -103,10 +119,22 @@ func (store *PostgresStore) Decisions(
 			LifecycleStatus:           lifecycleStatus,
 			ExpectedHeartbeatInterval: time.Duration(expectedSeconds) * time.Second,
 			CreatedAt:                 createdAt.UTC(),
-			SleepingAtEvaluation:      sleeping,
+			SleepingAtEvaluation:      sleepIntervalID != nil,
 		}
 		if lastSeenAt != nil {
 			node.LastSeenAt = lastSeenAt.UTC()
+		}
+		if latestEventID != nil {
+			node.ReferenceEventID, err = metadata.ParseUUID(*latestEventID)
+			if err != nil {
+				return nil, ErrInvalidNode
+			}
+		}
+		if sleepEventID != nil {
+			node.SleepEventID, err = metadata.ParseUUID(*sleepEventID)
+			if err != nil {
+				return nil, ErrInvalidNode
+			}
 		}
 		decision, err := Evaluate(node, policy, at)
 		if err != nil {

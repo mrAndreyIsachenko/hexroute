@@ -21,5 +21,7 @@ interval covers the evaluation instant. Otherwise it is `healthy` before the
 deadline and `silent` after it. Retired/revoked nodes are ignored and
 implausibly future timestamps fail validation.
 
-Incident opening and resolution consume these deterministic decisions in the
-next stage; the correlator itself does not send alerts or control any node.
+The incident reconciler consumes these deterministic decisions. A silent
+result opens or refreshes one correlation key per node; a healthy result
+resolves it with recovery evidence, and a signed sleep interval resolves it
+with exclusion evidence. Correlation does not send alerts or control any node.

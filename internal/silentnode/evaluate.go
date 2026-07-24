@@ -29,15 +29,19 @@ type Node struct {
 	ExpectedHeartbeatInterval time.Duration
 	CreatedAt                 time.Time
 	LastSeenAt                time.Time
+	ReferenceEventID          metadata.UUID
+	SleepEventID              metadata.UUID
 	SleepingAtEvaluation      bool
 }
 
 type Decision struct {
-	NodeID      metadata.UUID
-	State       State
-	Reference   time.Time
-	Deadline    time.Time
-	EvaluatedAt time.Time
+	NodeID           metadata.UUID
+	State            State
+	Reference        time.Time
+	ReferenceEventID metadata.UUID
+	SleepEventID     metadata.UUID
+	Deadline         time.Time
+	EvaluatedAt      time.Time
 }
 
 var (
@@ -72,6 +76,14 @@ func Evaluate(node Node, policy Policy, at time.Time) (Decision, error) {
 		at.IsZero() {
 		return Decision{}, ErrInvalidNode
 	}
+	for _, eventID := range []metadata.UUID{node.ReferenceEventID, node.SleepEventID} {
+		if eventID == "" {
+			continue
+		}
+		if _, err := metadata.ParseUUID(string(eventID)); err != nil {
+			return Decision{}, ErrInvalidNode
+		}
+	}
 	at = at.UTC()
 	reference := node.LastSeenAt.UTC()
 	if node.LastSeenAt.IsZero() {
@@ -85,10 +97,12 @@ func Evaluate(node Node, policy Policy, at time.Time) (Decision, error) {
 		grace = policy.MinimumGrace
 	}
 	decision := Decision{
-		NodeID:      node.NodeID,
-		Reference:   reference,
-		Deadline:    reference.Add(grace),
-		EvaluatedAt: at,
+		NodeID:           node.NodeID,
+		Reference:        reference,
+		ReferenceEventID: node.ReferenceEventID,
+		SleepEventID:     node.SleepEventID,
+		Deadline:         reference.Add(grace),
+		EvaluatedAt:      at,
 	}
 	if node.LifecycleStatus != "active" {
 		decision.State = StateIgnored

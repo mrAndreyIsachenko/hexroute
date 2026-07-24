@@ -56,6 +56,9 @@ func TestPostgresSleepProjectionSuppressesOnlyExplicitSleep(t *testing.T) {
 	if len(decisions) != 1 || decisions[0].State != StateSleeping {
 		t.Fatalf("sleeping decisions = %+v", decisions)
 	}
+	if decisions[0].SleepEventID != sleepStartEventID {
+		t.Fatalf("sleep evidence = %q, want %q", decisions[0].SleepEventID, sleepStartEventID)
+	}
 
 	if err := store.ProjectSleepEvent(ctx, sleepEndEventID); err != nil {
 		t.Fatalf("ProjectSleepEvent(end) error = %v", err)
@@ -77,6 +80,9 @@ func TestPostgresSleepProjectionSuppressesOnlyExplicitSleep(t *testing.T) {
 	}
 	if len(decisions) != 1 || decisions[0].State != StateHealthy {
 		t.Fatalf("awake decisions = %+v", decisions)
+	}
+	if decisions[0].ReferenceEventID != sleepEndEventID {
+		t.Fatalf("recovery evidence = %q, want %q", decisions[0].ReferenceEventID, sleepEndEventID)
 	}
 
 	decisions, err = store.Decisions(ctx, policy, now.Add(4*time.Minute))
