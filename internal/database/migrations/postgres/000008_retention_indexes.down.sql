@@ -1,0 +1,5 @@
+DROP INDEX batches_retention_idx;
+DROP INDEX alert_deliveries_terminal_retention_idx;
+DROP INDEX sequence_gaps_retention_idx;
+DROP INDEX sleep_intervals_retention_idx;
+DROP INDEX incident_transitions_retention_idx;
