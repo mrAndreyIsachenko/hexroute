@@ -1,0 +1,15 @@
+{
+  "schema": "hexroute.sentinel-observe.v1",
+  "mode": "observe-only",
+  "observation_interval_seconds": 15,
+  "stale_threshold_seconds": 90,
+  "heartbeat_path": "/Library/Application Support/Hexroute/observe-root/state/control-loop.heartbeat.json",
+  "data_path_endpoint": {
+    "transport": "socks5_tls",
+    "certificate_policy": "verify",
+    "address": "203.0.113.40:443",
+    "proxy_address": "127.0.0.1:2080",
+    "server_name": "fallback.example.invalid",
+    "timeout_seconds": 4
+  }
+}

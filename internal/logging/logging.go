@@ -43,6 +43,7 @@ const (
 	EventGitLabHTTPSRoute EventName = "gitlab_https_route_proposed"
 	EventCodexRoute       EventName = "codex_fallback_route_proposed"
 	EventPritunlReconnect EventName = "pritunl_reconnect_proposed"
+	EventSentinelEvidence EventName = "sentinel_restart_evidence"
 )
 
 type Result string
@@ -164,7 +165,8 @@ func validEvent(value EventName) bool {
 	switch value {
 	case EventCommandStatus, EventStartupCheck, EventVersionRequested, EventArgumentRejected, EventIPCRejected,
 		EventDaemonStarted, EventDaemonStopped, EventObservationCycle, EventIngressRoute,
-		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect:
+		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect,
+		EventSentinelEvidence:
 		return true
 	default:
 		return false

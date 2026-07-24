@@ -3,9 +3,9 @@ package main
 import (
 	"os"
 
-	"github.com/mrAndreyIsachenko/hexroute/internal/command"
+	"github.com/mrAndreyIsachenko/hexroute/internal/sentinel"
 )
 
 func main() {
-	os.Exit(command.Run("hexroute-sentinel", os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(sentinel.Run(os.Args[1:], os.Stdout, os.Stderr))
 }
