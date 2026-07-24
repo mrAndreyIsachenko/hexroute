@@ -8,7 +8,8 @@ ordered, append-only expansion migrations:
 3. passkey public credentials, alert delivery state and SLO aggregates;
 4. ownership and least-privilege group-role grants;
 5. the API's narrow worker-readiness grant;
-6. idempotent sleep-interval projection invariants.
+6. idempotent sleep-interval projection invariants;
+7. crash-recoverable alert-delivery leases.
 
 The schema stores public verification keys and passkey public credentials. It
 does not model VPN credentials, private signing keys, OTP material, packet
@@ -51,6 +52,8 @@ share the repository directory with containers.
 - Sleep intervals are first-class inputs to silent-node and SLO calculations.
 - Alert channels have separate delivery rows, so a local acknowledgement cannot
   clear a pending Telegram delivery.
+- Expiring delivery leases recover automatically after worker failure without
+  holding a database transaction across an HTTPS request.
 - SLO aggregates link back to incidents that explain failures and exclusions.
 
 The role migration creates fixed `NOLOGIN` group roles without credentials:
