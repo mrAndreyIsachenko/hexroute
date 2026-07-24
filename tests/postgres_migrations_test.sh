@@ -286,6 +286,15 @@ GOCACHE=/tmp/hexroute-postgres-go-cache \
     -count=1
 
 HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_INGEST_DSN="postgres://hexroute_test_ingest@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_DASHBOARD_DSN="postgres://hexroute_test_dashboard@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_AUTH_DSN="postgres://hexroute_test_dashboard_auth@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+GOCACHE=/tmp/hexroute-postgres-go-cache \
+  go test ./internal/cloudruntime \
+    -run TestPostgresAPIRuntimeRequiresExclusiveRolesAndBuildsReadOnlySurface \
+    -count=1
+
+HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 HEXROUTE_TEST_POSTGRES_MAINTENANCE_DSN="postgres://hexroute_test_maintenance@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 GOCACHE=/tmp/hexroute-postgres-go-cache \
   go test ./internal/retention \

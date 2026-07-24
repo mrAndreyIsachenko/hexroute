@@ -28,6 +28,8 @@ Actionable user incidents use fixed, redacted macOS notification templates;
 see `docs/macos/notifications.md`.
 The cloud API and worker share a pinned, non-root `scratch` image contract with
 a read-only root filesystem; see `docs/cloud/containers.md`.
+The signed-ingest, readiness and passkey/dashboard HTTP surface is assembled by
+the explicit `hexroute-ingest api` mode; see `docs/cloud/api-runtime.md`.
 
 ## License
 

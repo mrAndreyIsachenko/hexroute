@@ -80,6 +80,30 @@ func TestLoggerRejectsNonAllowlistedValuesWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestCloudLoggerDeclaresTelemetryOnlyAuthority(t *testing.T) {
+	var output bytes.Buffer
+	logger, err := New(&output, ComponentIngest)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if err := logger.Emit(
+		LevelInfo,
+		EventCloudAPIStarted,
+		ResultOK,
+		"",
+	); err != nil {
+		t.Fatalf("Emit() error = %v", err)
+	}
+	var record map[string]any
+	if err := json.Unmarshal(output.Bytes(), &record); err != nil {
+		t.Fatalf("decode log: %v", err)
+	}
+	if record["mode"] != "telemetry-only" ||
+		record["mutation_authority"] != "none" {
+		t.Fatalf("cloud authority fields = %+v", record)
+	}
+}
+
 func TestSecretCanariesCannotEnterLoggerFields(t *testing.T) {
 	canaries := loadCanaries(t)
 	for _, canary := range canaries {

@@ -78,6 +78,33 @@ for component in api worker; do
   }
 done
 
+api_failure="hexroute-api-invalid-config-contract-$$"
+containers+=("$api_failure")
+docker create \
+  --name "$api_failure" \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16777216,uid=65532,gid=65532,mode=0700 \
+  --user 65532:65532 \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --network none \
+  "$image" \
+  api >/dev/null
+api_output="$(docker start --attach "$api_failure" 2>&1 || true)"
+api_exit="$(docker inspect --format '{{.State.ExitCode}}' "$api_failure")"
+[[ "$api_exit" == "1" ]] || {
+  printf 'unconfigured API exit code is %s, expected 1\n' "$api_exit" >&2
+  exit 1
+}
+[[ "$api_output" == *'"reason":"invalid_configuration"'* ]] || {
+  printf 'unconfigured API did not emit a bounded configuration error\n' >&2
+  exit 1
+}
+if [[ "$api_output" == *'DATABASE_URL'* || "$api_output" == *'postgres://'* ]]; then
+  printf 'unconfigured API log exposed configuration detail\n' >&2
+  exit 1
+fi
+
 probe_container="hexroute-image-contents-contract-$$"
 containers+=("$probe_container")
 docker create --name "$probe_container" "$image" --check >/dev/null

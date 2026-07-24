@@ -22,9 +22,9 @@ live deployment manifest. The private infrastructure repository must express
 the same restrictions for both App Platform components and provide their
 separate database identities and runtime secrets.
 
-The image defaults to the non-mutating `--check` command and exits. Production
-activation remains blocked until the explicit API/worker runtime modes compose
-the implemented ingest, readiness, dashboard and maintenance packages with
+The image defaults to the non-mutating `--check` command and exits. API
+deployments must explicitly run `hexroute-ingest api`; worker deployment
+remains blocked until its runtime mode composes the maintenance packages with
 graceful shutdown. A deployment must never treat the default check command as a
 long-running service.
 

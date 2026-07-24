@@ -45,6 +45,9 @@ const (
 	EventPritunlReconnect  EventName = "pritunl_reconnect_proposed"
 	EventSentinelEvidence  EventName = "sentinel_restart_evidence"
 	EventLocalNotification EventName = "local_notification"
+	EventCloudAPIStarted   EventName = "cloud_api_started"
+	EventCloudAPIStopped   EventName = "cloud_api_stopped"
+	EventCloudWorkerCycle  EventName = "cloud_worker_cycle"
 )
 
 type Result string
@@ -134,7 +137,7 @@ func (l *Logger) Emit(level Level, event EventName, result Result, reason Reason
 		Component:         l.component,
 		Event:             event,
 		Result:            result,
-		Mode:              "observe-only",
+		Mode:              componentMode(l.component),
 		MutationAuthority: "none",
 		Reason:            reason,
 	}
@@ -167,11 +170,19 @@ func validEvent(value EventName) bool {
 	case EventCommandStatus, EventStartupCheck, EventVersionRequested, EventArgumentRejected, EventIPCRejected,
 		EventDaemonStarted, EventDaemonStopped, EventObservationCycle, EventIngressRoute,
 		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect,
-		EventSentinelEvidence, EventLocalNotification:
+		EventSentinelEvidence, EventLocalNotification, EventCloudAPIStarted,
+		EventCloudAPIStopped, EventCloudWorkerCycle:
 		return true
 	default:
 		return false
 	}
+}
+
+func componentMode(component Component) string {
+	if component == ComponentIngest {
+		return "telemetry-only"
+	}
+	return "observe-only"
 }
 
 func validResult(value Result) bool {
