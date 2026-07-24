@@ -58,19 +58,20 @@ for table in "${required_tables[@]}"; do
 done
 
 restricted_roles=(
-  hexroute_migrator hexroute_ingest hexroute_dashboard hexroute_maintenance
+  hexroute_migrator hexroute_ingest hexroute_dashboard hexroute_dashboard_auth
+  hexroute_maintenance
 )
 restricted_count="$(docker exec "$container" psql --username postgres --dbname postgres \
   --tuples-only --no-align --command \
   "SELECT count(*) FROM pg_roles
-   WHERE rolname IN ('hexroute_migrator', 'hexroute_ingest', 'hexroute_dashboard', 'hexroute_maintenance')
+   WHERE rolname IN ('hexroute_migrator', 'hexroute_ingest', 'hexroute_dashboard', 'hexroute_dashboard_auth', 'hexroute_maintenance')
      AND NOT rolcanlogin
      AND NOT rolsuper
      AND NOT rolcreatedb
      AND NOT rolcreaterole
      AND NOT rolreplication
      AND NOT rolbypassrls;")"
-[[ "$restricted_count" == "4" ]] || {
+[[ "$restricted_count" == "5" ]] || {
   printf 'PostgreSQL role hardening mismatch: %s\n' "$restricted_count" >&2
   exit 1
 }
@@ -137,8 +138,24 @@ expect_allowed hexroute_ingest \
   'SELECT heartbeat_at FROM worker_heartbeats LIMIT 0'
 expect_allowed hexroute_dashboard \
   'SELECT incident_id FROM incidents LIMIT 0'
-expect_allowed hexroute_dashboard \
+expect_allowed hexroute_dashboard_auth \
   'SELECT credential_id, cose_public_key FROM passkey_credentials LIMIT 0'
+expect_allowed hexroute_dashboard_auth \
+  'UPDATE passkey_credentials SET sign_count = sign_count WHERE FALSE'
+expect_allowed hexroute_dashboard_auth \
+  "INSERT INTO passkey_credentials (
+     passkey_credential_id,
+     principal_id,
+     credential_id,
+     cose_public_key
+   )
+   SELECT
+     '40000000-0000-4000-8000-000000000004',
+     principal_id,
+     decode(repeat('00', 16), 'hex'),
+     decode('00', 'hex')
+   FROM dashboard_principals
+   WHERE FALSE"
 expect_allowed hexroute_maintenance \
   "INSERT INTO worker_heartbeats (
      worker_name, instance_id, application_version, started_at, heartbeat_at
@@ -165,6 +182,12 @@ expect_denied hexroute_ingest \
 expect_denied hexroute_dashboard \
   'SELECT payload FROM events LIMIT 0'
 expect_denied hexroute_dashboard \
+  'SELECT credential_id FROM passkey_credentials LIMIT 0'
+expect_denied hexroute_dashboard \
+  'UPDATE passkey_credentials SET sign_count = sign_count WHERE FALSE'
+expect_denied hexroute_dashboard_auth \
+  'SELECT incident_id FROM incidents LIMIT 0'
+expect_denied hexroute_dashboard \
   "INSERT INTO security_audit_records (
      audit_record_id, category, reason_code
    ) VALUES (
@@ -184,7 +207,11 @@ docker exec "$container" psql \
   --command "CREATE ROLE hexroute_test_ingest LOGIN;
              GRANT hexroute_ingest TO hexroute_test_ingest;
              CREATE ROLE hexroute_test_maintenance LOGIN;
-             GRANT hexroute_maintenance TO hexroute_test_maintenance;" >/dev/null
+             GRANT hexroute_maintenance TO hexroute_test_maintenance;
+             CREATE ROLE hexroute_test_dashboard LOGIN;
+             GRANT hexroute_dashboard TO hexroute_test_dashboard;
+             CREATE ROLE hexroute_test_dashboard_auth LOGIN;
+             GRANT hexroute_dashboard_auth TO hexroute_test_dashboard_auth;" >/dev/null
 
 published_address="$(docker port "$container" 5432/tcp | tail -n 1)"
 postgres_port="${published_address##*:}"
@@ -239,6 +266,20 @@ GOCACHE=/tmp/hexroute-postgres-go-cache \
     -count=1
 
 HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_AUTH_DSN="postgres://hexroute_test_dashboard_auth@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+GOCACHE=/tmp/hexroute-postgres-go-cache \
+  go test ./internal/dashboardauth \
+    -run TestPostgresPasskeyStoreUsesNarrowAuthRole \
+    -count=1
+
+HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_DASHBOARD_DSN="postgres://hexroute_test_dashboard@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+GOCACHE=/tmp/hexroute-postgres-go-cache \
+  go test ./internal/dashboard \
+    -run TestPostgresDashboardLoadsBoundedReadOnlySnapshot \
+    -count=1
+
+HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 HEXROUTE_TEST_POSTGRES_MAINTENANCE_DSN="postgres://hexroute_test_maintenance@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 GOCACHE=/tmp/hexroute-postgres-go-cache \
   go test ./internal/retention \
@@ -250,7 +291,9 @@ docker exec "$container" psql \
   --dbname postgres \
   --set ON_ERROR_STOP=1 \
   --command "DROP ROLE hexroute_test_ingest;
-             DROP ROLE hexroute_test_maintenance;" >/dev/null
+             DROP ROLE hexroute_test_maintenance;
+             DROP ROLE hexroute_test_dashboard;
+             DROP ROLE hexroute_test_dashboard_auth;" >/dev/null
 
 while IFS= read -r migration; do
   docker exec -i "$container" psql \

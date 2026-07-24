@@ -11,7 +11,8 @@ ordered, append-only expansion migrations:
 6. idempotent sleep-interval projection invariants;
 7. crash-recoverable alert-delivery leases;
 8. bounded-retention lookup indexes;
-9. incident-bundle deduplication and crash-recoverable expiry leases.
+9. incident-bundle deduplication and crash-recoverable expiry leases;
+10. passkey credential state and a narrow dashboard-auth role.
 
 The schema stores public verification keys and passkey public credentials. It
 does not model VPN credentials, private signing keys, OTP material, packet
@@ -71,8 +72,11 @@ The role migration creates fixed `NOLOGIN` group roles without credentials:
 - `hexroute_migrator` owns the schema and is the only role with DDL authority;
 - `hexroute_ingest` can authenticate nodes and write bounded ingest/current
   state, but cannot read passkeys or write incidents;
-- `hexroute_dashboard` has `SELECT` only on dashboard and passkey public data,
-  with no access to raw event payloads;
+- `hexroute_dashboard` has `SELECT` only on normalized operational dashboard
+  data, with no access to raw event payloads or passkey credential records;
+- `hexroute_dashboard_auth` can read principal/passkey records and perform only
+  the bounded writes required by passkey registration and sign-counter updates,
+  with no access to operational dashboard data;
 - `hexroute_maintenance` can run retention, correlation, delivery and rollups,
   but cannot read passkeys or mutate the schema.
 
