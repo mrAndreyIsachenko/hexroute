@@ -1,0 +1,9 @@
+DROP TABLE worker_heartbeats;
+DROP TABLE deployments;
+DROP TABLE config_versions;
+DROP TABLE incident_bundles;
+DROP TABLE incident_transitions;
+DROP TABLE incident_events;
+DROP TABLE incidents;
+DROP TABLE sleep_intervals;
+DROP TABLE latest_component_states;

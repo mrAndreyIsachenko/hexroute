@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := check
 
-.PHONY: build build-ctl build-observe-root build-observe-user check fmt race secret-test shell-test test vet
+.PHONY: build build-ctl build-observe-root build-observe-user check fmt postgres-test race secret-test shell-test test vet
 
 build:
 	go build ./cmd/...
@@ -28,6 +28,9 @@ vet:
 
 fmt:
 	@test -z "$$(gofmt -l .)" || { gofmt -d .; exit 1; }
+
+postgres-test:
+	tests/postgres_migrations_test.sh
 
 shell-test: build-observe-root build-observe-user
 	bash -n scripts/baseline/*.sh scripts/macos/*.sh tests/*.sh
