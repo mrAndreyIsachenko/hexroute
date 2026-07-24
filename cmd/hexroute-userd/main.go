@@ -3,9 +3,9 @@ package main
 import (
 	"os"
 
-	"github.com/mrAndreyIsachenko/hexroute/internal/command"
+	"github.com/mrAndreyIsachenko/hexroute/internal/userdaemon"
 )
 
 func main() {
-	os.Exit(command.Run("hexroute-userd", os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(userdaemon.Run(os.Args[1:], os.Stdout, os.Stderr))
 }

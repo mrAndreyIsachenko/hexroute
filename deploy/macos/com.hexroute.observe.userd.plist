@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.hexroute.observe.userd</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>__HEXROUTE_USERD_BINARY__</string>
+		<string>--observe</string>
+		<string>--config</string>
+		<string>__HEXROUTE_USERD_CONFIG__</string>
+		<string>--state</string>
+		<string>__HEXROUTE_USERD_STATE__</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>__HEXROUTE_USERD_STATE_DIR__</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>Umask</key>
+	<integer>63</integer>
+	<key>StandardOutPath</key>
+	<string>__HEXROUTE_USERD_STDOUT__</string>
+	<key>StandardErrorPath</key>
+	<string>__HEXROUTE_USERD_STDERR__</string>
+	<key>SoftResourceLimits</key>
+	<dict>
+		<key>NumberOfFiles</key>
+		<integer>128</integer>
+	</dict>
+	<key>HardResourceLimits</key>
+	<dict>
+		<key>NumberOfFiles</key>
+		<integer>256</integer>
+	</dict>
+</dict>
+</plist>

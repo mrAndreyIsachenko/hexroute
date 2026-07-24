@@ -1,0 +1,27 @@
+{
+  "schema": "hexroute.user-observe.v1",
+  "mode": "observe-only",
+  "observation_interval_seconds": 15,
+  "expected_uid": 501,
+  "profile_id": "synthetic-profile",
+  "pritunl_cli": "/usr/local/bin/pritunl-client",
+  "outer_endpoint": {
+    "transport": "direct_tls",
+    "certificate_policy": "handshake_only",
+    "address": "198.51.100.30:443",
+    "server_name": "outer.example.invalid",
+    "timeout_seconds": 4
+  },
+  "policy": {
+    "failure_threshold": 2,
+    "action_budget": 3,
+    "base_backoff_seconds": 15,
+    "max_backoff_seconds": 120,
+    "verification_window_seconds": 30,
+    "cooldown_seconds": 600,
+    "wake_settle_seconds": 30,
+    "connecting_grace_seconds": 120,
+    "otp_period_seconds": 30,
+    "otp_min_valid_seconds": 8
+  }
+}
