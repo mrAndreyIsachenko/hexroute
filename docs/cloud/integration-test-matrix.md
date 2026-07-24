@@ -19,6 +19,8 @@ make postgres-test
 | Retried event UUIDs produce one logical event while the retry is acknowledged | `TestPostgresStorePersistsDeduplicatesAndTracksSequenceGaps` |
 | Missing and stale worker heartbeats fail readiness, while a new heartbeat restores it | `TestPostgresHeartbeatDrivesReadiness` |
 | Explicit sleep suppresses silence, duplicate projections are idempotent, and unmatched wake evidence cannot suppress silence | `TestPostgresSleepProjectionSuppressesOnlyExplicitSleep` |
+| Incident transitions and immutable alert snapshots commit together, drain once and preserve transition-time state | `TestPostgresIncidentOutboxQueuesSnapshotExactlyOnce` |
+| The maintenance worker attests its role, writes heartbeat freshness and exits within its shutdown bound | `TestPostgresWorkerRuntimeHeartbeatsAndShutsDown` |
 | A passkey assertion establishes a bounded session and advances credential state through only the auth role | `TestPostgresPasskeyLoginAuthorizesSessionAndAdvancesCounter` |
 | Migrator, ingest, dashboard, dashboard-auth and maintenance grants allow only their documented operations | `tests/postgres_migrations_test.sh` role probes |
 

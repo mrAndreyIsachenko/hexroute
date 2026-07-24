@@ -585,15 +585,42 @@ func insertTransition(
 	at time.Time,
 ) error {
 	_, err := transaction.Exec(ctx, `
-		INSERT INTO incident_transitions (
-			incident_transition_id,
+		WITH inserted_transition AS (
+			INSERT INTO incident_transitions (
+				incident_transition_id,
+				incident_id,
+				generation,
+				from_status,
+				to_status,
+				reason_code,
+				transitioned_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			RETURNING incident_id, generation, to_status, transitioned_at
+		)
+		INSERT INTO incident_alert_outbox (
 			incident_id,
-			generation,
-			from_status,
-			to_status,
-			reason_code,
-			transitioned_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			incident_generation,
+			node_id,
+			snapshot_status,
+			snapshot_severity,
+			snapshot_category,
+			snapshot_component,
+			snapshot_requires_action,
+			snapshot_transitioned_at
+		)
+		SELECT
+			transition.incident_id,
+			transition.generation,
+			incident.node_id,
+			transition.to_status,
+			incident.severity,
+			incident.category,
+			incident.component,
+			incident.requires_action,
+			transition.transitioned_at
+		FROM inserted_transition transition
+		JOIN incidents incident
+		  ON incident.incident_id = transition.incident_id
 	`,
 		string(transitionID),
 		string(incidentID),

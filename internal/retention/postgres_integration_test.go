@@ -52,14 +52,15 @@ func TestPostgresRetentionIsBoundedAndPreservesDurableRecords(t *testing.T) {
 			t.Fatalf("RunOnce(%d) error = %v", iteration, runErr)
 		}
 		for name, count := range map[string]int64{
-			"detail_events":        result.DetailEvents,
-			"transition_events":    result.TransitionEvents,
-			"security_audit":       result.SecurityAudit,
-			"sleep_intervals":      result.SleepIntervals,
-			"resolved_gaps":        result.ResolvedGaps,
-			"incident_transitions": result.IncidentTransitions,
-			"terminal_alerts":      result.TerminalAlerts,
-			"orphan_batches":       result.OrphanBatches,
+			"detail_events":         result.DetailEvents,
+			"transition_events":     result.TransitionEvents,
+			"security_audit":        result.SecurityAudit,
+			"sleep_intervals":       result.SleepIntervals,
+			"resolved_gaps":         result.ResolvedGaps,
+			"incident_alert_outbox": result.IncidentAlertOutbox,
+			"incident_transitions":  result.IncidentTransitions,
+			"terminal_alerts":       result.TerminalAlerts,
+			"orphan_batches":        result.OrphanBatches,
 		} {
 			if count > 1 {
 				t.Fatalf("%s deleted %d rows with batch size 1", name, count)
@@ -70,8 +71,8 @@ func TestPostgresRetentionIsBoundedAndPreservesDurableRecords(t *testing.T) {
 			break
 		}
 	}
-	if deleted != 10 {
-		t.Fatalf("deleted rows = %d, want 10", deleted)
+	if deleted != 11 {
+		t.Fatalf("deleted rows = %d, want 11", deleted)
 	}
 	assertRetentionState(t, ctx, admin)
 }
@@ -102,6 +103,7 @@ func resetRetentionData(
 	_, err := admin.Exec(ctx, `
 		TRUNCATE TABLE
 			alert_deliveries,
+			incident_alert_outbox,
 			slo_incident_links,
 			slo_aggregates,
 			deployments,
@@ -563,6 +565,31 @@ func seedDurableRetentionRecords(
 	if err != nil {
 		t.Fatalf("insert incident transitions: %v", err)
 	}
+	_, err = admin.Exec(ctx, `
+		INSERT INTO incident_alert_outbox (
+			incident_id,
+			incident_generation,
+			node_id,
+			snapshot_status,
+			snapshot_severity,
+			snapshot_category,
+			snapshot_component,
+			snapshot_requires_action,
+			snapshot_transitioned_at,
+			created_at,
+			processed_at,
+			last_result_code
+		) VALUES (
+			$1, 1, $2, 'open', 'warning', 'availability', 'runtime',
+			false, $3, $3, $3, 'queued'
+		), (
+			$1, 2, $2, 'resolved', 'warning', 'availability', 'runtime',
+			false, $4, $4, NULL, NULL
+		)
+	`, incidentID, string(retentionNodeID), old190, old100)
+	if err != nil {
+		t.Fatalf("insert retention outbox: %v", err)
+	}
 	seedRetentionAlerts(t, ctx, admin, incidentID, old100, old190)
 	seedRetentionDeploymentAndSLO(t, ctx, admin, incidentID, old190)
 }
@@ -748,6 +775,7 @@ func assertRetentionState(
 		"sleep_intervals":        1,
 		"sequence_gaps":          1,
 		"incident_events":        0,
+		"incident_alert_outbox":  1,
 		"incident_transitions":   1,
 		"alert_deliveries":       2,
 		"incidents":              1,

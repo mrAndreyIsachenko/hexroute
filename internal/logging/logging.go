@@ -30,24 +30,30 @@ const (
 type EventName string
 
 const (
-	EventCommandStatus     EventName = "command_status"
-	EventStartupCheck      EventName = "startup_check"
-	EventVersionRequested  EventName = "version_requested"
-	EventArgumentRejected  EventName = "argument_rejected"
-	EventIPCRejected       EventName = "ipc_request_rejected"
-	EventDaemonStarted     EventName = "daemon_started"
-	EventDaemonStopped     EventName = "daemon_stopped"
-	EventObservationCycle  EventName = "observation_cycle"
-	EventIngressRoute      EventName = "ingress_route_proposed"
-	EventCorporateRoute    EventName = "corporate_route_proposed"
-	EventGitLabHTTPSRoute  EventName = "gitlab_https_route_proposed"
-	EventCodexRoute        EventName = "codex_fallback_route_proposed"
-	EventPritunlReconnect  EventName = "pritunl_reconnect_proposed"
-	EventSentinelEvidence  EventName = "sentinel_restart_evidence"
-	EventLocalNotification EventName = "local_notification"
-	EventCloudAPIStarted   EventName = "cloud_api_started"
-	EventCloudAPIStopped   EventName = "cloud_api_stopped"
-	EventCloudWorkerCycle  EventName = "cloud_worker_cycle"
+	EventCommandStatus      EventName = "command_status"
+	EventStartupCheck       EventName = "startup_check"
+	EventVersionRequested   EventName = "version_requested"
+	EventArgumentRejected   EventName = "argument_rejected"
+	EventIPCRejected        EventName = "ipc_request_rejected"
+	EventDaemonStarted      EventName = "daemon_started"
+	EventDaemonStopped      EventName = "daemon_stopped"
+	EventObservationCycle   EventName = "observation_cycle"
+	EventIngressRoute       EventName = "ingress_route_proposed"
+	EventCorporateRoute     EventName = "corporate_route_proposed"
+	EventGitLabHTTPSRoute   EventName = "gitlab_https_route_proposed"
+	EventCodexRoute         EventName = "codex_fallback_route_proposed"
+	EventPritunlReconnect   EventName = "pritunl_reconnect_proposed"
+	EventSentinelEvidence   EventName = "sentinel_restart_evidence"
+	EventLocalNotification  EventName = "local_notification"
+	EventCloudAPIStarted    EventName = "cloud_api_started"
+	EventCloudAPIStopped    EventName = "cloud_api_stopped"
+	EventCloudWorkerStarted EventName = "cloud_worker_started"
+	EventCloudWorkerStopped EventName = "cloud_worker_stopped"
+	EventCloudHeartbeat     EventName = "cloud_heartbeat"
+	EventCloudReconcile     EventName = "cloud_reconcile"
+	EventCloudAlertQueue    EventName = "cloud_alert_queue"
+	EventCloudAlertDelivery EventName = "cloud_alert_delivery"
+	EventCloudRetention     EventName = "cloud_retention"
 )
 
 type Result string
@@ -171,7 +177,9 @@ func validEvent(value EventName) bool {
 		EventDaemonStarted, EventDaemonStopped, EventObservationCycle, EventIngressRoute,
 		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect,
 		EventSentinelEvidence, EventLocalNotification, EventCloudAPIStarted,
-		EventCloudAPIStopped, EventCloudWorkerCycle:
+		EventCloudAPIStopped, EventCloudWorkerStarted, EventCloudWorkerStopped,
+		EventCloudHeartbeat, EventCloudReconcile, EventCloudAlertQueue,
+		EventCloudAlertDelivery, EventCloudRetention:
 		return true
 	default:
 		return false

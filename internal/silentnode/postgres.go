@@ -21,6 +21,8 @@ type PostgresStore struct {
 	database Database
 }
 
+const maxPendingSleepBatch = 500
+
 type sleepWireRecord struct {
 	Schema   event.Schema    `json:"schema"`
 	Version  uint16          `json:"version"`
@@ -152,6 +154,9 @@ func (store *PostgresStore) ProjectSleepEvent(
 	ctx context.Context,
 	eventID metadata.UUID,
 ) (err error) {
+	if ctx == nil {
+		return ErrInvalidSleepEvent
+	}
 	if _, parseErr := metadata.ParseUUID(string(eventID)); parseErr != nil {
 		return ErrInvalidSleepEvent
 	}
@@ -210,6 +215,13 @@ func (store *PostgresStore) ProjectSleepEvent(
 	if nodeErr != nil || sessionErr != nil {
 		return ErrInvalidSleepEvent
 	}
+	if _, err = transaction.Exec(
+		ctx,
+		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+		"sleep:"+nodeIDString,
+	); err != nil {
+		return err
+	}
 	sleep, err := decodeSleep(version, priority, payload)
 	if err != nil {
 		return err
@@ -242,6 +254,59 @@ func (store *PostgresStore) ProjectSleepEvent(
 		return err
 	}
 	return transaction.Commit(ctx)
+}
+
+func (store *PostgresStore) ProjectPendingSleepEvents(
+	ctx context.Context,
+	limit int,
+) (int, error) {
+	if ctx == nil || limit <= 0 || limit > maxPendingSleepBatch {
+		return 0, ErrInvalidSleepEvent
+	}
+	rows, err := store.database.Query(ctx, `
+		SELECT e.event_id::text
+		FROM events e
+		WHERE e.schema_name = $1
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM sleep_intervals interval
+			WHERE interval.start_event_id = e.event_id
+			   OR interval.end_event_id = e.event_id
+		  )
+		ORDER BY e.occurred_at, e.sequence, e.event_id
+		LIMIT $2
+	`, string(event.SchemaSleep), limit)
+	if err != nil {
+		return 0, err
+	}
+	eventIDs := make([]metadata.UUID, 0, limit)
+	for rows.Next() {
+		var eventIDString string
+		if err := rows.Scan(&eventIDString); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		eventID, err := metadata.ParseUUID(eventIDString)
+		if err != nil {
+			rows.Close()
+			return 0, ErrInvalidSleepEvent
+		}
+		eventIDs = append(eventIDs, eventID)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+
+	projected := 0
+	for _, eventID := range eventIDs {
+		if err := store.ProjectSleepEvent(ctx, eventID); err != nil {
+			return projected, err
+		}
+		projected++
+	}
+	return projected, nil
 }
 
 func decodeSleep(

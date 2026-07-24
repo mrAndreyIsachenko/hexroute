@@ -64,8 +64,13 @@ func TestPostgresSleepProjectionSuppressesOnlyExplicitSleep(t *testing.T) {
 		t.Fatalf("sleep evidence = %q, want %q", decisions[0].SleepEventID, sleepStartEventID)
 	}
 
-	if err := store.ProjectSleepEvent(ctx, sleepEndEventID); err != nil {
-		t.Fatalf("ProjectSleepEvent(end) error = %v", err)
+	projected, err := store.ProjectPendingSleepEvents(ctx, 10)
+	if err != nil || projected != 1 {
+		t.Fatalf("ProjectPendingSleepEvents() = %d, %v", projected, err)
+	}
+	projected, err = store.ProjectPendingSleepEvents(ctx, 10)
+	if err != nil || projected != 0 {
+		t.Fatalf("ProjectPendingSleepEvents(repeat) = %d, %v", projected, err)
 	}
 	if err := store.ProjectSleepEvent(ctx, sleepEndEventID); err != nil {
 		t.Fatalf("ProjectSleepEvent(duplicate end) error = %v", err)
@@ -126,8 +131,9 @@ func TestPostgresSleepProjectionSuppressesOnlyExplicitSleep(t *testing.T) {
 		now.Add(time.Minute),
 		`{"phase":"ended","reason":"full_wake"}`,
 	)
-	if err := store.ProjectSleepEvent(ctx, unmatchedWakeEvent); err != nil {
-		t.Fatalf("ProjectSleepEvent(unmatched wake) error = %v", err)
+	projected, err = store.ProjectPendingSleepEvents(ctx, 10)
+	if err != nil || projected != 1 {
+		t.Fatalf("ProjectPendingSleepEvents(unmatched wake) = %d, %v", projected, err)
 	}
 	decisions, err = store.Decisions(ctx, policy, now.Add(4*time.Minute))
 	if err != nil {

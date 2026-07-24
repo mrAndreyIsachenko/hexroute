@@ -45,7 +45,7 @@ required_tables=(
   security_audit_records latest_component_states sleep_intervals incidents
   incident_events incident_transitions incident_bundles config_versions
   deployments worker_heartbeats dashboard_principals passkey_credentials
-  alert_deliveries slo_aggregates slo_incident_links
+  alert_deliveries incident_alert_outbox slo_aggregates slo_incident_links
 )
 for table in "${required_tables[@]}"; do
   found="$(docker exec "$container" psql --username postgres --dbname postgres \
@@ -172,6 +172,8 @@ expect_allowed hexroute_maintenance \
   "UPDATE latest_component_states
    SET reason_code = 'worker_probe'
    WHERE FALSE"
+expect_allowed hexroute_maintenance \
+  'UPDATE incident_alert_outbox SET last_result_code = last_result_code WHERE FALSE'
 
 expect_denied hexroute_ingest \
   'SELECT principal_id FROM passkey_credentials LIMIT 0'
@@ -191,6 +193,8 @@ expect_denied hexroute_dashboard_auth \
   'SELECT incident_id FROM incidents LIMIT 0'
 expect_denied hexroute_dashboard_auth \
   'SELECT node_id FROM nodes LIMIT 0'
+expect_denied hexroute_dashboard \
+  'SELECT incident_id FROM incident_alert_outbox LIMIT 0'
 expect_denied hexroute_dashboard \
   "INSERT INTO security_audit_records (
      audit_record_id, category, reason_code
@@ -254,7 +258,7 @@ HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}
 HEXROUTE_TEST_POSTGRES_MAINTENANCE_DSN="postgres://hexroute_test_maintenance@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 GOCACHE=/tmp/hexroute-postgres-go-cache \
   go test ./internal/alertdelivery \
-    -run TestPostgresAlertQueueLeasesRetriesAndKeepsLocalAckIsolated \
+    -run 'TestPostgres(AlertQueueLeasesRetriesAndKeepsLocalAckIsolated|IncidentOutboxQueuesSnapshotExactlyOnce)' \
     -count=1
 
 HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
@@ -289,9 +293,10 @@ HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}
 HEXROUTE_TEST_POSTGRES_INGEST_DSN="postgres://hexroute_test_ingest@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 HEXROUTE_TEST_POSTGRES_DASHBOARD_DSN="postgres://hexroute_test_dashboard@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 HEXROUTE_TEST_POSTGRES_AUTH_DSN="postgres://hexroute_test_dashboard_auth@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_MAINTENANCE_DSN="postgres://hexroute_test_maintenance@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 GOCACHE=/tmp/hexroute-postgres-go-cache \
   go test ./internal/cloudruntime \
-    -run TestPostgresAPIRuntimeRequiresExclusiveRolesAndBuildsReadOnlySurface \
+    -run 'TestPostgres(APIRuntimeRequiresExclusiveRolesAndBuildsReadOnlySurface|WorkerRuntimeHeartbeatsAndShutsDown)' \
     -count=1
 
 HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \

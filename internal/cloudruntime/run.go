@@ -9,6 +9,7 @@ import (
 )
 
 type apiRunner func(context.Context, APIConfig, *logging.Logger) error
+type workerRunner func(context.Context, WorkerConfig, *logging.Logger) error
 
 func Run(
 	ctx context.Context,
@@ -17,7 +18,7 @@ func Run(
 	stdout io.Writer,
 	stderr io.Writer,
 ) int {
-	return run(ctx, args, environment, stdout, stderr, RunAPI)
+	return run(ctx, args, environment, stdout, stderr, RunAPI, RunWorker)
 }
 
 func run(
@@ -27,11 +28,12 @@ func run(
 	stdout io.Writer,
 	stderr io.Writer,
 	runAPI apiRunner,
+	runWorker workerRunner,
 ) int {
 	if len(args) == 1 && (args[0] == "--check" || args[0] == "--version") {
 		return command.Run("hexroute-ingest", args, stdout, stderr)
 	}
-	if len(args) != 1 || args[0] != "api" {
+	if len(args) != 1 || (args[0] != "api" && args[0] != "worker") {
 		errorLogger, err := logging.New(stderr, logging.ComponentIngest)
 		if err != nil {
 			return 2
@@ -52,24 +54,45 @@ func run(
 	if err != nil {
 		return 1
 	}
-	config, err := LoadAPIConfig(environment)
-	if err != nil {
-		_ = errorLogger.Emit(
-			logging.LevelWarn,
-			logging.EventArgumentRejected,
-			logging.ResultRejected,
-			logging.ReasonInvalidConfiguration,
-		)
-		return 1
-	}
-	if runAPI == nil || runAPI(ctx, config, infoLogger) != nil {
-		_ = errorLogger.Emit(
-			logging.LevelWarn,
-			logging.EventCloudAPIStopped,
-			logging.ResultDegraded,
-			"",
-		)
-		return 1
+	switch args[0] {
+	case "api":
+		config, err := LoadAPIConfig(environment)
+		if err != nil {
+			return emitInvalidConfiguration(errorLogger)
+		}
+		if runAPI == nil || runAPI(ctx, config, infoLogger) != nil {
+			_ = errorLogger.Emit(
+				logging.LevelWarn,
+				logging.EventCloudAPIStopped,
+				logging.ResultDegraded,
+				"",
+			)
+			return 1
+		}
+	case "worker":
+		config, err := LoadWorkerConfig(environment)
+		if err != nil {
+			return emitInvalidConfiguration(errorLogger)
+		}
+		if runWorker == nil || runWorker(ctx, config, infoLogger) != nil {
+			_ = errorLogger.Emit(
+				logging.LevelWarn,
+				logging.EventCloudWorkerStopped,
+				logging.ResultDegraded,
+				"",
+			)
+			return 1
+		}
 	}
 	return 0
+}
+
+func emitInvalidConfiguration(logger *logging.Logger) int {
+	_ = logger.Emit(
+		logging.LevelWarn,
+		logging.EventArgumentRejected,
+		logging.ResultRejected,
+		logging.ReasonInvalidConfiguration,
+	)
+	return 1
 }

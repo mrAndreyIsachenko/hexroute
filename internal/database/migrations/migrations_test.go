@@ -23,6 +23,7 @@ func TestPostgreSQLMigrationManifest(t *testing.T) {
 		"retention_indexes",
 		"incident_bundle_expiry",
 		"dashboard_passkey_auth",
+		"incident_alert_outbox",
 	}
 	if len(migrations) != len(wantNames) {
 		t.Fatalf("migration count = %d, want %d", len(migrations), len(wantNames))
@@ -72,6 +73,7 @@ func TestPostgreSQLMigrationsDefineRequiredCloudData(t *testing.T) {
 		"dashboard_principals",
 		"passkey_credentials",
 		"alert_deliveries",
+		"incident_alert_outbox",
 		"slo_aggregates",
 		"slo_incident_links",
 	}

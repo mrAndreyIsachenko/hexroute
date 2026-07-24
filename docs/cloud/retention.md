@@ -9,11 +9,12 @@ The maintenance worker applies fixed UTC-age policies:
   180 days from cloud receipt;
 - normalized incident transitions: 180 days;
 - delivered or suppressed alert-delivery history: 180 days;
+- processed incident-alert outbox snapshots: 180 days;
 - incidents, deployments, config versions, SLO aggregates and SLO-to-incident
   links: no automatic expiry.
 
-Pending or failed alert deliveries, open sequence gaps and open sleep intervals
-are never selected by retention.
+Pending or failed alert deliveries, unprocessed alert snapshots, open sequence
+gaps and open sleep intervals are never selected by retention.
 
 One transaction-scoped PostgreSQL advisory lock serializes retention workers
 without granting the maintenance role `UPDATE` on immutable event rows. Each

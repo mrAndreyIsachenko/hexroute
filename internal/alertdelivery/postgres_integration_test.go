@@ -9,6 +9,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/cloudincident"
+	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 )
 
@@ -250,6 +253,132 @@ func TestPostgresAlertQueueLeasesRetriesAndKeepsLocalAckIsolated(t *testing.T) {
 	assertAlertFinalState(t, ctx, admin)
 }
 
+func TestPostgresIncidentOutboxQueuesSnapshotExactlyOnce(t *testing.T) {
+	adminDSN := os.Getenv("HEXROUTE_TEST_POSTGRES_ADMIN_DSN")
+	maintenanceDSN := os.Getenv("HEXROUTE_TEST_POSTGRES_MAINTENANCE_DSN")
+	if adminDSN == "" || maintenanceDSN == "" {
+		t.Skip("PostgreSQL integration DSNs are not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	admin := alertIntegrationPool(t, ctx, adminDSN)
+	maintenance := alertIntegrationPool(t, ctx, maintenanceDSN)
+	resetAlertIntegrationData(t, ctx, admin)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(
+			context.Background(),
+			10*time.Second,
+		)
+		defer cleanupCancel()
+		resetAlertIntegrationData(t, cleanupCtx, admin)
+	})
+
+	observedAt := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
+	incidentStore, err := cloudincident.NewPostgresStore(
+		maintenance,
+		bytes.NewReader(bytes.Repeat([]byte{0x71}, 64)),
+	)
+	if err != nil {
+		t.Fatalf("NewPostgresStore(incident) error = %v", err)
+	}
+	incident, err := incidentStore.Reconcile(ctx, cloudincident.Signal{
+		CorrelationKey: "outbox-runtime-test",
+		Category:       event.IncidentAvailability,
+		Component:      control.ComponentRuntime,
+		Severity:       event.SeverityWarning,
+		RequiresAction: false,
+		State:          cloudincident.ConditionDetected,
+		ObservedAt:     observedAt,
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	policy := Policy{
+		NightStartHour: 23,
+		NightEndHour:   8,
+		Location:       time.UTC,
+		LeaseDuration:  time.Minute,
+		RetryMinimum:   time.Minute,
+		RetryMaximum:   5 * time.Minute,
+	}
+	alertStore, err := NewPostgresStore(
+		maintenance,
+		policy,
+		bytes.NewReader(bytes.Repeat([]byte{0x81}, 64)),
+	)
+	if err != nil {
+		t.Fatalf("NewPostgresStore(alert) error = %v", err)
+	}
+	processed, err := alertStore.DrainOutbox(
+		ctx,
+		alertWorkerOneID,
+		observedAt.Add(time.Second),
+		10,
+	)
+	if err != nil || processed != 1 {
+		t.Fatalf("DrainOutbox() = %d, %v", processed, err)
+	}
+	processed, err = alertStore.DrainOutbox(
+		ctx,
+		alertWorkerOneID,
+		observedAt.Add(2*time.Second),
+		10,
+	)
+	if err != nil || processed != 0 {
+		t.Fatalf("DrainOutbox(repeat) = %d, %v", processed, err)
+	}
+
+	var (
+		outboxProcessedAt *time.Time
+		deliveryCount     int
+		snapshotStatus    cloudincident.Status
+		snapshotSeverity  event.IncidentSeverity
+		snapshotAt        time.Time
+	)
+	if err := admin.QueryRow(ctx, `
+		SELECT
+			outbox.processed_at,
+			count(delivery.alert_delivery_id),
+			min(delivery.snapshot_status),
+			min(delivery.snapshot_severity),
+			min(delivery.snapshot_transitioned_at)
+		FROM incident_alert_outbox outbox
+		LEFT JOIN alert_deliveries delivery
+		  ON delivery.incident_id = outbox.incident_id
+		 AND delivery.incident_generation = outbox.incident_generation
+		WHERE outbox.incident_id = $1
+		  AND outbox.incident_generation = $2
+		GROUP BY outbox.processed_at
+	`,
+		string(incident.IncidentID),
+		incident.Generation,
+	).Scan(
+		&outboxProcessedAt,
+		&deliveryCount,
+		&snapshotStatus,
+		&snapshotSeverity,
+		&snapshotAt,
+	); err != nil {
+		t.Fatalf("read drained outbox: %v", err)
+	}
+	if outboxProcessedAt == nil ||
+		deliveryCount != 1 ||
+		snapshotStatus != cloudincident.StatusOpen ||
+		snapshotSeverity != event.SeverityWarning ||
+		!snapshotAt.Equal(observedAt) {
+		t.Fatalf(
+			"processed=%v count=%d status=%s severity=%s at=%s",
+			outboxProcessedAt,
+			deliveryCount,
+			snapshotStatus,
+			snapshotSeverity,
+			snapshotAt,
+		)
+	}
+}
+
 func alertIntegrationPool(
 	t *testing.T,
 	ctx context.Context,
@@ -276,6 +405,7 @@ func resetAlertIntegrationData(
 	_, err := admin.Exec(ctx, `
 		TRUNCATE TABLE
 			alert_deliveries,
+			incident_alert_outbox,
 			incident_transitions,
 			incidents,
 			nodes

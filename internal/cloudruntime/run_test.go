@@ -34,6 +34,7 @@ func TestRunDispatchesValidatedAPIWithoutLoggingConfiguration(t *testing.T) {
 			}
 			return nil
 		},
+		nil,
 	)
 	if exitCode != 0 || !called || stderr.Len() != 0 {
 		t.Fatalf(
@@ -85,6 +86,7 @@ func TestRunRejectsInvalidConfigAndRuntimeWithBoundedLogs(t *testing.T) {
 				&stdout,
 				&stderr,
 				test.runner,
+				nil,
 			)
 			if exitCode != 1 ||
 				!strings.Contains(stderr.String(), test.eventName) ||
@@ -101,13 +103,54 @@ func TestRunRejectsInvalidConfigAndRuntimeWithBoundedLogs(t *testing.T) {
 	}
 }
 
-func TestRunPreservesContainerCheckAndRejectsWorkerUntilImplemented(t *testing.T) {
+func TestRunDispatchesValidatedWorkerWithoutLoggingConfiguration(t *testing.T) {
+	values := validWorkerEnvironment()
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+		called bool
+	)
+	exitCode := run(
+		context.Background(),
+		[]string{"worker"},
+		mapEnvironment(values),
+		&stdout,
+		&stderr,
+		nil,
+		func(
+			_ context.Context,
+			config WorkerConfig,
+			_ *logging.Logger,
+		) error {
+			called = true
+			if config.WorkerName != "primary" {
+				t.Fatalf("config = %+v", config)
+			}
+			return nil
+		},
+	)
+	if exitCode != 0 || !called || stderr.Len() != 0 {
+		t.Fatalf(
+			"run(worker) exit=%d called=%t stderr=%q",
+			exitCode,
+			called,
+			stderr.String(),
+		)
+	}
+	for _, value := range values {
+		if strings.Contains(stdout.String(), value) {
+			t.Fatalf("stdout leaked environment value %q", value)
+		}
+	}
+}
+
+func TestRunPreservesContainerCheckAndRejectsUnsupportedModes(t *testing.T) {
 	for _, test := range []struct {
 		args []string
 		exit int
 	}{
 		{args: []string{"--check"}, exit: 0},
-		{args: []string{"worker"}, exit: 2},
+		{args: []string{"unsupported"}, exit: 2},
 		{args: nil, exit: 2},
 	} {
 		var stdout, stderr bytes.Buffer
@@ -117,6 +160,7 @@ func TestRunPreservesContainerCheckAndRejectsWorkerUntilImplemented(t *testing.T
 			mapEnvironment(nil),
 			&stdout,
 			&stderr,
+			nil,
 			nil,
 		)
 		if exitCode != test.exit {

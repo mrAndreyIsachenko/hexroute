@@ -23,10 +23,11 @@ the same restrictions for both App Platform components and provide their
 separate database identities and runtime secrets.
 
 The image defaults to the non-mutating `--check` command and exits. API
-deployments must explicitly run `hexroute-ingest api`; worker deployment
-remains blocked until its runtime mode composes the maintenance packages with
-graceful shutdown. A deployment must never treat the default check command as a
-long-running service.
+deployments must explicitly run `hexroute-ingest api`; worker deployments must
+explicitly run `hexroute-ingest worker`. Both modes validate their complete
+configuration and database-role boundary before serving or scheduling work. A
+deployment must never treat the default check command as a long-running
+service.
 
 Build and verify the image locally:
 

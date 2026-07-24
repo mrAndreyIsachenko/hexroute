@@ -29,6 +29,7 @@ type Result struct {
 	SecurityAudit       int64
 	SleepIntervals      int64
 	ResolvedGaps        int64
+	IncidentAlertOutbox int64
 	IncidentTransitions int64
 	TerminalAlerts      int64
 	OrphanBatches       int64
@@ -119,6 +120,15 @@ func (worker *Worker) RunOnce(
 	if err != nil {
 		return result, err
 	}
+	result.IncidentAlertOutbox, err = worker.delete(
+		ctx,
+		transaction,
+		deleteIncidentAlertOutbox,
+		transitionCutoff,
+	)
+	if err != nil {
+		return result, err
+	}
 	result.IncidentTransitions, err = worker.delete(
 		ctx,
 		transaction,
@@ -158,6 +168,7 @@ func (result Result) Total() int64 {
 		result.SecurityAudit +
 		result.SleepIntervals +
 		result.ResolvedGaps +
+		result.IncidentAlertOutbox +
 		result.IncidentTransitions +
 		result.TerminalAlerts +
 		result.OrphanBatches
@@ -264,6 +275,20 @@ const deleteIncidentTransitions = `
 	DELETE FROM incident_transitions t
 	USING candidates c
 	WHERE t.incident_transition_id = c.incident_transition_id
+`
+
+const deleteIncidentAlertOutbox = `
+	WITH candidates AS (
+		SELECT incident_id, incident_generation
+		FROM incident_alert_outbox
+		WHERE processed_at < $1
+		ORDER BY processed_at, incident_id, incident_generation
+		LIMIT $2
+	)
+	DELETE FROM incident_alert_outbox outbox
+	USING candidates candidate
+	WHERE outbox.incident_id = candidate.incident_id
+	  AND outbox.incident_generation = candidate.incident_generation
 `
 
 const deleteTerminalAlerts = `

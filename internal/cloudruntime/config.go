@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata"
 )
 
 const (
@@ -33,6 +34,21 @@ type APIConfig struct {
 	WorkerStaleAfter     time.Duration
 	FutureTolerance      time.Duration
 	ShutdownTimeout      time.Duration
+}
+
+type WorkerConfig struct {
+	MaintenanceDatabaseURL string
+	TelegramBotToken       string
+	TelegramChatID         string
+	WorkerName             string
+	Location               *time.Location
+	HeartbeatInterval      time.Duration
+	ReconcileInterval      time.Duration
+	AlertQueueInterval     time.Duration
+	DeliveryInterval       time.Duration
+	RetentionInterval      time.Duration
+	JobTimeout             time.Duration
+	ShutdownTimeout        time.Duration
 }
 
 var ErrInvalidCloudConfig = errors.New("invalid cloud runtime configuration")
@@ -83,6 +99,87 @@ func LoadAPIConfig(environment Environment) (APIConfig, error) {
 	return config, nil
 }
 
+func LoadWorkerConfig(environment Environment) (WorkerConfig, error) {
+	if environment == nil {
+		return WorkerConfig{}, ErrInvalidCloudConfig
+	}
+	locationName := environmentValue(environment, "HEXROUTE_TIMEZONE")
+	if locationName == "" {
+		locationName = "Europe/Moscow"
+	}
+	location, err := time.LoadLocation(locationName)
+	if err != nil {
+		return WorkerConfig{}, ErrInvalidCloudConfig
+	}
+	config := WorkerConfig{
+		MaintenanceDatabaseURL: environmentValue(
+			environment,
+			"HEXROUTE_MAINTENANCE_DATABASE_URL",
+		),
+		TelegramBotToken:   environmentValue(environment, "HEXROUTE_TELEGRAM_BOT_TOKEN"),
+		TelegramChatID:     environmentValue(environment, "HEXROUTE_TELEGRAM_CHAT_ID"),
+		WorkerName:         environmentValue(environment, "HEXROUTE_WORKER_NAME"),
+		Location:           location,
+		HeartbeatInterval:  30 * time.Second,
+		ReconcileInterval:  30 * time.Second,
+		AlertQueueInterval: 10 * time.Second,
+		DeliveryInterval:   10 * time.Second,
+		RetentionInterval:  time.Hour,
+		JobTimeout:         20 * time.Second,
+		ShutdownTimeout:    10 * time.Second,
+	}
+	if config.WorkerName == "" {
+		config.WorkerName = defaultWorkerName
+	}
+	durationFields := []struct {
+		name   string
+		target *time.Duration
+	}{
+		{"HEXROUTE_HEARTBEAT_INTERVAL", &config.HeartbeatInterval},
+		{"HEXROUTE_RECONCILE_INTERVAL", &config.ReconcileInterval},
+		{"HEXROUTE_ALERT_QUEUE_INTERVAL", &config.AlertQueueInterval},
+		{"HEXROUTE_DELIVERY_INTERVAL", &config.DeliveryInterval},
+		{"HEXROUTE_RETENTION_INTERVAL", &config.RetentionInterval},
+		{"HEXROUTE_JOB_TIMEOUT", &config.JobTimeout},
+		{"HEXROUTE_SHUTDOWN_TIMEOUT", &config.ShutdownTimeout},
+	}
+	for _, field := range durationFields {
+		value := environmentValue(environment, field.name)
+		if value == "" {
+			continue
+		}
+		duration, parseErr := time.ParseDuration(value)
+		if parseErr != nil || strings.TrimSpace(value) != value {
+			return WorkerConfig{}, ErrInvalidCloudConfig
+		}
+		*field.target = duration
+	}
+	if err := config.Validate(); err != nil {
+		return WorkerConfig{}, err
+	}
+	return config, nil
+}
+
+func (config WorkerConfig) Validate() error {
+	if !validWorkerName(config.WorkerName) ||
+		config.Location == nil ||
+		!validSecretValue(config.TelegramBotToken, 24, 256) ||
+		!validSecretValue(config.TelegramChatID, 1, 128) ||
+		!durationBetween(config.HeartbeatInterval, 5*time.Second, 5*time.Minute) ||
+		!durationBetween(config.ReconcileInterval, 5*time.Second, 5*time.Minute) ||
+		!durationBetween(config.AlertQueueInterval, 5*time.Second, 5*time.Minute) ||
+		!durationBetween(config.DeliveryInterval, 5*time.Second, 5*time.Minute) ||
+		!durationBetween(config.RetentionInterval, time.Minute, 24*time.Hour) ||
+		!durationBetween(config.JobTimeout, time.Second, 2*time.Minute) ||
+		!durationBetween(config.ShutdownTimeout, time.Second, time.Minute) {
+		return ErrInvalidCloudConfig
+	}
+	if _, err := databaseIdentity(config.MaintenanceDatabaseURL); err != nil {
+		return ErrInvalidCloudConfig
+	}
+	return nil
+}
+
 func (config APIConfig) Validate() error {
 	if !validListenAddress(config.ListenAddress) ||
 		len(config.BootstrapSecret) < 32 ||
@@ -128,6 +225,17 @@ func environmentValue(environment Environment, name string) string {
 		return ""
 	}
 	return value
+}
+
+func validSecretValue(value string, minimum, maximum int) bool {
+	return len(value) >= minimum &&
+		len(value) <= maximum &&
+		strings.TrimSpace(value) == value &&
+		!strings.ContainsAny(value, "\r\n\x00")
+}
+
+func durationBetween(value, minimum, maximum time.Duration) bool {
+	return value >= minimum && value <= maximum
 }
 
 func validateOrigin(value, relyingPartyID string) (*url.URL, error) {

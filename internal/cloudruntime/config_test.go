@@ -3,6 +3,7 @@ package cloudruntime
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestLoadAPIConfigRequiresDistinctDatabaseIdentitiesAndExactOrigin(t *testing.T) {
@@ -77,6 +78,68 @@ func TestLoadAPIConfigDoesNotReturnSecretValuesInErrors(t *testing.T) {
 	}
 }
 
+func TestLoadWorkerConfigUsesBoundedDefaultsAndRejectsSecrets(t *testing.T) {
+	values := validWorkerEnvironment()
+	config, err := LoadWorkerConfig(mapEnvironment(values))
+	if err != nil {
+		t.Fatalf("LoadWorkerConfig() error = %v", err)
+	}
+	if config.WorkerName != "primary" ||
+		config.Location.String() != "Europe/Moscow" ||
+		config.HeartbeatInterval != 30*time.Second ||
+		config.RetentionInterval != time.Hour {
+		t.Fatalf("LoadWorkerConfig() = %+v", config)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(map[string]string)
+	}{
+		{
+			name: "missing database",
+			mutate: func(values map[string]string) {
+				delete(values, "HEXROUTE_MAINTENANCE_DATABASE_URL")
+			},
+		},
+		{
+			name: "token newline",
+			mutate: func(values map[string]string) {
+				values["HEXROUTE_TELEGRAM_BOT_TOKEN"] += "\n"
+			},
+		},
+		{
+			name: "short heartbeat",
+			mutate: func(values map[string]string) {
+				values["HEXROUTE_HEARTBEAT_INTERVAL"] = "1s"
+			},
+		},
+		{
+			name: "long retention",
+			mutate: func(values map[string]string) {
+				values["HEXROUTE_RETENTION_INTERVAL"] = "25h"
+			},
+		},
+		{
+			name: "unknown timezone",
+			mutate: func(values map[string]string) {
+				values["HEXROUTE_TIMEZONE"] = "Unknown/Nowhere"
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			invalid := validWorkerEnvironment()
+			test.mutate(invalid)
+			if _, err := LoadWorkerConfig(mapEnvironment(invalid)); !errors.Is(
+				err,
+				ErrInvalidCloudConfig,
+			) {
+				t.Fatalf("LoadWorkerConfig() error = %v", err)
+			}
+		})
+	}
+}
+
 func validAPIEnvironment() map[string]string {
 	return map[string]string{
 		"HEXROUTE_PUBLIC_ORIGIN":          "https://status.example",
@@ -85,6 +148,14 @@ func validAPIEnvironment() map[string]string {
 		"HEXROUTE_INGEST_DATABASE_URL":    "postgres://ingest@db.example/hexroute",
 		"HEXROUTE_DASHBOARD_DATABASE_URL": "postgres://dashboard@db.example/hexroute",
 		"HEXROUTE_AUTH_DATABASE_URL":      "postgres://auth@db.example/hexroute",
+	}
+}
+
+func validWorkerEnvironment() map[string]string {
+	return map[string]string{
+		"HEXROUTE_MAINTENANCE_DATABASE_URL": "postgres://maintenance@db.example/hexroute",
+		"HEXROUTE_TELEGRAM_BOT_TOKEN":       "12345678:abcdefghijklmnop",
+		"HEXROUTE_TELEGRAM_CHAT_ID":         "-123456789",
 	}
 }
 

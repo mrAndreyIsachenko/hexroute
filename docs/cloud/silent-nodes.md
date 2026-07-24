@@ -13,6 +13,9 @@ The worker projects those immutable events into explicit PostgreSQL sleep
 intervals. A node can have at most one open interval, and start/end event IDs
 are unique. Projection is idempotent; an unmatched wake becomes a zero-length
 evidence interval but never suppresses a silent-node result.
+Each worker pass selects at most 100 unprojected events in timestamp and
+sequence order. A per-node transaction advisory lock serializes concurrent
+projectors, so worker restart cannot create a second open interval.
 
 For active nodes, the worker calculates a deadline from the last accepted event
 (or node creation before first contact), expected heartbeat interval, missed

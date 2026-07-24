@@ -1,6 +1,8 @@
 # Alert Delivery
 
-The maintenance worker expands each current incident generation into
+Every material incident transition writes an immutable snapshot to
+`incident_alert_outbox` in the same transaction. The maintenance worker claims
+those snapshots with an expiring lease and expands each generation into
 independent delivery rows. Queueing is idempotent on
 `(incident_id, incident_generation, channel)`. Each row stores the validated
 status, severity, category, component and transition-time snapshot for that
@@ -26,6 +28,10 @@ requests run. A crashed worker leaves no permanent lock: another worker can
 claim the row after lease expiry. Failed sends retain a generic result code and
 retry forever with bounded exponential delay starting at no less than one
 minute; the attempt counter saturates instead of disabling delivery.
+
+The outbox drain is capped at 50 snapshots per pass. Marking a snapshot
+processed and inserting its channel rows occur in one transaction, so a crash
+can delay queueing but retries cannot lose or duplicate a generation.
 
 Morning-digest rows are claimed in a bounded group and rendered into one
 summary with aggregate active, acknowledged and recovered counts. Telegram
