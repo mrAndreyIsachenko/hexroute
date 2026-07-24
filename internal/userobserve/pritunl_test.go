@@ -105,6 +105,9 @@ func TestServiceUsesFixedSystemLabel(t *testing.T) {
 			"system/com.pritunl.service = {\n" +
 				"\tstate = running\n" +
 				"\tpid = 912\n" +
+				"\tresource coalition = {\n" +
+				"\t\tstate = active\n" +
+				"\t}\n" +
 				"}\n",
 		),
 	}}

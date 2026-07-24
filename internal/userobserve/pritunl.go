@@ -202,15 +202,22 @@ func parseService(output []byte) (ServiceObservation, error) {
 
 func parseLaunchdFields(output []byte) map[string]string {
 	fields := make(map[string]string)
+	depth := 0
 	for _, line := range strings.Split(string(output), "\n") {
-		key, value, found := strings.Cut(line, "=")
-		if !found {
-			continue
+		if depth == 1 {
+			key, value, found := strings.Cut(line, "=")
+			if found {
+				key = strings.ToLower(strings.TrimSpace(key))
+				value = strings.ToLower(strings.TrimSpace(value))
+				if key != "" && value != "" {
+					fields[key] = value
+				}
+			}
 		}
-		key = strings.ToLower(strings.TrimSpace(key))
-		value = strings.ToLower(strings.TrimSpace(value))
-		if key != "" && value != "" {
-			fields[key] = value
+		depth += strings.Count(line, "{")
+		depth -= strings.Count(line, "}")
+		if depth < 0 {
+			return map[string]string{}
 		}
 	}
 	return fields
