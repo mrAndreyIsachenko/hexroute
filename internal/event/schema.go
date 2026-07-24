@@ -414,7 +414,8 @@ func validReason(value control.Reason) bool {
 		control.ReasonFailureThreshold, control.ReasonRecoveryAllowed,
 		control.ReasonRecoveryBudget, control.ReasonVerificationPassed,
 		control.ReasonCooldownElapsed, control.ReasonDependenciesReady,
-		control.ReasonDependenciesNotReady, control.ReasonIntentionalSleep:
+		control.ReasonDependenciesNotReady, control.ReasonIntentionalSleep,
+		control.ReasonOperatorResume:
 		return true
 	default:
 		return false

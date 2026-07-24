@@ -35,6 +35,16 @@ func TestRegisteredSchemasRoundTrip(t *testing.T) {
 			},
 		},
 		{
+			schema: SchemaTransition,
+			payload: Transition{
+				Component:  control.ComponentPritunl,
+				From:       control.StateSafeMode,
+				To:         control.StateDegraded,
+				Reason:     control.ReasonOperatorResume,
+				Generation: 5,
+			},
+		},
+		{
 			schema: SchemaAction,
 			payload: Action{
 				Kind:       control.ActionRestart,
