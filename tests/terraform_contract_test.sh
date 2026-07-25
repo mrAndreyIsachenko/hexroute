@@ -37,6 +37,11 @@ rg -q 'provider management credentials cannot enter' \
   "$terraform_root/modules/app-platform/main.tf"
 rg -q 'HEXROUTE_COMPONENT.*reserved' \
   "$terraform_root/modules/app-platform/main.tf"
+if rg -n 'disable_edge_cache' \
+  "$terraform_root/modules/app-platform/main.tf"; then
+  printf 'App Platform cache flags require a directly attached custom domain\n' >&2
+  exit 1
+fi
 rg -q 'digitalocean_database_firewall' \
   "$terraform_root/modules/managed-postgresql/main.tf"
 rg -q 'hexroute_ingest_runtime' \

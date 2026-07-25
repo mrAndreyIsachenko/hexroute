@@ -35,7 +35,6 @@ resource "digitalocean_app" "this" {
   spec {
     name                            = var.name
     region                          = var.region
-    disable_edge_cache              = var.domain == null
     enhanced_threat_control_enabled = var.domain != null
 
     dynamic "domain" {

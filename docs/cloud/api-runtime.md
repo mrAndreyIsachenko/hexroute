@@ -44,9 +44,11 @@ provider hostname exists only for the supported external-edge hop; WebAuthn
 ceremonies and state-changing browser requests remain bound to
 `HEXROUTE_PUBLIC_ORIGIN` through exact `Origin` checks.
 
-When the App Platform module has no directly attached custom domain, it
-disables App Platform edge caching so the external edge is the only caching
-policy boundary for dynamic API and dashboard responses.
+When the App Platform module has no directly attached custom domain, it omits
+the custom-domain-only App Platform edge-cache flag. Dynamic API, health,
+authentication and dashboard responses set `Cache-Control: no-store`, which
+remains the cache-safety boundary through the platform ingress and external
+edge.
 
 ### Signed Batch Wire Format
 
