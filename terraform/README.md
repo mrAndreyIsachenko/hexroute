@@ -42,3 +42,8 @@ make terraform-test
 
 The fixture under `test-fixtures/modules` is documentation and a compatibility
 test. It is not a production deployment root.
+
+`scripts/terraform-state-policy.sh` rejects local state, backup, lock-info,
+crash and conventionally named plan files anywhere outside Terraform's
+ignored internal metadata directory. The regression test proves that ignored
+files are still detected, so `.gitignore` is not the only control.
