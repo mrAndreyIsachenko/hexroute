@@ -263,7 +263,10 @@ func bindPublicHost(
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		response.Header().Set("X-Content-Type-Options", "nosniff")
-		if !strings.EqualFold(request.Host, expectedHost) &&
+		platformHealthProbe := request.URL.Path == "/livez" ||
+			request.URL.Path == "/readyz"
+		if !platformHealthProbe &&
+			!strings.EqualFold(request.Host, expectedHost) &&
 			(providerHost == "" || !strings.EqualFold(request.Host, providerHost)) {
 			response.Header().Set("Cache-Control", "no-store")
 			http.Error(response, "not found", http.StatusMisdirectedRequest)

@@ -38,11 +38,13 @@ never included.
 | `GET /`, `/login`, `/assets/*` | Server-rendered read-only dashboard |
 | `POST /auth/*` | Origin-bound WebAuthn ceremonies and logout |
 
-Every other path is not found. Requests are accepted only for the final public
-hostname and, when configured, the exact App Platform provider hostname. The
-provider hostname exists only for the supported external-edge hop; WebAuthn
-ceremonies and state-changing browser requests remain bound to
-`HEXROUTE_PUBLIC_ORIGIN` through exact `Origin` checks.
+Every other path is not found. Application requests are accepted only for the
+final public hostname and, when configured, the exact App Platform provider
+hostname. Exact `/livez` and `/readyz` requests also accept App Platform's
+internal probe Host; this exception does not expose dashboard, ingestion or
+authentication routes. The provider hostname exists only for the supported
+external-edge hop; WebAuthn ceremonies and state-changing browser requests
+remain bound to `HEXROUTE_PUBLIC_ORIGIN` through exact `Origin` checks.
 
 When the App Platform module has no directly attached custom domain, it omits
 the custom-domain-only App Platform edge-cache flag. Dynamic API, health,

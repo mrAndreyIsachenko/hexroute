@@ -128,9 +128,16 @@ func TestPostgresAPIRuntimeRequiresExclusiveRolesAndBuildsReadOnlySurface(
 			status: http.StatusNotFound,
 		},
 		{
-			name:   "alternate host",
+			name:   "platform readiness probe",
 			method: http.MethodGet,
-			path:   "/livez",
+			path:   "/readyz",
+			host:   "provider.example",
+			status: http.StatusOK,
+		},
+		{
+			name:   "alternate application host",
+			method: http.MethodGet,
+			path:   "/",
 			host:   "provider.example",
 			status: http.StatusMisdirectedRequest,
 		},

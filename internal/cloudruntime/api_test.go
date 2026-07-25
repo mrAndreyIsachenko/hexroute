@@ -42,6 +42,13 @@ func TestBindPublicHostRejectsAlternateHostBeforeHandler(t *testing.T) {
 	if response.status != http.StatusMisdirectedRequest || calls != 2 {
 		t.Fatalf("alternate-host response=%d calls=%d", response.status, calls)
 	}
+
+	request.URL.Path = "/readyz"
+	response = &responseFixture{header: make(http.Header)}
+	handler.ServeHTTP(response, request)
+	if response.status != http.StatusNoContent || calls != 3 {
+		t.Fatalf("platform-probe response=%d calls=%d", response.status, calls)
+	}
 }
 
 func TestLivenessIsBoundedAndMethodRestricted(t *testing.T) {
