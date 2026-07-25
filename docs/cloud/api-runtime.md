@@ -44,6 +44,10 @@ provider hostname exists only for the supported external-edge hop; WebAuthn
 ceremonies and state-changing browser requests remain bound to
 `HEXROUTE_PUBLIC_ORIGIN` through exact `Origin` checks.
 
+When the App Platform module has no directly attached custom domain, it
+disables App Platform edge caching so the external edge is the only caching
+policy boundary for dynamic API and dashboard responses.
+
 ### Signed Batch Wire Format
 
 The ingest body is the canonical gzip batch with:
