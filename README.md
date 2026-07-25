@@ -33,6 +33,9 @@ the explicit `hexroute-ingest api` mode; see `docs/cloud/api-runtime.md`.
 The explicit `hexroute-ingest worker` mode runs bounded heartbeat,
 sleep/incident reconciliation, transactional alert delivery and retention
 jobs; see `docs/cloud/worker-runtime.md`.
+Reusable Terraform modules define the App Platform, managed PostgreSQL,
+private Spaces, DNS, uptime-check and provider-neutral ingress contracts
+without embedding live infrastructure; see `terraform/README.md`.
 
 ## License
 

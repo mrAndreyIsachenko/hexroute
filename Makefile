@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-ctl build-observe-root build-observe-user check container-build container-test fmt postgres-test race secret-test shell-test test vet
+.PHONY: build build-ctl build-observe-root build-observe-user check container-build container-test fmt postgres-test race secret-test shell-test terraform-contract-test terraform-test test vet
 
 build:
 	go build ./cmd/...
@@ -40,6 +40,12 @@ fmt:
 postgres-test:
 	tests/postgres_migrations_test.sh
 
+terraform-contract-test:
+	tests/terraform_contract_test.sh
+
+terraform-test:
+	tests/terraform_modules_test.sh
+
 shell-test: build-observe-root build-observe-user
 	bash -n scripts/baseline/*.sh scripts/macos/*.sh tests/*.sh
 	tests/baseline_archives_test.sh
@@ -47,6 +53,7 @@ shell-test: build-observe-root build-observe-user
 	tests/container_contract_test.sh
 	tests/observe_root_launchd_test.sh
 	tests/observe_user_launchd_test.sh
+	tests/terraform_contract_test.sh
 
 secret-test:
 	go test ./internal/secretguard -run TestRepositorySecretCanaries -count=1
