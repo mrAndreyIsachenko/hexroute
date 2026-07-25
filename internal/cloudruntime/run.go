@@ -30,6 +30,15 @@ func run(
 	runAPI apiRunner,
 	runWorker workerRunner,
 ) int {
+	if len(args) == 0 {
+		component := environmentValue(environment, "HEXROUTE_COMPONENT")
+		if component == "" {
+			return command.Run(
+				"hexroute-ingest", []string{"--check"}, stdout, stderr,
+			)
+		}
+		args = []string{component}
+	}
 	if len(args) == 1 && (args[0] == "--check" || args[0] == "--version") {
 		return command.Run("hexroute-ingest", args, stdout, stderr)
 	}

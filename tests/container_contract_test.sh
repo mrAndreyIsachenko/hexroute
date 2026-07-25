@@ -22,7 +22,9 @@ require_pattern '^FROM \$\{GO_BUILDER_IMAGE\} AS builder$' "$dockerfile"
 require_pattern '^FROM scratch AS runtime$' "$dockerfile"
 require_pattern '^USER 65532:65532$' "$dockerfile"
 require_pattern '^ENTRYPOINT \["/usr/local/bin/hexroute-ingest"\]$' "$dockerfile"
-require_pattern '^CMD \["--check"\]$' "$dockerfile"
+require_pattern \
+  '^COPY --from=builder --chmod=0555 /out/hexroute-ingest /usr/local/bin/hexroute-ingest$' \
+  "$dockerfile"
 require_pattern '^COPY cmd/hexroute-ingest ' "$dockerfile"
 require_pattern '^COPY internal ' "$dockerfile"
 
@@ -33,6 +35,10 @@ if rg --quiet '^[[:space:]]*(ADD|RUN[[:space:]].*(apk|apt|curl|wget))[[:space:]]
 fi
 if rg --quiet '^COPY[[:space:]]+\.[[:space:]]' "$dockerfile"; then
   printf 'Dockerfile copies the unrestricted repository context\n' >&2
+  exit 1
+fi
+if rg --quiet '^CMD[[:space:]]' "$dockerfile"; then
+  printf 'Dockerfile CMD would bypass environment-selected App Platform dispatch\n' >&2
   exit 1
 fi
 

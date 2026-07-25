@@ -30,6 +30,11 @@ entrypoint="$(docker image inspect \
   printf 'unexpected image entrypoint: %s\n' "$entrypoint" >&2
   exit 1
 }
+default_command="$(docker image inspect --format '{{json .Config.Cmd}}' "$image")"
+[[ "$default_command" == 'null' ]] || {
+  printf 'unexpected image default command: %s\n' "$default_command" >&2
+  exit 1
+}
 
 for component in api worker; do
   container="hexroute-${component}-contract-$$"
@@ -44,8 +49,7 @@ for component in api worker; do
     --network none \
     --pids-limit 128 \
     --env "HEXROUTE_COMPONENT=$component" \
-    "$image" \
-    --check >/dev/null
+    "$image" >/dev/null
 
   [[ "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$container")" == "true" ]] || {
     printf '%s root filesystem is not read-only\n' "$component" >&2
@@ -71,12 +75,28 @@ for component in api worker; do
     exit 1
   }
 
-  output="$(docker start --attach "$container")"
-  [[ "$output" == *'"event":"startup_check"'* ]] || {
-    printf '%s startup check did not complete: %s\n' "$component" "$output" >&2
+  output="$(docker start --attach "$container" 2>&1 || true)"
+  exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$container")"
+  [[ "$exit_code" == "1" ]] || {
+    printf '%s environment dispatch exit code is %s, expected 1 without config\n' \
+      "$component" "$exit_code" >&2
+    exit 1
+  }
+  [[ "$output" == *'"reason":"invalid_configuration"'* ]] || {
+    printf '%s environment dispatch did not reach component config validation\n' \
+      "$component" >&2
     exit 1
   }
 done
+
+default_check="hexroute-default-check-contract-$$"
+containers+=("$default_check")
+docker create --name "$default_check" "$image" >/dev/null
+output="$(docker start --attach "$default_check")"
+[[ "$output" == *'"event":"startup_check"'* ]] || {
+  printf 'default startup check did not complete: %s\n' "$output" >&2
+  exit 1
+}
 
 for component in api worker; do
   failure="hexroute-${component}-invalid-config-contract-$$"

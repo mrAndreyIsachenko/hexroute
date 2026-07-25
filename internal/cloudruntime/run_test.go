@@ -144,27 +144,70 @@ func TestRunDispatchesValidatedWorkerWithoutLoggingConfiguration(t *testing.T) {
 	}
 }
 
+func TestRunDispatchesAppPlatformComponentWithoutOverridingEntrypoint(t *testing.T) {
+	values := validAPIEnvironment()
+	values["HEXROUTE_COMPONENT"] = "api"
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+		called bool
+	)
+	exitCode := run(
+		context.Background(),
+		nil,
+		mapEnvironment(values),
+		&stdout,
+		&stderr,
+		func(
+			_ context.Context,
+			config APIConfig,
+			_ *logging.Logger,
+		) error {
+			called = true
+			return config.Validate()
+		},
+		nil,
+	)
+	if exitCode != 0 || !called || stderr.Len() != 0 {
+		t.Fatalf(
+			"run(app-platform api) exit=%d called=%t stderr=%q",
+			exitCode,
+			called,
+			stderr.String(),
+		)
+	}
+}
+
 func TestRunPreservesContainerCheckAndRejectsUnsupportedModes(t *testing.T) {
 	for _, test := range []struct {
-		args []string
-		exit int
+		name   string
+		args   []string
+		values map[string]string
+		exit   int
 	}{
-		{args: []string{"--check"}, exit: 0},
-		{args: []string{"unsupported"}, exit: 2},
-		{args: nil, exit: 2},
+		{name: "explicit check", args: []string{"--check"}, exit: 0},
+		{name: "default check", args: nil, exit: 0},
+		{name: "unsupported argument", args: []string{"unsupported"}, exit: 2},
+		{
+			name:   "unsupported component",
+			values: map[string]string{"HEXROUTE_COMPONENT": "unsupported"},
+			exit:   2,
+		},
 	} {
-		var stdout, stderr bytes.Buffer
-		exitCode := run(
-			context.Background(),
-			test.args,
-			mapEnvironment(nil),
-			&stdout,
-			&stderr,
-			nil,
-			nil,
-		)
-		if exitCode != test.exit {
-			t.Fatalf("run(%v) exit=%d, want %d", test.args, exitCode, test.exit)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			exitCode := run(
+				context.Background(),
+				test.args,
+				mapEnvironment(test.values),
+				&stdout,
+				&stderr,
+				nil,
+				nil,
+			)
+			if exitCode != test.exit {
+				t.Fatalf("run(%v) exit=%d, want %d", test.args, exitCode, test.exit)
+			}
+		})
 	}
 }

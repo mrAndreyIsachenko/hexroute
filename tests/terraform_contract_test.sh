@@ -33,10 +33,14 @@ fi
 
 rg -q 'digest[[:space:]]*=[[:space:]]*var.image.digest' \
   "$terraform_root/modules/app-platform/main.tf"
-rg -q 'provider management tokens cannot enter' \
+rg -q 'provider management credentials cannot enter' \
+  "$terraform_root/modules/app-platform/main.tf"
+rg -q 'HEXROUTE_COMPONENT.*reserved' \
   "$terraform_root/modules/app-platform/main.tf"
 rg -q 'digitalocean_database_firewall' \
   "$terraform_root/modules/managed-postgresql/main.tf"
+rg -q 'hexroute_ingest_runtime' \
+  "$terraform_root/modules/managed-postgresql/variables.tf"
 rg -q 'acl[[:space:]]*=[[:space:]]*"private"' \
   "$terraform_root/modules/private-spaces/main.tf"
 rg -q 'force_destroy[[:space:]]*=[[:space:]]*false' \

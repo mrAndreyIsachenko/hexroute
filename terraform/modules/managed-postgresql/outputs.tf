@@ -15,10 +15,10 @@ output "database_name" {
 
 output "runtime_database_urls" {
   value = {
-    for name, user in digitalocean_database_user.runtime :
-    name => format(
+    for identity, user in digitalocean_database_user.runtime :
+    identity => format(
       "postgresql://%s:%s@%s:%d/%s?sslmode=require",
-      urlencode(name),
+      urlencode(user.name),
       urlencode(user.password),
       digitalocean_database_cluster.this.host,
       digitalocean_database_cluster.this.port,
@@ -26,5 +26,26 @@ output "runtime_database_urls" {
     )
   }
   description = "TLS database URLs for the distinct runtime identities."
+  sensitive   = true
+}
+
+output "runtime_user_names" {
+  value = {
+    for identity, user in digitalocean_database_user.runtime :
+    identity => user.name
+  }
+  description = "Deployment login names keyed by fixed application identity."
+}
+
+output "bootstrap_database_url" {
+  value = format(
+    "postgresql://%s:%s@%s:%d/%s?sslmode=require",
+    urlencode(digitalocean_database_cluster.this.user),
+    urlencode(digitalocean_database_cluster.this.password),
+    digitalocean_database_cluster.this.host,
+    digitalocean_database_cluster.this.port,
+    urlencode(digitalocean_database_db.this.name),
+  )
+  description = "Bootstrap-only administrator URL; never deliver it to an application component."
   sensitive   = true
 }

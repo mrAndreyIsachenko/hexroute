@@ -33,6 +33,8 @@ resource "digitalocean_database_user" "runtime" {
 }
 
 resource "digitalocean_database_firewall" "this" {
+  count = length(var.firewall_rules) == 0 ? 0 : 1
+
   cluster_id = digitalocean_database_cluster.this.id
 
   dynamic "rule" {

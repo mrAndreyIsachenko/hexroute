@@ -37,25 +37,33 @@ variable "database_name" {
 }
 
 variable "runtime_users" {
-  type        = set(string)
-  description = "Distinct runtime login names; SQL migrations grant group roles."
-  default = [
-    "hexroute_dashboard",
-    "hexroute_dashboard_auth",
-    "hexroute_ingest",
-    "hexroute_maintenance",
-    "hexroute_migrator",
-  ]
+  type        = map(string)
+  description = "Distinct deployment login names keyed by fixed application identity; SQL bootstrap grants the matching NOLOGIN group roles."
+  default = {
+    dashboard      = "hexroute_dashboard_runtime"
+    dashboard_auth = "hexroute_dashboard_auth_runtime"
+    ingest         = "hexroute_ingest_runtime"
+    maintenance    = "hexroute_maintenance_runtime"
+    migrator       = "hexroute_migrator_runtime"
+  }
 
   validation {
     condition = (
-      length(var.runtime_users) >= 5 &&
+      length(setsubtract(
+        toset(keys(var.runtime_users)),
+        toset(["dashboard", "dashboard_auth", "ingest", "maintenance", "migrator"]),
+      )) == 0 &&
+      length(setsubtract(
+        toset(["dashboard", "dashboard_auth", "ingest", "maintenance", "migrator"]),
+        toset(keys(var.runtime_users)),
+      )) == 0 &&
+      length(toset(values(var.runtime_users))) == 5 &&
       alltrue([
-        for name in var.runtime_users :
+        for name in values(var.runtime_users) :
         can(regex("^[a-z][a-z0-9_]{2,62}$", name))
       ])
     )
-    error_message = "at least five valid, distinct runtime users are required."
+    error_message = "all five application identities require valid, distinct deployment login names."
   }
 }
 
@@ -64,18 +72,18 @@ variable "firewall_rules" {
     type  = string
     value = string
   }))
-  description = "Trusted-source rules; at least one is required."
+  description = "Trusted-source rules. An empty set defers firewall creation until the App Platform ID exists."
+  default     = []
 
   validation {
     condition = (
-      length(var.firewall_rules) > 0 &&
       alltrue([
         for rule in var.firewall_rules :
         contains(["app", "droplet", "ip_addr", "k8s", "tag"], rule.type) &&
         length(rule.value) > 0
       ])
     )
-    error_message = "at least one valid database firewall rule is required."
+    error_message = "every database firewall rule must have a supported type and non-empty value."
   }
 }
 

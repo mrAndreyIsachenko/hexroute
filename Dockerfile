@@ -32,7 +32,7 @@ LABEL org.opencontainers.image.title="Hexroute cloud runtime" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=builder --chown=65532:65532 /out/hexroute-ingest /usr/local/bin/hexroute-ingest
+COPY --from=builder --chmod=0555 /out/hexroute-ingest /usr/local/bin/hexroute-ingest
 
 USER 65532:65532
 WORKDIR /
@@ -44,4 +44,3 @@ EXPOSE 8080
 STOPSIGNAL SIGTERM
 
 ENTRYPOINT ["/usr/local/bin/hexroute-ingest"]
-CMD ["--check"]
