@@ -14,6 +14,7 @@ func TestLoadAPIConfigRequiresDistinctDatabaseIdentitiesAndExactOrigin(t *testin
 	}
 	if config.ListenAddress != ":8080" ||
 		config.ExpectedHost != "status.example" ||
+		config.ProviderHost != "hexroute-example.ondigitalocean.app" ||
 		config.WorkerName != "primary" {
 		t.Fatalf("LoadAPIConfig() = %+v", config)
 	}
@@ -32,6 +33,19 @@ func TestLoadAPIConfigRequiresDistinctDatabaseIdentitiesAndExactOrigin(t *testin
 			name: "rp mismatch",
 			mutate: func(values map[string]string) {
 				values["HEXROUTE_WEBAUTHN_RP_ID"] = "other.example"
+			},
+		},
+		{
+			name: "non-DigitalOcean provider origin",
+			mutate: func(values map[string]string) {
+				values["HEXROUTE_PROVIDER_ORIGIN"] = "https://provider.example"
+			},
+		},
+		{
+			name: "provider origin path",
+			mutate: func(values map[string]string) {
+				values["HEXROUTE_PROVIDER_ORIGIN"] =
+					"https://hexroute-example.ondigitalocean.app/path"
 			},
 		},
 		{
@@ -143,6 +157,7 @@ func TestLoadWorkerConfigUsesBoundedDefaultsAndRejectsSecrets(t *testing.T) {
 func validAPIEnvironment() map[string]string {
 	return map[string]string{
 		"HEXROUTE_PUBLIC_ORIGIN":          "https://status.example",
+		"HEXROUTE_PROVIDER_ORIGIN":        "https://hexroute-example.ondigitalocean.app",
 		"HEXROUTE_WEBAUTHN_RP_ID":         "status.example",
 		"HEXROUTE_BOOTSTRAP_SECRET":       "0123456789abcdef0123456789abcdef",
 		"HEXROUTE_INGEST_DATABASE_URL":    "postgres://ingest@db.example/hexroute",

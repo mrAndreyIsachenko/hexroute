@@ -252,14 +252,19 @@ func buildAPIHandler(
 	mux.Handle("/readyz", readiness)
 	mux.Handle(cloudingest.IngestPath, ingestHandler)
 	mux.Handle("/", dashboardRouter)
-	return bindPublicHost(mux, config.ExpectedHost), nil
+	return bindPublicHost(mux, config.ExpectedHost, config.ProviderHost), nil
 }
 
-func bindPublicHost(next http.Handler, expectedHost string) http.Handler {
+func bindPublicHost(
+	next http.Handler,
+	expectedHost string,
+	providerHost string,
+) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		response.Header().Set("X-Content-Type-Options", "nosniff")
-		if !strings.EqualFold(request.Host, expectedHost) {
+		if !strings.EqualFold(request.Host, expectedHost) &&
+			(providerHost == "" || !strings.EqualFold(request.Host, providerHost)) {
 			response.Header().Set("Cache-Control", "no-store")
 			http.Error(response, "not found", http.StatusMisdirectedRequest)
 			return

@@ -12,6 +12,7 @@ The process reads these runtime environment variables:
 | Variable | Purpose |
 | --- | --- |
 | `HEXROUTE_PUBLIC_ORIGIN` | Exact final HTTPS dashboard origin |
+| `HEXROUTE_PROVIDER_ORIGIN` | Optional exact App Platform `*.ondigitalocean.app` ingress used behind an external edge |
 | `HEXROUTE_WEBAUTHN_RP_ID` | DNS name equal to the origin hostname |
 | `HEXROUTE_BOOTSTRAP_SECRET` | Initial passkey bootstrap value, at least 32 bytes |
 | `HEXROUTE_INGEST_DATABASE_URL` | Login that is exclusively a member of `hexroute_ingest` |
@@ -37,8 +38,11 @@ never included.
 | `GET /`, `/login`, `/assets/*` | Server-rendered read-only dashboard |
 | `POST /auth/*` | Origin-bound WebAuthn ceremonies and logout |
 
-Every other path is not found. Requests with a `Host` different from the final
-configured origin are rejected before routing.
+Every other path is not found. Requests are accepted only for the final public
+hostname and, when configured, the exact App Platform provider hostname. The
+provider hostname exists only for the supported external-edge hop; WebAuthn
+ceremonies and state-changing browser requests remain bound to
+`HEXROUTE_PUBLIC_ORIGIN` through exact `Origin` checks.
 
 ### Signed Batch Wire Format
 

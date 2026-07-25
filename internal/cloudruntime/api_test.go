@@ -17,7 +17,7 @@ func TestBindPublicHostRejectsAlternateHostBeforeHandler(t *testing.T) {
 	) {
 		calls++
 		response.WriteHeader(http.StatusNoContent)
-	}), "status.example")
+	}), "status.example", "hexroute-example.ondigitalocean.app")
 
 	request, err := http.NewRequest(http.MethodGet, "https://status.example/", nil)
 	if err != nil {
@@ -29,10 +29,17 @@ func TestBindPublicHostRejectsAlternateHostBeforeHandler(t *testing.T) {
 		t.Fatalf("expected-host response=%d calls=%d", response.status, calls)
 	}
 
+	request.Host = "hexroute-example.ondigitalocean.app"
+	response = &responseFixture{header: make(http.Header)}
+	handler.ServeHTTP(response, request)
+	if response.status != http.StatusNoContent || calls != 2 {
+		t.Fatalf("provider-host response=%d calls=%d", response.status, calls)
+	}
+
 	request.Host = "provider-host.example"
 	response = &responseFixture{header: make(http.Header)}
 	handler.ServeHTTP(response, request)
-	if response.status != http.StatusMisdirectedRequest || calls != 1 {
+	if response.status != http.StatusMisdirectedRequest || calls != 2 {
 		t.Fatalf("alternate-host response=%d calls=%d", response.status, calls)
 	}
 }

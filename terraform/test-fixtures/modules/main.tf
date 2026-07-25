@@ -117,6 +117,7 @@ module "ingress_hosts" {
 output "contract" {
   value = {
     app_urn                     = module.app_platform.urn
+    app_default_ingress         = module.app_platform.default_ingress
     database_urn                = module.managed_postgresql.cluster_urn
     incident_bucket             = module.private_spaces.bucket_name
     dns_records                 = module.dns_records.fqdns

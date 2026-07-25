@@ -24,6 +24,7 @@ type APIConfig struct {
 	ListenAddress        string
 	PublicOrigin         string
 	ExpectedHost         string
+	ProviderHost         string
 	RelyingPartyID       string
 	BootstrapSecret      string
 	IngestDatabaseURL    string
@@ -72,10 +73,17 @@ func LoadAPIConfig(environment Environment) (APIConfig, error) {
 	if err != nil {
 		return APIConfig{}, ErrInvalidCloudConfig
 	}
+	providerHost, err := validateProviderOrigin(
+		environmentValue(environment, "HEXROUTE_PROVIDER_ORIGIN"),
+	)
+	if err != nil {
+		return APIConfig{}, ErrInvalidCloudConfig
+	}
 	config := APIConfig{
 		ListenAddress:     listenAddress,
 		PublicOrigin:      origin,
 		ExpectedHost:      parsedOrigin.Host,
+		ProviderHost:      providerHost,
 		RelyingPartyID:    relyingPartyID,
 		BootstrapSecret:   environmentValue(environment, "HEXROUTE_BOOTSTRAP_SECRET"),
 		IngestDatabaseURL: environmentValue(environment, "HEXROUTE_INGEST_DATABASE_URL"),
@@ -198,7 +206,8 @@ func (config APIConfig) Validate() error {
 		return ErrInvalidCloudConfig
 	}
 	origin, err := validateOrigin(config.PublicOrigin, config.RelyingPartyID)
-	if err != nil || !strings.EqualFold(config.ExpectedHost, origin.Host) {
+	if err != nil || !strings.EqualFold(config.ExpectedHost, origin.Host) ||
+		!validProviderHost(config.ProviderHost) {
 		return ErrInvalidCloudConfig
 	}
 	identities := make(map[string]struct{}, 3)
@@ -256,6 +265,34 @@ func validateOrigin(value, relyingPartyID string) (*url.URL, error) {
 		return nil, ErrInvalidCloudConfig
 	}
 	return parsed, nil
+}
+
+func validateProviderOrigin(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil ||
+		parsed.Scheme != "https" ||
+		parsed.Host == "" ||
+		parsed.User != nil ||
+		(parsed.Path != "" && parsed.Path != "/") ||
+		parsed.RawQuery != "" ||
+		parsed.Fragment != "" ||
+		(parsed.Port() != "" && parsed.Port() != "443") ||
+		!strings.HasSuffix(parsed.Hostname(), ".ondigitalocean.app") ||
+		!validDNSName(parsed.Hostname()) {
+		return "", ErrInvalidCloudConfig
+	}
+	return parsed.Host, nil
+}
+
+func validProviderHost(value string) bool {
+	if value == "" {
+		return true
+	}
+	validated, err := validateProviderOrigin("https://" + value)
+	return err == nil && strings.EqualFold(validated, value)
 }
 
 func databaseIdentity(value string) (string, error) {
