@@ -40,12 +40,27 @@ while IFS= read -r migration; do
     --single-transaction <"$migration" >/dev/null
 done < <(mapfile_compat '*.up.sql')
 
+docker exec "$container" psql \
+  --username postgres \
+  --dbname postgres \
+  --set ON_ERROR_STOP=1 \
+  --command 'DROP TABLE hexroute_schema_migrations' >/dev/null
+
+published_address="$(docker port "$container" 5432/tcp | tail -n 1)"
+postgres_port="${published_address##*:}"
+HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+GOCACHE=/tmp/hexroute-postgres-go-cache \
+  go test ./internal/databasemigrate \
+    -run TestPostgresRunnerAdoptsBaselineAndSeedsOnePrincipal \
+    -count=1
+
 required_tables=(
   nodes node_public_keys batches events node_sequence_cursors sequence_gaps
   security_audit_records latest_component_states sleep_intervals incidents
   incident_events incident_transitions incident_bundles config_versions
   deployments worker_heartbeats dashboard_principals passkey_credentials
   alert_deliveries incident_alert_outbox slo_aggregates slo_incident_links
+  hexroute_schema_migrations
 )
 for table in "${required_tables[@]}"; do
   found="$(docker exec "$container" psql --username postgres --dbname postgres \
@@ -223,8 +238,6 @@ docker exec "$container" psql \
              CREATE ROLE hexroute_test_dashboard_auth LOGIN;
              GRANT hexroute_dashboard_auth TO hexroute_test_dashboard_auth;" >/dev/null
 
-published_address="$(docker port "$container" 5432/tcp | tail -n 1)"
-postgres_port="${published_address##*:}"
 HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 HEXROUTE_TEST_POSTGRES_INGEST_DSN="postgres://hexroute_test_ingest@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 GOCACHE=/tmp/hexroute-postgres-go-cache \

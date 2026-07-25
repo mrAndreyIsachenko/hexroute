@@ -35,6 +35,7 @@ func TestRunDispatchesValidatedAPIWithoutLoggingConfiguration(t *testing.T) {
 			return nil
 		},
 		nil,
+		nil,
 	)
 	if exitCode != 0 || !called || stderr.Len() != 0 {
 		t.Fatalf(
@@ -87,6 +88,7 @@ func TestRunRejectsInvalidConfigAndRuntimeWithBoundedLogs(t *testing.T) {
 				&stderr,
 				test.runner,
 				nil,
+				nil,
 			)
 			if exitCode != 1 ||
 				!strings.Contains(stderr.String(), test.eventName) ||
@@ -128,6 +130,7 @@ func TestRunDispatchesValidatedWorkerWithoutLoggingConfiguration(t *testing.T) {
 			}
 			return nil
 		},
+		nil,
 	)
 	if exitCode != 0 || !called || stderr.Len() != 0 {
 		t.Fatalf(
@@ -167,6 +170,7 @@ func TestRunDispatchesAppPlatformComponentWithoutOverridingEntrypoint(t *testing
 			return config.Validate()
 		},
 		nil,
+		nil,
 	)
 	if exitCode != 0 || !called || stderr.Len() != 0 {
 		t.Fatalf(
@@ -204,10 +208,44 @@ func TestRunPreservesContainerCheckAndRejectsUnsupportedModes(t *testing.T) {
 				&stderr,
 				nil,
 				nil,
+				nil,
 			)
 			if exitCode != test.exit {
 				t.Fatalf("run(%v) exit=%d, want %d", test.args, exitCode, test.exit)
 			}
 		})
+	}
+}
+
+func TestRunDispatchesValidatedMigrationWithoutLoggingSecrets(t *testing.T) {
+	values := validMigrationEnvironment()
+	var stdout, stderr bytes.Buffer
+	called := false
+	exitCode := run(
+		context.Background(),
+		[]string{"migrate"},
+		mapEnvironment(values),
+		&stdout,
+		&stderr,
+		nil,
+		nil,
+		func(
+			_ context.Context,
+			config MigrationConfig,
+			_ *logging.Logger,
+		) error {
+			called = true
+			if config.BootstrapUsername != "operator" ||
+				config.BootstrapDisplayName != "Operator" {
+				t.Fatalf("config = %+v", config)
+			}
+			return nil
+		},
+	)
+	if exitCode != 0 || !called || stderr.Len() != 0 {
+		t.Fatalf("run(migrate) exit=%d called=%t stderr=%q", exitCode, called, stderr.String())
+	}
+	if strings.Contains(stdout.String(), values["HEXROUTE_MIGRATOR_DATABASE_URL"]) {
+		t.Fatalf("stdout leaked migration database URL")
 	}
 }

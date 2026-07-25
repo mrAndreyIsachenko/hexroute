@@ -5,7 +5,7 @@ contain a deployable root module.
 
 | Module | Responsibility |
 | --- | --- |
-| `app-platform` | Digest-pinned API and worker components with bounded health and secret environment contracts |
+| `app-platform` | Digest-pinned API, worker and pre-deploy migration components with bounded health and secret environment contracts |
 | `managed-postgresql` | Managed PostgreSQL, distinct runtime identities and an explicit source firewall |
 | `private-spaces` | Private, versioned incident storage with at most 30 days of retention and a bucket-scoped runtime key |
 | `dns-records` | Stable DigitalOcean DNS records |

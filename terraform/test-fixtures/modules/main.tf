@@ -32,6 +32,9 @@ module "app_platform" {
     instance_size_slug = "basic-xxs"
     instance_count     = 1
   }
+  migration = {
+    instance_size_slug = "basic-xxs"
+  }
   api_environment = {
     HEXROUTE_PUBLIC_ORIGIN = "https://status.example.invalid"
   }
@@ -43,6 +46,13 @@ module "app_platform" {
   }
   worker_secret_environment = {
     HEXROUTE_DATABASE_URL = "secret://database/worker"
+  }
+  migration_environment = {
+    HEXROUTE_BOOTSTRAP_USERNAME     = "operator"
+    HEXROUTE_BOOTSTRAP_DISPLAY_NAME = "Operator"
+  }
+  migration_secret_environment = {
+    HEXROUTE_MIGRATOR_DATABASE_URL = "secret://database/migrator"
   }
 }
 

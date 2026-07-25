@@ -24,6 +24,7 @@ func TestPostgreSQLMigrationManifest(t *testing.T) {
 		"incident_bundle_expiry",
 		"dashboard_passkey_auth",
 		"incident_alert_outbox",
+		"schema_migration_ledger",
 	}
 	if len(migrations) != len(wantNames) {
 		t.Fatalf("migration count = %d, want %d", len(migrations), len(wantNames))
@@ -76,6 +77,7 @@ func TestPostgreSQLMigrationsDefineRequiredCloudData(t *testing.T) {
 		"incident_alert_outbox",
 		"slo_aggregates",
 		"slo_incident_links",
+		"hexroute_schema_migrations",
 	}
 	for _, table := range requiredTables {
 		if !strings.Contains(schema, "create table "+table) {

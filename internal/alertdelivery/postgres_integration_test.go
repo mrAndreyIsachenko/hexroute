@@ -274,7 +274,7 @@ func TestPostgresIncidentOutboxQueuesSnapshotExactlyOnce(t *testing.T) {
 		resetAlertIntegrationData(t, cleanupCtx, admin)
 	})
 
-	observedAt := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
+	observedAt := time.Now().UTC().Truncate(time.Second).Add(time.Minute)
 	incidentStore, err := cloudincident.NewPostgresStore(
 		maintenance,
 		bytes.NewReader(bytes.Repeat([]byte{0x71}, 64)),

@@ -154,6 +154,32 @@ func TestLoadWorkerConfigUsesBoundedDefaultsAndRejectsSecrets(t *testing.T) {
 	}
 }
 
+func TestLoadMigrationConfigUsesBoundedPrincipalAndMigratorURL(t *testing.T) {
+	values := validMigrationEnvironment()
+	config, err := LoadMigrationConfig(mapEnvironment(values))
+	if err != nil {
+		t.Fatalf("LoadMigrationConfig() error = %v", err)
+	}
+	if config.BootstrapUsername != "operator" ||
+		config.BootstrapDisplayName != "Operator" {
+		t.Fatalf("LoadMigrationConfig() = %+v", config)
+	}
+	for _, mutate := range []func(map[string]string){
+		func(values map[string]string) { delete(values, "HEXROUTE_MIGRATOR_DATABASE_URL") },
+		func(values map[string]string) { values["HEXROUTE_BOOTSTRAP_USERNAME"] = "Operator" },
+		func(values map[string]string) { values["HEXROUTE_BOOTSTRAP_DISPLAY_NAME"] = "Operator\n" },
+	} {
+		invalid := validMigrationEnvironment()
+		mutate(invalid)
+		if _, err = LoadMigrationConfig(mapEnvironment(invalid)); !errors.Is(
+			err,
+			ErrInvalidCloudConfig,
+		) {
+			t.Fatalf("LoadMigrationConfig() error = %v", err)
+		}
+	}
+}
+
 func validAPIEnvironment() map[string]string {
 	return map[string]string{
 		"HEXROUTE_PUBLIC_ORIGIN":          "https://status.example",
@@ -171,6 +197,14 @@ func validWorkerEnvironment() map[string]string {
 		"HEXROUTE_MAINTENANCE_DATABASE_URL": "postgres://maintenance@db.example/hexroute",
 		"HEXROUTE_TELEGRAM_BOT_TOKEN":       "12345678:abcdefghijklmnop",
 		"HEXROUTE_TELEGRAM_CHAT_ID":         "-123456789",
+	}
+}
+
+func validMigrationEnvironment() map[string]string {
+	return map[string]string{
+		"HEXROUTE_MIGRATOR_DATABASE_URL":  "postgres://migrator@db.example/hexroute",
+		"HEXROUTE_BOOTSTRAP_USERNAME":     "operator",
+		"HEXROUTE_BOOTSTRAP_DISPLAY_NAME": "Operator",
 	}
 }
 

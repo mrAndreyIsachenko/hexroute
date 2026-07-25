@@ -26,13 +26,17 @@ status, redacted diagnostics and generation-guarded safe-mode resume without
 exposing arbitrary commands; see `docs/macos/operator.md`.
 Actionable user incidents use fixed, redacted macOS notification templates;
 see `docs/macos/notifications.md`.
-The cloud API and worker share a pinned, non-root `scratch` image contract with
+The cloud API, worker and pre-deploy migrator share a pinned, non-root
+`scratch` image contract with
 a read-only root filesystem; see `docs/cloud/containers.md`.
 The signed-ingest, readiness and passkey/dashboard HTTP surface is assembled by
 the explicit `hexroute-ingest api` mode; see `docs/cloud/api-runtime.md`.
 The explicit `hexroute-ingest worker` mode runs bounded heartbeat,
 sleep/incident reconciliation, transactional alert delivery and retention
 jobs; see `docs/cloud/worker-runtime.md`.
+The explicit `hexroute-ingest migrate` mode applies checksum-verified schema
+changes and idempotently seeds the first dashboard principal before rollout;
+see `docs/cloud/migration-runtime.md`.
 Reusable Terraform modules define the App Platform, managed PostgreSQL,
 private Spaces, DNS, uptime-check and provider-neutral ingress contracts
 without embedding live infrastructure; see `terraform/README.md`.

@@ -42,12 +42,16 @@ if rg -n 'disable_edge_cache' \
   printf 'App Platform cache flags require a directly attached custom domain\n' >&2
   exit 1
 fi
-for component in service worker; do
+for component in service worker job; do
   rg -q "spec\\[0\\]\\.${component}\\[0\\]\\.image\\[0\\]\\.registry," \
     "$terraform_root/modules/app-platform/main.tf"
   rg -q "spec\\[0\\]\\.${component}\\[0\\]\\.image\\[0\\]\\.registry_credentials," \
     "$terraform_root/modules/app-platform/main.tf"
 done
+rg -q 'kind[[:space:]]*=[[:space:]]*"PRE_DEPLOY"' \
+  "$terraform_root/modules/app-platform/main.tf"
+rg -q 'migration job must receive exactly the migrator database URL secret' \
+  "$terraform_root/modules/app-platform/main.tf"
 [[ "$(rg -F -c '  lifecycle {' \
   "$terraform_root/modules/app-platform/main.tf")" == 1 ]] || {
   printf 'App Platform resource must have exactly one lifecycle block\n' >&2

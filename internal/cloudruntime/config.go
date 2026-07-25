@@ -52,6 +52,12 @@ type WorkerConfig struct {
 	ShutdownTimeout        time.Duration
 }
 
+type MigrationConfig struct {
+	MigratorDatabaseURL  string
+	BootstrapUsername    string
+	BootstrapDisplayName string
+}
+
 var ErrInvalidCloudConfig = errors.New("invalid cloud runtime configuration")
 
 func LoadAPIConfig(environment Environment) (APIConfig, error) {
@@ -166,6 +172,50 @@ func LoadWorkerConfig(environment Environment) (WorkerConfig, error) {
 		return WorkerConfig{}, err
 	}
 	return config, nil
+}
+
+func LoadMigrationConfig(environment Environment) (MigrationConfig, error) {
+	if environment == nil {
+		return MigrationConfig{}, ErrInvalidCloudConfig
+	}
+	config := MigrationConfig{
+		MigratorDatabaseURL: environmentValue(
+			environment,
+			"HEXROUTE_MIGRATOR_DATABASE_URL",
+		),
+		BootstrapUsername: environmentValue(
+			environment,
+			"HEXROUTE_BOOTSTRAP_USERNAME",
+		),
+		BootstrapDisplayName: environmentValue(
+			environment,
+			"HEXROUTE_BOOTSTRAP_DISPLAY_NAME",
+		),
+	}
+	if config.BootstrapUsername == "" {
+		config.BootstrapUsername = "operator"
+	}
+	if config.BootstrapDisplayName == "" {
+		config.BootstrapDisplayName = "Operator"
+	}
+	if err := config.Validate(); err != nil {
+		return MigrationConfig{}, err
+	}
+	return config, nil
+}
+
+func (config MigrationConfig) Validate() error {
+	if !validWorkerName(config.BootstrapUsername) ||
+		len(config.BootstrapDisplayName) == 0 ||
+		len(config.BootstrapDisplayName) > 128 ||
+		strings.TrimSpace(config.BootstrapDisplayName) != config.BootstrapDisplayName ||
+		strings.ContainsAny(config.BootstrapDisplayName, "\r\n\x00") {
+		return ErrInvalidCloudConfig
+	}
+	if _, err := databaseIdentity(config.MigratorDatabaseURL); err != nil {
+		return ErrInvalidCloudConfig
+	}
+	return nil
 }
 
 func (config WorkerConfig) Validate() error {

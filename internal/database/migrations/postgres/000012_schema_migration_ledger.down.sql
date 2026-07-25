@@ -1,0 +1,1 @@
+DROP TABLE hexroute_schema_migrations;

@@ -49,6 +49,7 @@ const (
 	EventCloudAPIStopped    EventName = "cloud_api_stopped"
 	EventCloudWorkerStarted EventName = "cloud_worker_started"
 	EventCloudWorkerStopped EventName = "cloud_worker_stopped"
+	EventCloudMigration     EventName = "cloud_migration"
 	EventCloudHeartbeat     EventName = "cloud_heartbeat"
 	EventCloudReconcile     EventName = "cloud_reconcile"
 	EventCloudAlertQueue    EventName = "cloud_alert_queue"
@@ -178,6 +179,7 @@ func validEvent(value EventName) bool {
 		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect,
 		EventSentinelEvidence, EventLocalNotification, EventCloudAPIStarted,
 		EventCloudAPIStopped, EventCloudWorkerStarted, EventCloudWorkerStopped,
+		EventCloudMigration,
 		EventCloudHeartbeat, EventCloudReconcile, EventCloudAlertQueue,
 		EventCloudAlertDelivery, EventCloudRetention:
 		return true

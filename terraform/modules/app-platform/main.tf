@@ -27,6 +27,10 @@ locals {
     toset(keys(var.worker_environment)),
     toset(nonsensitive(keys(var.worker_secret_environment))),
   )
+  migration_keys = setunion(
+    toset(keys(var.migration_environment)),
+    toset(nonsensitive(keys(var.migration_secret_environment))),
+  )
 }
 
 resource "digitalocean_app" "this" {
@@ -162,6 +166,51 @@ resource "digitalocean_app" "this" {
       }
     }
 
+    job {
+      name               = "migrate"
+      kind               = "PRE_DEPLOY"
+      instance_count     = var.migration.instance_count
+      instance_size_slug = var.migration.instance_size_slug
+
+      image {
+        registry_type = var.image.registry_type
+        registry      = var.image.registry
+        repository    = var.image.repository
+        digest        = var.image.digest
+
+        deploy_on_push {
+          enabled = false
+        }
+      }
+
+      env {
+        key   = "HEXROUTE_COMPONENT"
+        value = "migrate"
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      dynamic "env" {
+        for_each = var.migration_environment
+        content {
+          key   = env.key
+          value = env.value
+          scope = "RUN_TIME"
+          type  = "GENERAL"
+        }
+      }
+
+      dynamic "env" {
+        for_each = nonsensitive(toset(keys(var.migration_secret_environment)))
+        content {
+          key   = env.value
+          value = var.migration_secret_environment[env.value]
+          scope = "RUN_TIME"
+          type  = "SECRET"
+        }
+      }
+    }
+
     ingress {
       rule {
         component {
@@ -182,21 +231,25 @@ resource "digitalocean_app" "this" {
       spec[0].service[0].image[0].registry_credentials,
       spec[0].worker[0].image[0].registry,
       spec[0].worker[0].image[0].registry_credentials,
+      spec[0].job[0].image[0].registry,
+      spec[0].job[0].image[0].registry_credentials,
     ]
 
     precondition {
       condition = (
         length(setintersection(local.api_keys, local.forbidden_management_keys)) == 0 &&
         length(setintersection(local.worker_keys, local.forbidden_management_keys)) == 0 &&
+        length(setintersection(local.migration_keys, local.forbidden_management_keys)) == 0 &&
         length(setintersection(local.api_keys, local.forbidden_api_spaces_keys)) == 0
       )
-      error_message = "provider management credentials cannot enter API or worker runtime, and Spaces runtime credentials are worker-only."
+      error_message = "provider management credentials cannot enter API, worker or migration runtime, and Spaces runtime credentials are worker-only."
     }
 
     precondition {
       condition = (
         length(setintersection(local.api_keys, local.reserved_component_keys)) == 0 &&
-        length(setintersection(local.worker_keys, local.reserved_component_keys)) == 0
+        length(setintersection(local.worker_keys, local.reserved_component_keys)) == 0 &&
+        length(setintersection(local.migration_keys, local.reserved_component_keys)) == 0
       )
       error_message = "HEXROUTE_COMPONENT is reserved for module-owned App Platform dispatch."
     }
@@ -210,9 +263,21 @@ resource "digitalocean_app" "this" {
         length(setintersection(
           toset(keys(var.worker_environment)),
           toset(nonsensitive(keys(var.worker_secret_environment))),
+        )) == 0 &&
+        length(setintersection(
+          toset(keys(var.migration_environment)),
+          toset(nonsensitive(keys(var.migration_secret_environment))),
         )) == 0
       )
       error_message = "environment keys cannot be both GENERAL and SECRET."
+    }
+
+    precondition {
+      condition = (
+        toset(nonsensitive(keys(var.migration_secret_environment))) ==
+        toset(["HEXROUTE_MIGRATOR_DATABASE_URL"])
+      )
+      error_message = "migration job must receive exactly the migrator database URL secret."
     }
   }
 }

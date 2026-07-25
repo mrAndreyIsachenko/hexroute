@@ -87,6 +87,19 @@ variable "worker" {
   }
 }
 
+variable "migration" {
+  type = object({
+    instance_size_slug = string
+    instance_count     = optional(number, 1)
+  })
+  description = "Pre-deploy database migration job capacity."
+
+  validation {
+    condition     = var.migration.instance_count == 1
+    error_message = "migration job must run exactly one instance."
+  }
+}
+
 variable "api_environment" {
   type        = map(string)
   description = "Non-secret API runtime environment."
@@ -109,6 +122,19 @@ variable "worker_environment" {
 variable "worker_secret_environment" {
   type        = map(string)
   description = "Worker runtime values stored as App Platform secrets."
+  default     = {}
+  sensitive   = true
+}
+
+variable "migration_environment" {
+  type        = map(string)
+  description = "Non-secret pre-deploy migration environment."
+  default     = {}
+}
+
+variable "migration_secret_environment" {
+  type        = map(string)
+  description = "Pre-deploy migration values stored as App Platform secrets."
   default     = {}
   sensitive   = true
 }
