@@ -50,6 +50,11 @@ authentication and dashboard responses set `Cache-Control: no-store`, which
 remains the cache-safety boundary through the platform ingress and external
 edge.
 
+DigitalOcean populates DOCR registry metadata and short-lived registry
+credentials when it reads an application spec. Terraform ignores drift only
+for those provider-owned fields; the image repository and immutable digest
+remain managed and reviewed.
+
 ### Signed Batch Wire Format
 
 The ingest body is the canonical gzip batch with:
