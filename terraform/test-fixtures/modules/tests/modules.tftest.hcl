@@ -1,4 +1,5 @@
 mock_provider "digitalocean" {}
+mock_provider "uptimerobot" {}
 
 run "synthetic_composition" {
   command = plan

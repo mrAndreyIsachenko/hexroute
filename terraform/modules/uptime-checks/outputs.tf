@@ -1,6 +1,11 @@
 output "check_ids" {
   value = {
-    for name, check in digitalocean_uptime_check.this : name => check.id
+    for name, check in uptimerobot_monitor.this : name => check.id
   }
-  description = "Uptime check identifiers keyed by logical name."
+  description = "UptimeRobot monitor identifiers keyed by logical name."
+}
+
+output "telegram_integration_id" {
+  value       = uptimerobot_integration.telegram.id
+  description = "UptimeRobot Telegram integration identifier."
 }

@@ -6,6 +6,10 @@ terraform {
       source  = "digitalocean/digitalocean"
       version = ">= 2.95, < 3.0"
     }
+    uptimerobot = {
+      source  = "uptimerobot/uptimerobot"
+      version = "1.9.3"
+    }
   }
 }
 
@@ -95,10 +99,14 @@ module "uptime_checks" {
 
   checks = {
     api = {
-      name    = "hexroute-example-api"
-      target  = "https://status.example.invalid/readyz"
-      regions = ["eu_west", "us_east"]
+      name   = "hexroute-example-api"
+      target = "https://status.example.invalid/readyz"
     }
+  }
+  telegram = {
+    name      = "Hexroute example alerts"
+    bot_token = "secret://telegram/example-bot"
+    chat_id   = "secret://telegram/example-chat"
   }
 }
 
@@ -132,6 +140,7 @@ output "contract" {
     incident_bucket             = module.private_spaces.bucket_name
     dns_records                 = module.dns_records.fqdns
     uptime_checks               = module.uptime_checks.check_ids
+    uptime_telegram_integration = module.uptime_checks.telegram_integration_id
     independent_failure_domains = module.ingress_hosts.independent_failure_domains
   }
 }

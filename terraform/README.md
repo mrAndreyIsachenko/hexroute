@@ -9,7 +9,7 @@ contain a deployable root module.
 | `managed-postgresql` | Managed PostgreSQL, distinct runtime identities and an explicit source firewall |
 | `private-spaces` | Private, versioned incident storage with at most 30 days of retention and a bucket-scoped runtime key |
 | `dns-records` | Stable DigitalOcean DNS records |
-| `uptime-checks` | Multi-region HTTPS probes without implicit email alerts |
+| `uptime-checks` | UptimeRobot HTTPS probes with explicit independent Telegram delivery and no implicit email alerts |
 | `ingress-hosts` | Provider-neutral ingress inventory and independent provider/ASN validation |
 
 ## Boundary
@@ -33,8 +33,8 @@ make terraform-contract-test
 ```
 
 The provider-backed schema and synthetic-plan test downloads the pinned
-DigitalOcean provider but uses Terraform's mock provider, so it neither needs
-credentials nor creates resources:
+DigitalOcean and UptimeRobot providers but uses Terraform mock providers, so it
+neither needs credentials nor creates resources:
 
 ```sh
 make terraform-test

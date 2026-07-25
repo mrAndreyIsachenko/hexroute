@@ -74,7 +74,15 @@ rg -q 'retention_days must be between 1 and 30' \
 rg -q 'secret_reference.*"secret://"' \
   "$terraform_root/modules/ingress-hosts/variables.tf"
 
-if rg -n --glob '*.tf' 'digitalocean_uptime_alert' \
+rg -q 'source[[:space:]]*=[[:space:]]*"uptimerobot/uptimerobot"' \
+  "$terraform_root/modules/uptime-checks/versions.tf"
+rg -q 'resource "uptimerobot_monitor"' \
+  "$terraform_root/modules/uptime-checks/main.tf"
+rg -q 'resource "uptimerobot_integration" "telegram"' \
+  "$terraform_root/modules/uptime-checks/main.tf"
+rg -q 'assigned_alert_contacts' \
+  "$terraform_root/modules/uptime-checks/main.tf"
+if rg -n --glob '*.tf' 'digitalocean_uptime_(check|alert)' \
   "$terraform_root/modules/uptime-checks" ||
   rg -n 'email' "$terraform_root/modules/uptime-checks/main.tf"; then
   printf 'uptime module must not create implicit email alerts\n' >&2
