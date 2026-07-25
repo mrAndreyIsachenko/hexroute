@@ -11,8 +11,24 @@ END
 $$;
 
 ALTER ROLE hexroute_dashboard_auth
-    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
-    NOREPLICATION NOBYPASSRLS;
+    NOLOGIN NOCREATEDB NOCREATEROLE;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_roles
+        WHERE rolname = 'hexroute_dashboard_auth'
+          AND (
+              rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole OR
+              rolreplication OR rolbypassrls
+          )
+    ) THEN
+        RAISE EXCEPTION
+            'application role hexroute_dashboard_auth has elevated attributes';
+    END IF;
+END
+$$;
 
 DO $$
 BEGIN

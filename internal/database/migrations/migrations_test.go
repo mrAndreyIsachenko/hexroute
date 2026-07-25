@@ -116,6 +116,32 @@ func TestPostgreSQLMigrationsDoNotModelCredentialsOrRawLogs(t *testing.T) {
 	}
 }
 
+func TestPostgreSQLRoleHardeningSupportsManagedAdministrators(t *testing.T) {
+	migrations, err := PostgreSQL()
+	if err != nil {
+		t.Fatalf("PostgreSQL() error = %v", err)
+	}
+	for _, migration := range migrations {
+		normalized := strings.ToUpper(migration.Up)
+		for _, block := range strings.Split(normalized, "ALTER ROLE")[1:] {
+			statement := strings.SplitN(block, ";", 2)[0]
+			for _, privilegedAttribute := range []string{
+				"NOSUPERUSER",
+				"NOREPLICATION",
+				"NOBYPASSRLS",
+			} {
+				if strings.Contains(statement, privilegedAttribute) {
+					t.Fatalf(
+						"migration %06d alters managed-only role attribute %s",
+						migration.Version,
+						privilegedAttribute,
+					)
+				}
+			}
+		}
+	}
+}
+
 func TestPostgreSQLDownMigrationsAreExplicit(t *testing.T) {
 	migrations, err := PostgreSQL()
 	if err != nil {

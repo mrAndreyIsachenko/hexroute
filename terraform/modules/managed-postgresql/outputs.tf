@@ -49,3 +49,16 @@ output "bootstrap_database_url" {
   description = "Bootstrap-only administrator URL; never deliver it to an application component."
   sensitive   = true
 }
+
+output "bootstrap_connection" {
+  value = {
+    host     = digitalocean_database_cluster.this.host
+    port     = digitalocean_database_cluster.this.port
+    database = digitalocean_database_db.this.name
+    user     = digitalocean_database_cluster.this.user
+    password = digitalocean_database_cluster.this.password
+    sslmode  = "require"
+  }
+  description = "Bootstrap-only libpq fields for secret-safe operator tooling."
+  sensitive   = true
+}

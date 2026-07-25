@@ -30,6 +30,10 @@ resource "digitalocean_database_user" "runtime" {
 
   cluster_id = digitalocean_database_cluster.this.id
   name       = each.value
+
+  lifecycle {
+    ignore_changes = [settings]
+  }
 }
 
 resource "digitalocean_database_firewall" "this" {

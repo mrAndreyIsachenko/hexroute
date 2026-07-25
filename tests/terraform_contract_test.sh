@@ -41,6 +41,10 @@ rg -q 'digitalocean_database_firewall' \
   "$terraform_root/modules/managed-postgresql/main.tf"
 rg -q 'hexroute_ingest_runtime' \
   "$terraform_root/modules/managed-postgresql/variables.tf"
+rg -q 'output "bootstrap_connection"' \
+  "$terraform_root/modules/managed-postgresql/outputs.tf"
+rg -q 'ignore_changes = \[settings\]' \
+  "$terraform_root/modules/managed-postgresql/main.tf"
 rg -q 'acl[[:space:]]*=[[:space:]]*"private"' \
   "$terraform_root/modules/private-spaces/main.tf"
 rg -q 'force_destroy[[:space:]]*=[[:space:]]*false' \

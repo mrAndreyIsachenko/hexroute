@@ -20,13 +20,40 @@ END
 $$;
 
 ALTER ROLE hexroute_migrator
-    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    NOLOGIN NOCREATEDB NOCREATEROLE;
 ALTER ROLE hexroute_ingest
-    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    NOLOGIN NOCREATEDB NOCREATEROLE;
 ALTER ROLE hexroute_dashboard
-    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    NOLOGIN NOCREATEDB NOCREATEROLE;
 ALTER ROLE hexroute_maintenance
-    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    NOLOGIN NOCREATEDB NOCREATEROLE;
+
+DO $$
+DECLARE
+    role_name TEXT;
+BEGIN
+    FOREACH role_name IN ARRAY ARRAY[
+        'hexroute_migrator',
+        'hexroute_ingest',
+        'hexroute_dashboard',
+        'hexroute_maintenance'
+    ]
+    LOOP
+        IF EXISTS (
+            SELECT 1
+            FROM pg_roles
+            WHERE rolname = role_name
+              AND (
+                  rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole OR
+                  rolreplication OR rolbypassrls
+              )
+        ) THEN
+            RAISE EXCEPTION 'application role % has elevated attributes',
+                role_name;
+        END IF;
+    END LOOP;
+END
+$$;
 
 DO $$
 BEGIN
