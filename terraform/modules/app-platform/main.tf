@@ -32,15 +32,6 @@ locals {
 resource "digitalocean_app" "this" {
   project_id = var.project_id
 
-  lifecycle {
-    ignore_changes = [
-      spec[0].service[0].image[0].registry,
-      spec[0].service[0].image[0].registry_credentials,
-      spec[0].worker[0].image[0].registry,
-      spec[0].worker[0].image[0].registry_credentials,
-    ]
-  }
-
   spec {
     name                            = var.name
     region                          = var.region
@@ -186,6 +177,13 @@ resource "digitalocean_app" "this" {
   }
 
   lifecycle {
+    ignore_changes = [
+      spec[0].service[0].image[0].registry,
+      spec[0].service[0].image[0].registry_credentials,
+      spec[0].worker[0].image[0].registry,
+      spec[0].worker[0].image[0].registry_credentials,
+    ]
+
     precondition {
       condition = (
         length(setintersection(local.api_keys, local.forbidden_management_keys)) == 0 &&

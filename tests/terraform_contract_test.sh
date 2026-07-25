@@ -48,6 +48,11 @@ for component in service worker; do
   rg -q "spec\\[0\\]\\.${component}\\[0\\]\\.image\\[0\\]\\.registry_credentials," \
     "$terraform_root/modules/app-platform/main.tf"
 done
+[[ "$(rg -F -c '  lifecycle {' \
+  "$terraform_root/modules/app-platform/main.tf")" == 1 ]] || {
+  printf 'App Platform resource must have exactly one lifecycle block\n' >&2
+  exit 1
+}
 rg -q 'digitalocean_database_firewall' \
   "$terraform_root/modules/managed-postgresql/main.tf"
 rg -q 'hexroute_ingest_runtime' \
