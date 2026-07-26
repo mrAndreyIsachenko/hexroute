@@ -84,6 +84,8 @@ rg -q 'assigned_alert_contacts' \
   "$terraform_root/modules/uptime-checks/main.tf"
 rg -q 'value[[:space:]]*=[[:space:]]*"uptimerobot-managed-telegram"' \
   "$terraform_root/modules/uptime-checks/main.tf"
+rg -Fq 'custom_value             = sensitive("")' \
+  "$terraform_root/modules/uptime-checks/main.tf"
 rg -q 'ignore_changes[[:space:]]*=[[:space:]]*\[custom_value\]' \
   "$terraform_root/modules/uptime-checks/main.tf"
 if rg -n 'bot_token|chat_id' \

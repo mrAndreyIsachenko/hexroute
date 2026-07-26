@@ -4,6 +4,7 @@ resource "uptimerobot_integration" "telegram" {
   # Provider 1.9.3 requires value but does not send it for Telegram. UptimeRobot
   # owns the bot credential and activates the destination through its managed bot.
   value                    = "uptimerobot-managed-telegram"
+  custom_value             = sensitive("")
   enable_notifications_for = var.telegram.notify_on_recovery ? 1 : 2
   ssl_expiration_reminder  = var.telegram.ssl_expiration_reminder
 
