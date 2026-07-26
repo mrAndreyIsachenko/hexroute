@@ -82,6 +82,15 @@ rg -q 'resource "uptimerobot_integration" "telegram"' \
   "$terraform_root/modules/uptime-checks/main.tf"
 rg -q 'assigned_alert_contacts' \
   "$terraform_root/modules/uptime-checks/main.tf"
+rg -q 'value[[:space:]]*=[[:space:]]*"uptimerobot-managed-telegram"' \
+  "$terraform_root/modules/uptime-checks/main.tf"
+rg -q 'ignore_changes[[:space:]]*=[[:space:]]*\[custom_value\]' \
+  "$terraform_root/modules/uptime-checks/main.tf"
+if rg -n 'bot_token|chat_id' \
+  "$terraform_root/modules/uptime-checks"; then
+  printf 'UptimeRobot managed Telegram integration must not accept Telegram credentials\n' >&2
+  exit 1
+fi
 if rg -n --glob '*.tf' 'digitalocean_uptime_(check|alert)' \
   "$terraform_root/modules/uptime-checks" ||
   rg -n 'email' "$terraform_root/modules/uptime-checks/main.tf"; then

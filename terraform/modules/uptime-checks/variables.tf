@@ -80,20 +80,13 @@ variable "checks" {
 variable "telegram" {
   type = object({
     name                    = string
-    bot_token               = string
-    chat_id                 = string
     notify_on_recovery      = optional(bool, true)
     ssl_expiration_reminder = optional(bool, true)
   })
-  description = "Telegram integration used directly by UptimeRobot."
-  sensitive   = true
+  description = "UptimeRobot-managed Telegram integration activated out of band through its managed bot."
 
   validation {
-    condition = (
-      length(var.telegram.name) >= 3 &&
-      length(var.telegram.bot_token) >= 24 &&
-      length(var.telegram.chat_id) >= 1
-    )
-    error_message = "telegram integration requires a name, bot token and destination."
+    condition     = length(var.telegram.name) >= 3
+    error_message = "telegram integration requires a name."
   }
 }

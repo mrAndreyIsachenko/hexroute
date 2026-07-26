@@ -9,7 +9,7 @@ contain a deployable root module.
 | `managed-postgresql` | Managed PostgreSQL, distinct runtime identities and an explicit source firewall |
 | `private-spaces` | Private, versioned incident storage with at most 30 days of retention and a bucket-scoped runtime key |
 | `dns-records` | Stable DigitalOcean DNS records |
-| `uptime-checks` | A bounded UptimeRobot black-box catalog for HTTP/API/content, DNS, port and heartbeat checks with explicit independent Telegram delivery |
+| `uptime-checks` | A bounded UptimeRobot black-box catalog for HTTP/API/content, DNS, port and heartbeat checks with independent delivery through UptimeRobot's managed Telegram bot |
 | `ingress-hosts` | Provider-neutral ingress inventory and independent provider/ASN validation |
 
 ## Boundary

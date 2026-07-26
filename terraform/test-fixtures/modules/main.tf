@@ -139,9 +139,7 @@ module "uptime_checks" {
     }
   }
   telegram = {
-    name      = "Hexroute example alerts"
-    bot_token = "secret://telegram/example-bot"
-    chat_id   = "secret://telegram/example-chat"
+    name = "Hexroute example alerts"
   }
 }
 

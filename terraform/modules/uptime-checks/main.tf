@@ -1,10 +1,17 @@
 resource "uptimerobot_integration" "telegram" {
-  name                     = var.telegram.name
-  type                     = "telegram"
-  value                    = var.telegram.bot_token
-  custom_value             = var.telegram.chat_id
+  name = var.telegram.name
+  type = "telegram"
+  # Provider 1.9.3 requires value but does not send it for Telegram. UptimeRobot
+  # owns the bot credential and activates the destination through its managed bot.
+  value                    = "uptimerobot-managed-telegram"
   enable_notifications_for = var.telegram.notify_on_recovery ? 1 : 2
   ssl_expiration_reminder  = var.telegram.ssl_expiration_reminder
+
+  lifecycle {
+    # Activation writes the Telegram destination outside Terraform. Preserve it
+    # on later applies instead of clearing the managed-bot association.
+    ignore_changes = [custom_value]
+  }
 }
 
 resource "uptimerobot_monitor" "this" {
@@ -34,12 +41,9 @@ resource "uptimerobot_monitor" "this" {
   grace_period = each.value.type == "HEARTBEAT" ? each.value.grace_period : null
   tags         = each.value.tags
 
-  config = contains(["API", "DNS"], each.value.type) ? merge(
-    {},
-    each.value.type == "API" ? {
-      api_assertions = each.value.api_assertions
-    } : {},
-  ) : null
+  config = each.value.type == "API" ? {
+    api_assertions = each.value.api_assertions
+  } : null
 
   assigned_alert_contacts = [{
     alert_contact_id = uptimerobot_integration.telegram.id
