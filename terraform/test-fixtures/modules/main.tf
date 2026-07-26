@@ -98,9 +98,44 @@ module "uptime_checks" {
   source = "../../modules/uptime-checks"
 
   checks = {
-    api = {
-      name   = "hexroute-example-api"
+    readiness = {
+      name   = "hexroute-example-readiness"
+      type   = "API"
       target = "https://status.example.invalid/readyz"
+      api_assertions = {
+        checks = [{
+          property   = "$.status"
+          comparison = "equals"
+          target     = jsonencode("ready")
+        }]
+      }
+    }
+    login = {
+      name   = "hexroute-example-login"
+      type   = "KEYWORD"
+      target = "https://status.example.invalid/login"
+      keyword = {
+        value      = "Sign in with passkey"
+        alert_when = "absent"
+      }
+    }
+    dns = {
+      name   = "hexroute-example-dns"
+      type   = "DNS"
+      target = "status.example.invalid"
+    }
+    ingress = {
+      name   = "hexroute-example-ingress"
+      type   = "PORT"
+      target = "primary.example.invalid"
+      port   = 443
+    }
+    backup = {
+      name         = "hexroute-example-backup"
+      type         = "HEARTBEAT"
+      target       = null
+      interval     = 3600
+      grace_period = 900
     }
   }
   telegram = {
