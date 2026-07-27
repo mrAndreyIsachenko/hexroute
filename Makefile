@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-ctl build-observe-root build-observe-user check container-build container-test fmt postgres-test race secret-test shell-test terraform-contract-test terraform-state-test terraform-test test vet
+.PHONY: build build-ctl build-observe-root build-observe-user check container-build container-test fmt postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test vet
 
 build:
 	go build ./cmd/...
@@ -62,4 +62,7 @@ shell-test: build-observe-root build-observe-user
 secret-test:
 	go test ./internal/secretguard -run TestRepositorySecretCanaries -count=1
 
-check: fmt vet test race build shell-test secret-test
+spec-check:
+	OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive
+
+check: fmt vet test race build shell-test secret-test spec-check

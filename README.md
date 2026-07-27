@@ -9,6 +9,10 @@ The initial implementation focuses on deterministic local recovery, strict
 privilege separation, offline-safe operation and regression evidence. Cloud
 services remain telemetry-only.
 
+Current capabilities and the ordered migration sequence are tracked in
+`docs/roadmap.md`. Planned behavior is specified through repository-local
+OpenSpec changes rather than the archived cross-repository umbrella proposal.
+
 ## Repository Boundary
 
 This public repository contains generic application code, schemas, tests and

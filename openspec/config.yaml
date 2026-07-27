@@ -1,0 +1,35 @@
+schema: spec-driven
+
+context: |
+  Hexroute is a public Go reliability control plane for scoped VPN, proxy and
+  access-continuity paths. Twilight remains the active production owner until
+  explicit observe-only, cutover, soak and rollback gates pass.
+
+  Repository boundaries:
+  - This repository owns generic application/daemon code, schemas, synthetic
+    fixtures, provider-neutral modules and public architecture documentation.
+  - The private hexroute-infra repository owns live Terraform roots, provider
+    identities, HCP workspace references and private deployment evidence.
+  - The legacy Twilight repository owns current macOS/VPS runtime behavior and
+    compatibility requirements until transactional cutover.
+
+  Critical invariants:
+  - Never stop, disable or reconfigure AdGuard.
+  - Preserve normal and Twilight fallback access to Codex.
+  - Keep root network/process authority separate from user Keychain/OTP access.
+  - Cloud components are telemetry-only and cannot request local mutations.
+  - Keep credentials, live private endpoints and raw evidence out of Git.
+
+rules:
+  proposal:
+    - State whether the change belongs in public Hexroute, private infrastructure or legacy Twilight.
+    - Include non-goals, rollout, rollback and the production ownership boundary.
+  design:
+    - Define privilege, process, state and failure-detection ownership.
+    - Explain how cloud loss and failed activation leave local recovery available.
+  specs:
+    - Use testable WHEN/THEN scenarios for every requirement.
+    - Cover secret redaction and coexistence whenever local or cloud boundaries change.
+  tasks:
+    - Add regression tests before enabling mutation authority.
+    - Include repository checks, strict OpenSpec validation and rollback evidence.

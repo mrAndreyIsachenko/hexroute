@@ -6,8 +6,14 @@ the applicable migration, soak, fault-injection and rollback gates pass.
 
 ## Change Workflow
 
-- Implement behavior from the approved OpenSpec change in the legacy Twilight
-  repository: `build-hexroute-control-plane`.
+- Read `docs/roadmap.md` and the relevant baseline specs before planning a
+  change.
+- For a planned feature, reliability change or refactor, resolve decisions one
+  at a time with `grill-me`, then create a repository-local OpenSpec proposal.
+- Keep live provider identities, Terraform roots, deployment evidence and
+  provider-specific operations in the private `hexroute-infra` repository.
+- Keep Twilight compatibility and active local cutover requirements in the
+  legacy Twilight repository until ownership has moved transactionally.
 - Keep implementation commits small and map each one to explicit OpenSpec
   tasks and regression evidence.
 - Run the repository checks before marking a task complete.
@@ -27,7 +33,8 @@ the applicable migration, soak, fault-injection and rollback gates pass.
 
 ## Definition Of Done
 
-- Relevant OpenSpec tasks and scenarios match the implementation.
+- Relevant repository-local OpenSpec tasks, baseline requirements and scenarios
+  match the implementation.
 - Unit, race, static and secret-leak checks pass for the affected packages.
 - Live runtime changes are deployed only through an explicit guarded cutover.
 - Affected normal and fallback paths are verified after deployment.
