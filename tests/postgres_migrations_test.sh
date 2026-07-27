@@ -33,18 +33,13 @@ mapfile_compat() {
 }
 
 while IFS= read -r migration; do
+	[[ "$(basename "$migration")" < "000012_" ]] || continue
   docker exec -i "$container" psql \
     --username postgres \
     --dbname postgres \
     --set ON_ERROR_STOP=1 \
     --single-transaction <"$migration" >/dev/null
 done < <(mapfile_compat '*.up.sql')
-
-docker exec "$container" psql \
-  --username postgres \
-  --dbname postgres \
-  --set ON_ERROR_STOP=1 \
-  --command 'DROP TABLE hexroute_schema_migrations' >/dev/null
 
 published_address="$(docker port "$container" 5432/tcp | tail -n 1)"
 postgres_port="${published_address##*:}"
@@ -60,7 +55,7 @@ required_tables=(
   incident_events incident_transitions incident_bundles config_versions
   deployments worker_heartbeats dashboard_principals passkey_credentials
   alert_deliveries incident_alert_outbox slo_aggregates slo_incident_links
-  hexroute_schema_migrations
+  hexroute_schema_migrations cutover_write_control
 )
 for table in "${required_tables[@]}"; do
   found="$(docker exec "$container" psql --username postgres --dbname postgres \
@@ -151,6 +146,8 @@ expect_allowed hexroute_ingest \
   'UPDATE nodes SET last_seen_at = CURRENT_TIMESTAMP WHERE FALSE'
 expect_allowed hexroute_ingest \
   'SELECT heartbeat_at FROM worker_heartbeats LIMIT 0'
+expect_allowed hexroute_ingest \
+  'SELECT write_frozen, frozen_at, deadline_at FROM cutover_write_control'
 expect_allowed hexroute_dashboard \
   'SELECT incident_id FROM incidents LIMIT 0'
 expect_allowed hexroute_dashboard_auth \
@@ -198,6 +195,8 @@ expect_denied hexroute_ingest \
   "UPDATE nodes SET lifecycle_status = 'revoked' WHERE FALSE"
 expect_denied hexroute_ingest \
   'ALTER TABLE events ADD COLUMN forbidden_ingest_column TEXT'
+expect_denied hexroute_ingest \
+  'UPDATE cutover_write_control SET write_frozen = FALSE WHERE singleton'
 expect_denied hexroute_dashboard \
   'SELECT payload FROM events LIMIT 0'
 expect_denied hexroute_dashboard \
@@ -237,6 +236,13 @@ docker exec "$container" psql \
              GRANT hexroute_dashboard TO hexroute_test_dashboard;
              CREATE ROLE hexroute_test_dashboard_auth LOGIN;
              GRANT hexroute_dashboard_auth TO hexroute_test_dashboard_auth;" >/dev/null
+
+HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_INGEST_DSN="postgres://hexroute_test_ingest@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+GOCACHE=/tmp/hexroute-postgres-go-cache \
+  go test ./internal/cutoverfreeze \
+    -run TestPostgresFreezeDrainsInflightWritesAndRejectsLaterWrites \
+    -count=1
 
 HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 HEXROUTE_TEST_POSTGRES_INGEST_DSN="postgres://hexroute_test_ingest@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \

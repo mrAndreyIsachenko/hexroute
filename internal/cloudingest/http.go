@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/cutoverfreeze"
 	"github.com/mrAndreyIsachenko/hexroute/internal/signing"
 	"github.com/mrAndreyIsachenko/hexroute/internal/telemetry"
 )
@@ -95,6 +96,11 @@ func (handler *HTTPHandler) ServeHTTP(
 		body,
 	)
 	if err != nil {
+		if cutoverfreeze.IsWriteFrozen(err) {
+			response.Header().Set("Retry-After", "60")
+			writeIngestStatus(response, http.StatusServiceUnavailable, "write_frozen")
+			return
+		}
 		if errors.Is(err, ErrUnavailable) {
 			writeIngestStatus(response, http.StatusServiceUnavailable, "unavailable")
 			return

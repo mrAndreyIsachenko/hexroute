@@ -4,9 +4,12 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mrAndreyIsachenko/hexroute/internal/cutoverfreeze"
 )
 
 func TestBindPublicHostRejectsAlternateHostBeforeHandler(t *testing.T) {
@@ -48,6 +51,77 @@ func TestBindPublicHostRejectsAlternateHostBeforeHandler(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.status != http.StatusNoContent || calls != 3 {
 		t.Fatalf("platform-probe response=%d calls=%d", response.status, calls)
+	}
+}
+
+type freezeReaderFunc func(context.Context) (cutoverfreeze.State, error)
+
+func (function freezeReaderFunc) Read(ctx context.Context) (cutoverfreeze.State, error) {
+	return function(ctx)
+}
+
+func TestRejectFrozenWritesReturnsStableRetryableResponse(t *testing.T) {
+	calls := 0
+	next := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		calls++
+		response.WriteHeader(http.StatusNoContent)
+	})
+	reader := freezeReaderFunc(func(context.Context) (cutoverfreeze.State, error) {
+		return cutoverfreeze.State{Frozen: true}, nil
+	})
+	request := httptest.NewRequest(http.MethodPost, "/v1/ingest/batches", nil)
+	response := httptest.NewRecorder()
+	rejectFrozenWrites(next, reader).ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable || calls != 0 ||
+		response.Header().Get("Retry-After") != "60" ||
+		response.Body.String() != `{"status":"write_frozen","write_frozen":true}`+"\n" {
+		t.Fatalf(
+			"frozen response=%d calls=%d retry=%q body=%q",
+			response.Code,
+			calls,
+			response.Header().Get("Retry-After"),
+			response.Body.String(),
+		)
+	}
+}
+
+func TestFreezeAwareReadinessBypassesHeartbeatOnlyBeforeDeadline(t *testing.T) {
+	now := time.Date(2026, time.July, 27, 1, 0, 0, 0, time.UTC)
+	normalCalls := 0
+	normal := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		normalCalls++
+		response.WriteHeader(http.StatusOK)
+	})
+	state := cutoverfreeze.State{}
+	reader := freezeReaderFunc(func(context.Context) (cutoverfreeze.State, error) {
+		return state, nil
+	})
+	handler := freezeAwareReadiness(normal, reader, func() time.Time { return now })
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if response.Code != http.StatusOK || normalCalls != 1 {
+		t.Fatalf("normal readiness=%d calls=%d", response.Code, normalCalls)
+	}
+
+	state = cutoverfreeze.State{
+		Frozen:     true,
+		FrozenAt:   now.Add(-time.Minute),
+		DeadlineAt: now.Add(time.Minute),
+	}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if response.Code != http.StatusOK || normalCalls != 1 ||
+		response.Body.String() != `{"status":"ready","write_frozen":true}`+"\n" {
+		t.Fatalf("frozen readiness=%d calls=%d body=%q", response.Code, normalCalls, response.Body.String())
+	}
+
+	state.DeadlineAt = now
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if response.Code != http.StatusServiceUnavailable || normalCalls != 1 ||
+		response.Body.String() != `{"status":"not_ready","write_frozen":true}`+"\n" {
+		t.Fatalf("expired readiness=%d calls=%d body=%q", response.Code, normalCalls, response.Body.String())
 	}
 }
 

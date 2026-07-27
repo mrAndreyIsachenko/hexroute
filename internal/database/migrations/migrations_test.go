@@ -25,6 +25,7 @@ func TestPostgreSQLMigrationManifest(t *testing.T) {
 		"dashboard_passkey_auth",
 		"incident_alert_outbox",
 		"schema_migration_ledger",
+		"cutover_write_freeze",
 	}
 	if len(migrations) != len(wantNames) {
 		t.Fatalf("migration count = %d, want %d", len(migrations), len(wantNames))
@@ -78,6 +79,7 @@ func TestPostgreSQLMigrationsDefineRequiredCloudData(t *testing.T) {
 		"slo_aggregates",
 		"slo_incident_links",
 		"hexroute_schema_migrations",
+		"cutover_write_control",
 	}
 	for _, table := range requiredTables {
 		if !strings.Contains(schema, "create table "+table) {
@@ -97,11 +99,38 @@ func TestPostgreSQLMigrationsDefineRequiredCloudData(t *testing.T) {
 		"grant select on nodes, node_public_keys to hexroute_ingest",
 		"to hexroute_dashboard",
 		"to hexroute_maintenance",
+		"message = 'write_frozen'",
+		"for share",
+		"create trigger hexroute_write_gate",
 	}
 	for _, fragment := range requiredFragments {
 		if !strings.Contains(schema, fragment) {
 			t.Errorf("required schema fragment %q is missing", fragment)
 		}
+	}
+}
+
+func TestPostgreSQLWriteGateCoversEveryRuntimeMutableTable(t *testing.T) {
+	migrations, err := PostgreSQL()
+	if err != nil {
+		t.Fatalf("PostgreSQL() error = %v", err)
+	}
+	gate := strings.ToLower(migrations[len(migrations)-1].Up)
+	protected := []string{
+		"nodes", "batches", "events", "node_sequence_cursors",
+		"sequence_gaps", "security_audit_records", "latest_component_states",
+		"sleep_intervals", "incidents", "incident_events",
+		"incident_transitions", "incident_bundles", "worker_heartbeats",
+		"dashboard_principals", "passkey_credentials", "alert_deliveries",
+		"incident_alert_outbox", "slo_aggregates", "slo_incident_links",
+	}
+	for _, table := range protected {
+		if !strings.Contains(gate, "'"+table+"'") {
+			t.Errorf("runtime mutable table %q is not write-gated", table)
+		}
+	}
+	if strings.Contains(gate, "'cutover_write_control'") {
+		t.Fatal("cutover control table must not gate its own operator mutation")
 	}
 }
 

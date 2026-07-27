@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/cloudhealth"
 	"github.com/mrAndreyIsachenko/hexroute/internal/cloudingest"
+	"github.com/mrAndreyIsachenko/hexroute/internal/cutoverfreeze"
 	"github.com/mrAndreyIsachenko/hexroute/internal/dashboard"
 	"github.com/mrAndreyIsachenko/hexroute/internal/dashboardauth"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
@@ -191,6 +193,10 @@ func buildAPIHandler(
 	if err != nil {
 		return nil, ErrAPIRuntime
 	}
+	freezeStore, err := cutoverfreeze.NewStore(pools.ingest)
+	if err != nil {
+		return nil, ErrAPIRuntime
+	}
 	healthStore, err := cloudhealth.NewPostgresStore(pools.ingest)
 	if err != nil {
 		return nil, ErrAPIRuntime
@@ -209,6 +215,7 @@ func buildAPIHandler(
 	if err != nil {
 		return nil, ErrAPIRuntime
 	}
+	readinessHandler := freezeAwareReadiness(readiness, freezeStore, time.Now)
 	authStore, err := dashboardauth.NewPostgresStore(pools.auth, rand.Reader)
 	if err != nil {
 		return nil, ErrAPIRuntime
@@ -227,6 +234,7 @@ func buildAPIHandler(
 		BootstrapSecret: config.BootstrapSecret,
 		Random:          rand.Reader,
 		Now:             time.Now,
+		Freeze:          freezeStore,
 	})
 	if err != nil {
 		return nil, ErrAPIRuntime
@@ -249,10 +257,83 @@ func buildAPIHandler(
 
 	mux := http.NewServeMux()
 	mux.Handle("/livez", http.HandlerFunc(liveness))
-	mux.Handle("/readyz", readiness)
-	mux.Handle(cloudingest.IngestPath, ingestHandler)
+	mux.Handle("/readyz", readinessHandler)
+	mux.Handle(
+		cloudingest.IngestPath,
+		rejectFrozenWrites(ingestHandler, freezeStore),
+	)
 	mux.Handle("/", dashboardRouter)
 	return bindPublicHost(mux, config.ExpectedHost, config.ProviderHost), nil
+}
+
+func rejectFrozenWrites(next http.Handler, freeze cutoverfreeze.Reader) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost {
+			next.ServeHTTP(response, request)
+			return
+		}
+		state, err := freeze.Read(request.Context())
+		if err != nil {
+			writeCutoverStatus(response, http.StatusServiceUnavailable, "unavailable", false)
+			return
+		}
+		if state.Frozen {
+			response.Header().Set(
+				"Retry-After",
+				strconv.Itoa(cutoverfreeze.RetryAfterSeconds),
+			)
+			writeCutoverStatus(response, http.StatusServiceUnavailable, "write_frozen", true)
+			return
+		}
+		next.ServeHTTP(response, request)
+	})
+}
+
+func freezeAwareReadiness(
+	normal http.Handler,
+	freeze cutoverfreeze.Reader,
+	now func() time.Time,
+) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet {
+			normal.ServeHTTP(response, request)
+			return
+		}
+		state, err := freeze.Read(request.Context())
+		if err != nil {
+			writeCutoverStatus(response, http.StatusServiceUnavailable, "not_ready", false)
+			return
+		}
+		if !state.Frozen {
+			normal.ServeHTTP(response, request)
+			return
+		}
+		if !state.ReadyAt(now().UTC()) {
+			writeCutoverStatus(response, http.StatusServiceUnavailable, "not_ready", true)
+			return
+		}
+		writeCutoverStatus(response, http.StatusOK, "ready", true)
+	})
+}
+
+func writeCutoverStatus(
+	response http.ResponseWriter,
+	status int,
+	value string,
+	frozen bool,
+) {
+	response.Header().Set("Cache-Control", "no-store")
+	response.Header().Set("Content-Type", "application/json")
+	response.Header().Set("X-Content-Type-Options", "nosniff")
+	response.WriteHeader(status)
+	if frozen {
+		_, _ = io.WriteString(
+			response,
+			`{"status":"`+value+`","write_frozen":true}`+"\n",
+		)
+		return
+	}
+	_, _ = io.WriteString(response, `{"status":"`+value+`"}`+"\n")
 }
 
 func bindPublicHost(

@@ -14,6 +14,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
 	"github.com/mrAndreyIsachenko/hexroute/internal/cloudhealth"
 	"github.com/mrAndreyIsachenko/hexroute/internal/cloudincident"
+	"github.com/mrAndreyIsachenko/hexroute/internal/cutoverfreeze"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/retention"
@@ -32,6 +33,16 @@ type heartbeatRunner interface {
 	Run(context.Context) error
 }
 
+type heartbeatOnce interface {
+	Once(context.Context) error
+}
+
+type freezeAwareHeartbeat struct {
+	writer   heartbeatOnce
+	freeze   cutoverfreeze.Reader
+	interval time.Duration
+}
+
 type workerJob struct {
 	event    logging.EventName
 	interval time.Duration
@@ -43,6 +54,7 @@ type workerRuntime struct {
 	heartbeat heartbeatRunner
 	jobs      []workerJob
 	logger    *logging.Logger
+	freeze    cutoverfreeze.Reader
 }
 
 var ErrWorkerRuntime = errors.New("cloud worker runtime unavailable")
@@ -120,8 +132,12 @@ func buildWorkerRuntime(
 	if err != nil {
 		return nil, ErrWorkerRuntime
 	}
+	freezeStore, err := cutoverfreeze.NewStore(pool)
+	if err != nil {
+		return nil, ErrWorkerRuntime
+	}
 	startedAt := now().UTC()
-	heartbeat, err := cloudhealth.NewWriter(
+	heartbeatWriter, err := cloudhealth.NewWriter(
 		healthStore,
 		config.WorkerName,
 		instanceID,
@@ -132,6 +148,11 @@ func buildWorkerRuntime(
 	)
 	if err != nil {
 		return nil, ErrWorkerRuntime
+	}
+	heartbeat := &freezeAwareHeartbeat{
+		writer:   heartbeatWriter,
+		freeze:   freezeStore,
+		interval: config.HeartbeatInterval,
 	}
 	sleepStore, err := silentnode.NewPostgresStore(pool)
 	if err != nil {
@@ -254,7 +275,37 @@ func buildWorkerRuntime(
 		heartbeat: heartbeat,
 		jobs:      jobs,
 		logger:    logger,
+		freeze:    freezeStore,
 	}, nil
+}
+
+func (heartbeat *freezeAwareHeartbeat) Run(ctx context.Context) error {
+	if heartbeat == nil || heartbeat.writer == nil ||
+		heartbeat.freeze == nil || heartbeat.interval <= 0 {
+		return ErrWorkerRuntime
+	}
+	run := func() error {
+		state, err := heartbeat.freeze.Read(ctx)
+		if err != nil || state.Frozen {
+			return nil
+		}
+		return heartbeat.writer.Once(ctx)
+	}
+	if err := run(); err != nil {
+		return err
+	}
+	ticker := time.NewTicker(heartbeat.interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if err := run(); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (runtime *workerRuntime) run(
@@ -326,6 +377,12 @@ func (runtime *workerRuntime) runJob(
 	run := func() {
 		jobContext, cancel := context.WithTimeout(ctx, job.timeout)
 		defer cancel()
+		if runtime.freeze != nil {
+			state, err := runtime.freeze.Read(jobContext)
+			if err != nil || state.Frozen {
+				return
+			}
+		}
 		if err := job.run(jobContext); err != nil && ctx.Err() == nil {
 			_ = runtime.logger.Emit(
 				logging.LevelWarn,

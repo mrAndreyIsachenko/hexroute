@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/mrAndreyIsachenko/hexroute/internal/database/migrations"
 )
 
 func TestPostgresRunnerAdoptsBaselineAndSeedsOnePrincipal(t *testing.T) {
@@ -37,7 +39,11 @@ func TestPostgresRunnerAdoptsBaselineAndSeedsOnePrincipal(t *testing.T) {
 	`).Scan(&migrationsCount, &principalCount); err != nil {
 		t.Fatalf("verification error = %v", err)
 	}
-	if migrationsCount != int(ledgerVersion) || principalCount != 1 {
+	manifest, manifestErr := migrations.PostgreSQL()
+	if manifestErr != nil {
+		t.Fatalf("PostgreSQL() error = %v", manifestErr)
+	}
+	if migrationsCount != len(manifest) || principalCount != 1 {
 		t.Fatalf(
 			"migrations=%d principals=%d",
 			migrationsCount,

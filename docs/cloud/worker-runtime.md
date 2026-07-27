@@ -50,3 +50,8 @@ Heartbeat failure stops the worker so `/readyz` becomes stale instead of
 claiming health. Other job failures remain isolated and retry on their next
 tick. On `SIGTERM`, all jobs receive cancellation and the process waits only
 for the configured shutdown bound.
+
+Before heartbeat and every scheduled job, the worker reads the singleton
+cutover state. While frozen, or when that state cannot be read, it fails closed:
+the process remains alive but performs no database write or Telegram delivery.
+Database triggers protect the race between this check and a job's first write.
