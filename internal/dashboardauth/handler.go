@@ -7,11 +7,13 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-webauthn/webauthn/webauthn"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/cutoverfreeze"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 )
 
@@ -30,6 +32,7 @@ type Handler struct {
 	origin          string
 	bootstrapSecret []byte
 	now             func() time.Time
+	freeze          cutoverfreeze.Reader
 }
 
 type Config struct {
@@ -39,6 +42,7 @@ type Config struct {
 	BootstrapSecret string
 	Random          io.Reader
 	Now             func() time.Time
+	Freeze          cutoverfreeze.Reader
 }
 
 func NewHandler(config Config) (*Handler, error) {
@@ -62,6 +66,7 @@ func NewHandler(config Config) (*Handler, error) {
 		origin:          config.Origin,
 		bootstrapSecret: []byte(config.BootstrapSecret),
 		now:             config.Now,
+		freeze:          config.Freeze,
 	}, nil
 }
 
@@ -132,14 +137,25 @@ func (handler *Handler) FinishLogin(
 		return
 	}
 	now := handler.now().UTC()
-	if err := handler.store.UpdateCredential(
-		request.Context(),
-		user,
-		credential,
-		now,
-	); err != nil {
-		writeAuthError(response, http.StatusUnauthorized)
+	frozen, err := handler.writeFrozen(request.Context())
+	if err != nil {
+		writeAuthError(response, http.StatusServiceUnavailable)
 		return
+	}
+	if !frozen {
+		if err := handler.store.UpdateCredential(
+			request.Context(),
+			user,
+			credential,
+			now,
+		); err != nil {
+			if cutoverfreeze.IsWriteFrozen(err) {
+				writeAuthFrozen(response)
+				return
+			}
+			writeAuthError(response, http.StatusUnauthorized)
+			return
+		}
 	}
 	if err := handler.sessions.issueSession(response, user); err != nil {
 		writeAuthError(response, http.StatusServiceUnavailable)
@@ -153,6 +169,13 @@ func (handler *Handler) BeginRegistration(
 	request *http.Request,
 ) {
 	if !handler.acceptPOST(response, request) {
+		return
+	}
+	if frozen, err := handler.writeFrozen(request.Context()); err != nil {
+		writeAuthError(response, http.StatusServiceUnavailable)
+		return
+	} else if frozen {
+		writeAuthFrozen(response)
 		return
 	}
 	username, ok := decodeUsername(response, request)
@@ -200,6 +223,13 @@ func (handler *Handler) FinishRegistration(
 	if !handler.acceptPOST(response, request) {
 		return
 	}
+	if frozen, err := handler.writeFrozen(request.Context()); err != nil {
+		writeAuthError(response, http.StatusServiceUnavailable)
+		return
+	} else if frozen {
+		writeAuthFrozen(response)
+		return
+	}
 	request.Body = http.MaxBytesReader(
 		response,
 		request.Body,
@@ -235,6 +265,10 @@ func (handler *Handler) FinishRegistration(
 		credential,
 		now,
 	); err != nil {
+		if cutoverfreeze.IsWriteFrozen(err) {
+			writeAuthFrozen(response)
+			return
+		}
 		writeAuthError(response, http.StatusUnauthorized)
 		return
 	}
@@ -243,6 +277,17 @@ func (handler *Handler) FinishRegistration(
 		return
 	}
 	writeJSON(response, http.StatusCreated, map[string]string{"status": "registered"})
+}
+
+func (handler *Handler) writeFrozen(ctx context.Context) (bool, error) {
+	if handler.freeze == nil {
+		return false, nil
+	}
+	state, err := handler.freeze.Read(ctx)
+	if err != nil {
+		return false, err
+	}
+	return state.Frozen, nil
 }
 
 func (handler *Handler) Logout(
@@ -319,6 +364,16 @@ func writeJSON(response http.ResponseWriter, status int, value any) {
 
 func writeAuthError(response http.ResponseWriter, status int) {
 	writeJSON(response, status, map[string]string{"status": "authentication_failed"})
+}
+
+func writeAuthFrozen(response http.ResponseWriter) {
+	response.Header().Set(
+		"Retry-After",
+		strconv.Itoa(cutoverfreeze.RetryAfterSeconds),
+	)
+	writeJSON(response, http.StatusServiceUnavailable, map[string]string{
+		"status": "write_frozen",
+	})
 }
 
 func setAuthHeaders(response http.ResponseWriter) {

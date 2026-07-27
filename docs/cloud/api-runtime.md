@@ -52,6 +52,13 @@ authentication and dashboard responses set `Cache-Control: no-store`, which
 remains the cache-safety boundary through the platform ingress and external
 edge.
 
+During a cutover write freeze, ingest and passkey registration return bounded
+HTTP 503 `write_frozen` responses with retry guidance. Existing passkeys may
+still create in-memory sessions after cryptographic verification, but no
+credential counters or authentication timestamps are written. Read-only pages
+and logout remain available. The PostgreSQL write gate remains authoritative
+for races after the API's early check.
+
 DigitalOcean populates DOCR registry metadata and short-lived registry
 credentials when it reads an application spec. Terraform ignores drift only
 for those provider-owned fields; the image repository and immutable digest

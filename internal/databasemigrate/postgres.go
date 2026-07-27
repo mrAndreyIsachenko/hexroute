@@ -87,9 +87,10 @@ func reconcileManifest(
 	transaction pgx.Tx,
 	manifest []migrations.Migration,
 ) error {
-	if len(manifest) != int(ledgerVersion) ||
-		manifest[len(manifest)-1].Version != ledgerVersion ||
-		manifest[len(manifest)-1].Name != "schema_migration_ledger" {
+	ledgerIndex := int(ledgerVersion - 1)
+	if len(manifest) < int(ledgerVersion) ||
+		manifest[ledgerIndex].Version != ledgerVersion ||
+		manifest[ledgerIndex].Name != "schema_migration_ledger" {
 		return ErrMigration
 	}
 
@@ -104,10 +105,13 @@ func reconcileManifest(
 		if err != nil || !valid {
 			return ErrMigration
 		}
-		if _, err = transaction.Exec(ctx, manifest[len(manifest)-1].Up); err != nil {
+		if _, err = transaction.Exec(ctx, manifest[ledgerIndex].Up); err != nil {
 			return err
 		}
-		return recordManifest(ctx, transaction, manifest)
+		if err = recordManifest(ctx, transaction, manifest[:ledgerIndex+1]); err != nil {
+			return err
+		}
+		return applyManifest(ctx, transaction, manifest[ledgerIndex+1:])
 	}
 
 	applied, err := loadApplied(ctx, transaction)
@@ -119,7 +123,10 @@ func reconcileManifest(
 		if verifyErr != nil || !valid {
 			return ErrMigration
 		}
-		return recordManifest(ctx, transaction, manifest)
+		if err = recordManifest(ctx, transaction, manifest[:ledgerIndex+1]); err != nil {
+			return err
+		}
+		return applyManifest(ctx, transaction, manifest[ledgerIndex+1:])
 	}
 	if len(applied) > len(manifest) {
 		return ErrMigration
@@ -132,11 +139,19 @@ func reconcileManifest(
 			return ErrMigration
 		}
 	}
-	for _, migration := range manifest[len(applied):] {
-		if _, err = transaction.Exec(ctx, migration.Up); err != nil {
+	return applyManifest(ctx, transaction, manifest[len(applied):])
+}
+
+func applyManifest(
+	ctx context.Context,
+	transaction pgx.Tx,
+	manifest []migrations.Migration,
+) error {
+	for _, migration := range manifest {
+		if _, err := transaction.Exec(ctx, migration.Up); err != nil {
 			return err
 		}
-		if err = recordMigration(ctx, transaction, migration); err != nil {
+		if err := recordMigration(ctx, transaction, migration); err != nil {
 			return err
 		}
 	}

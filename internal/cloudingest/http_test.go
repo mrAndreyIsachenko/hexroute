@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/signing"
 	"github.com/mrAndreyIsachenko/hexroute/internal/telemetry"
@@ -63,6 +65,26 @@ func TestHTTPTransportAndHandlerRoundTripBoundedSignedBatch(t *testing.T) {
 		!bytes.Equal(acceptor.body, body) ||
 		acceptor.envelope.Envelope.RequestID != cloudRequestID {
 		t.Fatalf("round trip = %+v acceptor=%+v", got, acceptor)
+	}
+}
+
+func TestHTTPHandlerMapsDatabaseWriteGateToFrozenStatus(t *testing.T) {
+	handler, err := NewHTTPHandler(&httpAcceptorFixture{err: errors.Join(
+		ErrUnavailable,
+		&pgconn.PgError{Code: "55000", Message: "write_frozen"},
+	)})
+	if err != nil {
+		t.Fatalf("NewHTTPHandler() error = %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, IngestPath, bytes.NewReader([]byte("body")))
+	request.Header.Set("Content-Type", IngestContentType)
+	request.Header.Set(EnvelopeHeader, encodedHTTPEnvelope(t))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable ||
+		response.Header().Get("Retry-After") != "60" ||
+		response.Body.String() != `{"status":"write_frozen"}`+"\n" {
+		t.Fatalf("frozen response=%d retry=%q body=%q", response.Code, response.Header().Get("Retry-After"), response.Body.String())
 	}
 }
 

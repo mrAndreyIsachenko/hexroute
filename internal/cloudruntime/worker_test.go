@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/cutoverfreeze"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 )
 
@@ -16,6 +17,69 @@ type heartbeatFunc func(context.Context) error
 
 func (function heartbeatFunc) Run(ctx context.Context) error {
 	return function(ctx)
+}
+
+type heartbeatOnceFunc func(context.Context) error
+
+func (function heartbeatOnceFunc) Once(ctx context.Context) error {
+	return function(ctx)
+}
+
+func TestFreezeAwareHeartbeatStaysAliveWithoutWriting(t *testing.T) {
+	writes := 0
+	heartbeat := &freezeAwareHeartbeat{
+		writer: heartbeatOnceFunc(func(context.Context) error {
+			writes++
+			return nil
+		}),
+		freeze: freezeReaderFunc(func(context.Context) (cutoverfreeze.State, error) {
+			return cutoverfreeze.State{Frozen: true}, nil
+		}),
+		interval: 2 * time.Millisecond,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Millisecond)
+	defer cancel()
+	if err := heartbeat.Run(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if writes != 0 {
+		t.Fatalf("heartbeat writes = %d", writes)
+	}
+}
+
+func TestWorkerRuntimeSkipsAllJobsWhileFrozen(t *testing.T) {
+	logger, err := logging.New(&bytes.Buffer{}, logging.ComponentIngest)
+	if err != nil {
+		t.Fatalf("logging.New() error = %v", err)
+	}
+	runs := 0
+	runtime := &workerRuntime{
+		heartbeat: heartbeatFunc(func(ctx context.Context) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}),
+		freeze: freezeReaderFunc(func(context.Context) (cutoverfreeze.State, error) {
+			return cutoverfreeze.State{Frozen: true}, nil
+		}),
+		logger: logger,
+		jobs: []workerJob{{
+			event:    logging.EventCloudRetention,
+			interval: 2 * time.Millisecond,
+			timeout:  20 * time.Millisecond,
+			run: func(context.Context) error {
+				runs++
+				return nil
+			},
+		}},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Millisecond)
+	defer cancel()
+	if err := runtime.run(ctx, time.Second); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if runs != 0 {
+		t.Fatalf("frozen job runs = %d", runs)
+	}
 }
 
 func TestWorkerRuntimeRunsImmediatelyWithoutOverlappingJobs(t *testing.T) {

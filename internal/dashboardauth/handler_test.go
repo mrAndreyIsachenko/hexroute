@@ -12,6 +12,7 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/cutoverfreeze"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 )
 
@@ -69,6 +70,59 @@ func TestHandlerRequiresOriginAndCreatesOneTimeLoginSession(t *testing.T) {
 	handler.FinishLogin(response, replay)
 	if response.Code != http.StatusUnauthorized || store.updates != 1 {
 		t.Fatalf("replay = %d updates=%d", response.Code, store.updates)
+	}
+}
+
+type authFreezeReaderFunc func(context.Context) (cutoverfreeze.State, error)
+
+func (function authFreezeReaderFunc) Read(ctx context.Context) (cutoverfreeze.State, error) {
+	return function(ctx)
+}
+
+func TestFrozenLoginCreatesSessionWithoutCredentialWrite(t *testing.T) {
+	now := time.Date(2026, time.July, 27, 1, 0, 0, 0, time.UTC)
+	store := &authStoreFixture{user: authUserFixture(true)}
+	handler := authHandlerFixture(t, store, &ceremonyFixture{credential: credentialFixture()}, now)
+	handler.freeze = authFreezeReaderFunc(func(context.Context) (cutoverfreeze.State, error) {
+		return cutoverfreeze.State{Frozen: true}, nil
+	})
+
+	begin := authRequest(http.MethodPost, "/auth/login/begin", `{"username":"operator"}`)
+	response := httptest.NewRecorder()
+	handler.BeginLogin(response, begin)
+	ceremonyCookie := findCookie(t, response.Result().Cookies(), ceremonyCookieName)
+	finish := authRequest(http.MethodPost, "/auth/login/finish", `{}`)
+	finish.AddCookie(ceremonyCookie)
+	response = httptest.NewRecorder()
+	handler.FinishLogin(response, finish)
+	if response.Code != http.StatusOK || store.updates != 0 {
+		t.Fatalf("frozen login=%d updates=%d body=%q", response.Code, store.updates, response.Body.String())
+	}
+	sessionCookie := findCookie(t, response.Result().Cookies(), sessionCookieName)
+	logout := authRequest(http.MethodPost, "/auth/logout", `{}`)
+	logout.AddCookie(sessionCookie)
+	response = httptest.NewRecorder()
+	handler.Logout(response, logout)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("frozen logout=%d", response.Code)
+	}
+}
+
+func TestFrozenRegistrationIsRetryableAndWriteFree(t *testing.T) {
+	now := time.Date(2026, time.July, 27, 1, 0, 0, 0, time.UTC)
+	store := &authStoreFixture{user: authUserFixture(false)}
+	handler := authHandlerFixture(t, store, &ceremonyFixture{credential: credentialFixture()}, now)
+	handler.freeze = authFreezeReaderFunc(func(context.Context) (cutoverfreeze.State, error) {
+		return cutoverfreeze.State{Frozen: true}, nil
+	})
+	request := authRequest(http.MethodPost, "/auth/register/begin", `{"username":"operator"}`)
+	request.Header.Set("X-Hexroute-Bootstrap", "0123456789abcdef0123456789abcdef")
+	response := httptest.NewRecorder()
+	handler.BeginRegistration(response, request)
+	if response.Code != http.StatusServiceUnavailable || store.adds != 0 ||
+		response.Header().Get("Retry-After") != "60" ||
+		response.Body.String() != `{"status":"write_frozen"}`+"\n" {
+		t.Fatalf("frozen registration=%d adds=%d retry=%q body=%q", response.Code, store.adds, response.Header().Get("Retry-After"), response.Body.String())
 	}
 }
 

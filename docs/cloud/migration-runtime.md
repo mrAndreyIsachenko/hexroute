@@ -11,6 +11,11 @@ reviewed legacy schema without the ledger is adopted only when all expected
 tables, owners, roles, columns, indexes, and grants are present. Partial or
 unknown schemas fail closed.
 
+Migration 13 adds the provider-neutral transaction barrier documented in
+[`cutover-write-freeze.md`](cutover-write-freeze.md). The migrator is the only
+application role allowed to mutate cutover state. Provider commands and live
+edge evidence are intentionally not part of this public runtime.
+
 After migration, an empty `dashboard_principals` table receives one enabled
 `operator` with a random UUID and WebAuthn user handle. Repeated deployments do
 not replace the principal or its passkeys. The public API has no principal
