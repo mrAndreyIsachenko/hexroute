@@ -1,6 +1,6 @@
 # Hexroute Roadmap
 
-Status date: 2026-07-26.
+Status date: 2026-07-31.
 
 ## Current Baseline
 
@@ -17,34 +17,34 @@ Status date: 2026-07-26.
 - Public reusable Terraform modules exist; live roots and deployment evidence
   remain in the private `hexroute-infra` repository.
 - The first cloud foundation is live behind `status.hexroute.app` with external
-  black-box monitoring. It is not yet a second transport provider.
+  black-box monitoring. The control plane, PostgreSQL and private object
+  storage are isolated in a dedicated DigitalOcean Team with canonical,
+  disjoint production and provider-neutral edge states.
+- The first measured logical PostgreSQL and private-object restore drill,
+  RPO-zero cutover, 72-hour soak and old shared-Team decommission are complete.
+- The cloud foundation is not yet a second transport provider.
 
 ## Active Change
 
-The active infrastructure change is
-`migrate-production-to-dedicated-do-team` in the private repository. It moves
-the control plane out of the DigitalOcean Team shared with Twilight by using an
-independent green state, tested backup/restore, reversible DNS cutover, a
-72-hour soak and allowlisted decommission.
-
-This Team split improves ownership, credentials and billing isolation. It does
-not provide a second provider failure domain.
+The next infrastructure change is an evidence-based provider-B bake-off and
+deployment of an independent VLESS/Reality ingress outside DigitalOcean and
+its ASN. It must preserve the current Twilight data path and the dedicated-Team
+Hexroute control plane throughout qualification.
 
 ## Ordered Changes
 
-1. Complete the dedicated-Team migration and first measured restore drill.
-2. Complete root observe-only soak and resolve every materially divergent
+1. Complete root observe-only soak and resolve every materially divergent
    proposed action without enabling mutations.
-3. Run an evidence-based provider-B bake-off and deploy an independent
+2. Run an evidence-based provider-B bake-off and deploy an independent
    VLESS/Reality ingress in a different provider and ASN.
-4. Deploy and qualify two-provider Telegram ingress using native MTG, Nginx SNI
+3. Deploy and qualify two-provider Telegram ingress using native MTG, Nginx SNI
    pass-through and functional MTProto health evidence.
-5. Add signed configuration and A/B release delivery with local rollback.
-6. Cut root tunnel ownership from Twilight to Hexroute transactionally.
-7. Cut user Pritunl recovery ownership from the legacy OTP watchdog to
+4. Add signed configuration and A/B release delivery with local rollback.
+5. Cut root tunnel ownership from Twilight to Hexroute transactionally.
+6. Cut user Pritunl recovery ownership from the legacy OTP watchdog to
    `hexroute-userd` transactionally.
-8. Complete public qualification, supply-chain evidence and legacy cleanup.
+7. Complete public qualification, supply-chain evidence and legacy cleanup.
 
-Each numbered item after the active migration requires its own grill session
-and bounded OpenSpec change. No future item may be bundled into an earlier
-cutover merely because supporting code already exists.
+Each numbered item requires its own grill session and bounded OpenSpec change.
+No future item may be bundled into an earlier cutover merely because
+supporting code already exists.
