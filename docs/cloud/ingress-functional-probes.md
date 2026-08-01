@@ -13,6 +13,9 @@ Hexroute exposes four observation-only ingress probes through
 TCP and TLS fallback do not prove authenticated Reality transport. Conversely,
 an authenticated canary does not prove that the expected observer process is
 fresh. Qualification policy must retain all four signals independently.
+See the [provider-B architecture](../architecture/provider-b-ingress.md) for
+signal ownership and the lifecycle gates that prevent a probe from enabling
+traffic.
 
 ## Invocation Contract
 

@@ -60,6 +60,7 @@ shell-test: build-observe-root build-observe-user
 	tests/container_contract_test.sh
 	tests/observe_root_launchd_test.sh
 	tests/observe_user_launchd_test.sh
+	tests/provider_b_documentation_test.sh
 	tests/terraform_contract_test.sh
 	tests/terraform_state_policy_test.sh
 

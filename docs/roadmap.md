@@ -1,6 +1,6 @@
 # Hexroute Roadmap
 
-Status date: 2026-07-31.
+Status date: 2026-08-01.
 
 ## Current Baseline
 
@@ -23,6 +23,11 @@ Status date: 2026-07-31.
 - The first measured logical PostgreSQL and private-object restore drill,
   RPO-zero cutover, 72-hour soak and old shared-Team decommission are complete.
 - The cloud foundation is not yet a second transport provider.
+- Provider-B reusable Lightsail infrastructure, secret-free bootstrap and four
+  independent functional probes are published and documented, but no public
+  fact claims a workload is deployed, qualified, inventory-admitted or
+  failover-enabled. See
+  [`docs/architecture/provider-b-ingress.md`](architecture/provider-b-ingress.md).
 
 ## Active Change
 

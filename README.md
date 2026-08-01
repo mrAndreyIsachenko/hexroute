@@ -43,7 +43,10 @@ changes and idempotently seeds the first dashboard principal before rollout;
 see `docs/cloud/migration-runtime.md`.
 Reusable Terraform modules define the App Platform, managed PostgreSQL,
 private Spaces, DNS, uptime-check and provider-neutral ingress contracts
-without embedding live infrastructure; see `terraform/README.md`.
+without embedding live infrastructure; see `terraform/README.md`. The
+provider-B topology, ownership and gated lifecycle are documented in
+`docs/architecture/provider-b-ingress.md`; its current public state is
+published, not deployed or failover-enabled.
 
 ## License
 

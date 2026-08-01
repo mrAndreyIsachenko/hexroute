@@ -30,6 +30,8 @@ It has no provider/backend configuration, account or region binding, bootstrap
 payload, secret input, DNS, monitoring, qualification or failover authority.
 Its default firewall exposes only IPv4 TCP 443; temporary SSH is accepted only
 from explicit IPv4 `/32` networks and remains governed by private expiry policy.
+The complete public topology, ownership and promotion gates are defined in
+[`docs/architecture/provider-b-ingress.md`](../docs/architecture/provider-b-ingress.md).
 
 Optional runtime bootstrap is structured rather than arbitrary user data. A
 caller supplies exact XRay and observer versions, bounded public HTTPS artifact
