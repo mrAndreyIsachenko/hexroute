@@ -10,6 +10,10 @@ terraform {
       source  = "uptimerobot/uptimerobot"
       version = "1.9.3"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 6.0, < 7.0"
+    }
   }
 }
 
@@ -165,6 +169,18 @@ module "ingress_hosts" {
   }
 }
 
+module "lightsail_ingress" {
+  source = "../../modules/lightsail-ingress"
+
+  name              = "hexroute-example-ingress"
+  availability_zone = "us-east-1a"
+  blueprint_id      = "ubuntu_24_04"
+  bundle_id         = "micro_3_0"
+  tags = {
+    Environment = "synthetic"
+  }
+}
+
 output "contract" {
   value = {
     app_urn                     = module.app_platform.urn
@@ -175,5 +191,7 @@ output "contract" {
     uptime_checks               = module.uptime_checks.check_ids
     uptime_telegram_integration = module.uptime_checks.telegram_integration_id
     independent_failure_domains = module.ingress_hosts.independent_failure_domains
+    lightsail_instance_name     = module.lightsail_ingress.instance_name
+    lightsail_firewall_rules    = module.lightsail_ingress.firewall_rules
   }
 }

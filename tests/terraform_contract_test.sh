@@ -8,6 +8,7 @@ required_modules=(
   app-platform
   dns-records
   ingress-hosts
+  lightsail-ingress
   managed-postgresql
   private-spaces
   uptime-checks
@@ -25,7 +26,7 @@ done
 terraform fmt -check -recursive "$terraform_root"
 
 if rg -n --glob '*.tf' \
-  'backend[[:space:]]+"|provider[[:space:]]+"digitalocean"|DIGITALOCEAN_ACCESS_TOKEN[[:space:]]*=' \
+  'backend[[:space:]]+"|provider[[:space:]]+"(aws|digitalocean)"|DIGITALOCEAN_ACCESS_TOKEN[[:space:]]*=' \
   "$terraform_root"; then
   printf 'public terraform must not define live backends, providers, or management tokens\n' >&2
   exit 1
@@ -73,6 +74,38 @@ rg -q 'retention_days must be between 1 and 30' \
   "$terraform_root/modules/private-spaces/variables.tf"
 rg -q 'secret_reference.*"secret://"' \
   "$terraform_root/modules/ingress-hosts/variables.tf"
+
+lightsail="$terraform_root/modules/lightsail-ingress"
+[[ "$(rg -c '^resource "aws_lightsail_' "$lightsail/main.tf")" == 4 ]] || {
+  printf 'Lightsail ingress module must own exactly four Lightsail resources\n' >&2
+  exit 1
+}
+for resource in \
+  aws_lightsail_instance \
+  aws_lightsail_static_ip \
+  aws_lightsail_static_ip_attachment \
+  aws_lightsail_instance_public_ports; do
+  rg -Fq "resource \"$resource\"" "$lightsail/main.tf"
+done
+rg -Fq 'ip_address_type   = "ipv4"' "$lightsail/main.tf"
+rg -Fq 'from_port = 443' "$lightsail/variables.tf"
+rg -Fq 'cidrs     = ["0.0.0.0/0"]' "$lightsail/variables.tf"
+rg -Fq 'endswith(cidr, "/32")' "$lightsail/variables.tf"
+if rg -n --glob '*.tf' \
+  'variable "([^" ]*(secret|credential|password|token|uuid|private_key)[^" ]*|sni|user_data)"' \
+  "$lightsail"; then
+  printf 'Lightsail ingress module accepts a secret-bearing input\n' >&2
+  exit 1
+fi
+if rg -n --glob '*.tf' 'resource "' "$lightsail" |
+  rg -v 'resource "aws_lightsail_(instance|static_ip|static_ip_attachment|instance_public_ports)"'; then
+  printf 'Lightsail ingress module owns an unrelated provider resource\n' >&2
+  exit 1
+fi
+if rg -n --glob '*.tf' '[0-9]{12}|arn:aws:|AKIA[0-9A-Z]{16}' "$lightsail"; then
+  printf 'Lightsail ingress module contains a live AWS identity or credential\n' >&2
+  exit 1
+fi
 
 rg -q 'source[[:space:]]*=[[:space:]]*"uptimerobot/uptimerobot"' \
   "$terraform_root/modules/uptime-checks/versions.tf"

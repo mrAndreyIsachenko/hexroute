@@ -20,4 +20,10 @@ terraform -chdir="$workdir/terraform/test-fixtures/modules" validate
 terraform -chdir="$workdir/terraform/test-fixtures/modules" \
   test -test-directory=tests
 
+export TF_DATA_DIR="$workdir/lightsail-terraform-data"
+terraform -chdir="$workdir/terraform/modules/lightsail-ingress" \
+  init -backend=false -input=false
+terraform -chdir="$workdir/terraform/modules/lightsail-ingress" validate
+terraform -chdir="$workdir/terraform/modules/lightsail-ingress" test
+
 printf 'terraform synthetic composition passed\n'

@@ -11,6 +11,7 @@ contain a deployable root module.
 | `dns-records` | Stable DigitalOcean DNS records |
 | `uptime-checks` | A bounded UptimeRobot black-box catalog for HTTP/API/content, DNS, port and heartbeat checks with independent delivery through UptimeRobot's managed Telegram bot |
 | `ingress-hosts` | Provider-neutral ingress inventory and independent provider/ASN validation |
+| `lightsail-ingress` | One bounded AWS Lightsail Linux ingress, static IPv4 attachment and authoritative TCP firewall contract |
 
 ## Boundary
 
@@ -23,6 +24,12 @@ The private `hexroute-infra` repository owns deployable root modules, encrypted
 remote-state configuration, provider configuration, live values and secret
 references. Runtime services receive only their own application secrets; cloud
 management tokens do not enter App Platform components.
+
+`lightsail-ingress` is a reusable capability, not a live provider-B deployment.
+It has no provider/backend configuration, account or region binding, bootstrap
+payload, secret input, DNS, monitoring, qualification or failover authority.
+Its default firewall exposes only IPv4 TCP 443; temporary SSH is accepted only
+from explicit IPv4 `/32` networks and remains governed by private expiry policy.
 
 ## Validation
 
