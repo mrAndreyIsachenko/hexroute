@@ -179,6 +179,18 @@ module "lightsail_ingress" {
   tags = {
     Environment = "synthetic"
   }
+  runtime_artifacts = {
+    xray = {
+      version = "25.7.1"
+      url     = "https://downloads.example.invalid/xray-25.7.1-linux-amd64.zip"
+      sha256  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+    observer = {
+      version = "1.0.0"
+      url     = "https://downloads.example.invalid/observer-1.0.0-linux-amd64.tar.gz"
+      sha256  = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  }
 }
 
 output "contract" {
@@ -193,5 +205,6 @@ output "contract" {
     independent_failure_domains = module.ingress_hosts.independent_failure_domains
     lightsail_instance_name     = module.lightsail_ingress.instance_name
     lightsail_firewall_rules    = module.lightsail_ingress.firewall_rules
+    lightsail_bootstrap_sha256  = module.lightsail_ingress.runtime_bootstrap_sha256
   }
 }

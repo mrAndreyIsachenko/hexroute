@@ -12,6 +12,31 @@ locals {
       cidrs     = sort(tolist(rule.cidrs))
     }
   ]
+
+  xray_service = templatefile("${path.module}/templates/hexroute-xray.service.tftpl", {})
+  observer_service = templatefile(
+    "${path.module}/templates/hexroute-ingress-observer.service.tftpl",
+    {},
+  )
+  runtime_installer = var.runtime_artifacts == null ? null : templatefile(
+    "${path.module}/templates/install-runtime.sh.tftpl",
+    {
+      xray_version     = var.runtime_artifacts.xray.version
+      xray_url         = var.runtime_artifacts.xray.url
+      xray_sha256      = var.runtime_artifacts.xray.sha256
+      observer_version = var.runtime_artifacts.observer.version
+      observer_url     = var.runtime_artifacts.observer.url
+      observer_sha256  = var.runtime_artifacts.observer.sha256
+    },
+  )
+  runtime_bootstrap = var.runtime_artifacts == null ? null : templatefile(
+    "${path.module}/templates/cloud-init.yaml.tftpl",
+    {
+      xray_service      = local.xray_service
+      observer_service  = local.observer_service
+      runtime_installer = local.runtime_installer
+    },
+  )
 }
 
 resource "aws_lightsail_instance" "this" {
@@ -21,6 +46,7 @@ resource "aws_lightsail_instance" "this" {
   bundle_id         = var.bundle_id
   key_pair_name     = var.key_pair_name
   ip_address_type   = "ipv4"
+  user_data         = local.runtime_bootstrap
   tags              = local.tags
 
   add_on {

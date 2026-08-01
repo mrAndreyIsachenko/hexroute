@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 terraform_root="$repo_root/terraform"
+lightsail="$terraform_root/modules/lightsail-ingress"
 
 required_modules=(
   app-platform
@@ -29,6 +30,45 @@ if rg -n --glob '*.tf' \
   'backend[[:space:]]+"|provider[[:space:]]+"(aws|digitalocean)"|DIGITALOCEAN_ACCESS_TOKEN[[:space:]]*=' \
   "$terraform_root"; then
   printf 'public terraform must not define live backends, providers, or management tokens\n' >&2
+  exit 1
+fi
+for template in \
+  cloud-init.yaml.tftpl \
+  install-runtime.sh.tftpl \
+  hexroute-xray.service.tftpl \
+  hexroute-ingress-observer.service.tftpl; do
+  test -f "$lightsail/templates/$template" || {
+    printf 'Lightsail ingress runtime template is missing: %s\n' "$template" >&2
+    exit 1
+  }
+done
+rg -Fq 'user_data         = local.runtime_bootstrap' "$lightsail/main.tf"
+rg -Fq 'runtime_bootstrap_sha256' "$lightsail/outputs.tf"
+rg -Fq 'sha256(local.runtime_bootstrap)' "$lightsail/outputs.tf"
+rg -Fq -- "--proto '=https' --tlsv1.2" \
+  "$lightsail/templates/install-runtime.sh.tftpl"
+rg -Fq 'sha256sum --check --status' \
+  "$lightsail/templates/install-runtime.sh.tftpl"
+for unit in \
+  hexroute-xray.service.tftpl \
+  hexroute-ingress-observer.service.tftpl; do
+  rg -Fq 'User=hexroute-ingress' "$lightsail/templates/$unit"
+  rg -Fq 'Group=hexroute-ingress' "$lightsail/templates/$unit"
+  rg -Fq 'NoNewPrivileges=true' "$lightsail/templates/$unit"
+  rg -Fq 'ProtectSystem=strict' "$lightsail/templates/$unit"
+  rg -Fq 'ProtectHome=true' "$lightsail/templates/$unit"
+  rg -Fq 'PrivateDevices=true' "$lightsail/templates/$unit"
+  rg -Fq 'ConditionPathExists=/etc/hexroute/runtime/' \
+    "$lightsail/templates/$unit"
+done
+rg -Fq 'CapabilityBoundingSet=CAP_NET_BIND_SERVICE' \
+  "$lightsail/templates/hexroute-xray.service.tftpl"
+rg -Fxq 'CapabilityBoundingSet=' \
+  "$lightsail/templates/hexroute-ingress-observer.service.tftpl"
+if rg -ni \
+  'vless|reality|private[_ -]?key|uuid|sni|signing[_ -]?secret|password|bearer[_ -]?token' \
+  "$lightsail/templates"; then
+  printf 'Lightsail runtime templates contain transport or heartbeat secret material\n' >&2
   exit 1
 fi
 
@@ -75,7 +115,6 @@ rg -q 'retention_days must be between 1 and 30' \
 rg -q 'secret_reference.*"secret://"' \
   "$terraform_root/modules/ingress-hosts/variables.tf"
 
-lightsail="$terraform_root/modules/lightsail-ingress"
 [[ "$(rg -c '^resource "aws_lightsail_' "$lightsail/main.tf")" == 4 ]] || {
   printf 'Lightsail ingress module must own exactly four Lightsail resources\n' >&2
   exit 1

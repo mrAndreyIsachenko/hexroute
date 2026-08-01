@@ -31,6 +31,13 @@ payload, secret input, DNS, monitoring, qualification or failover authority.
 Its default firewall exposes only IPv4 TCP 443; temporary SSH is accepted only
 from explicit IPv4 `/32` networks and remains governed by private expiry policy.
 
+Optional runtime bootstrap is structured rather than arbitrary user data. A
+caller supplies exact XRay and observer versions, bounded public HTTPS artifact
+URLs and SHA-256 digests. The module verifies both downloads before installation,
+renders hardened non-root systemd units and exposes only the cloud-init digest.
+Service activation remains gated on root-provisioned runtime files, so transport
+and heartbeat secrets never enter Terraform configuration or state.
+
 ## Validation
 
 The fast contract runs as part of the normal repository checks:

@@ -26,4 +26,9 @@ run "synthetic_composition" {
     )
     error_message = "synthetic Lightsail ingress must expose only global TCP 443."
   }
+
+  assert {
+    condition     = length(module.lightsail_ingress.runtime_bootstrap_sha256) == 64
+    error_message = "synthetic runtime bootstrap must expose only a stable digest."
+  }
 }

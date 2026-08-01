@@ -1,0 +1,40 @@
+[Unit]
+Description=Hexroute bounded ingress observer
+After=network-online.target hexroute-xray.service
+Wants=network-online.target
+ConditionPathExists=/etc/hexroute/runtime/observer.env
+
+[Service]
+Type=simple
+User=hexroute-ingress
+Group=hexroute-ingress
+EnvironmentFile=/etc/hexroute/runtime/observer.env
+ExecStart=/usr/local/bin/hexroute-ingress-observer
+Restart=on-failure
+RestartSec=10s
+UMask=0027
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+StateDirectory=hexroute-observer
+StateDirectoryMode=0750
+
+[Install]
+WantedBy=multi-user.target

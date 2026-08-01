@@ -141,3 +141,34 @@ variable "tags" {
     error_message = "tags must be bounded and cannot replace module ownership tags."
   }
 }
+
+variable "runtime_artifacts" {
+  type = object({
+    xray = object({
+      version = string
+      url     = string
+      sha256  = string
+    })
+    observer = object({
+      version = string
+      url     = string
+      sha256  = string
+    })
+  })
+  description = "Optional exact public artifact pins used to render secret-free runtime bootstrap."
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = var.runtime_artifacts == null ? true : alltrue([
+      for artifact in [
+        var.runtime_artifacts.xray,
+        var.runtime_artifacts.observer,
+      ] :
+      can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", artifact.version)) &&
+      can(regex("^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]+)+$", artifact.url)) &&
+      can(regex("^[0-9a-f]{64}$", artifact.sha256))
+    ])
+    error_message = "runtime artifacts require exact numeric versions, bounded HTTPS URLs without query data, and lowercase SHA-256 digests."
+  }
+}

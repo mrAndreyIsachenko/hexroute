@@ -1,0 +1,36 @@
+#cloud-config
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - tar
+  - unzip
+groups:
+  - hexroute-ingress
+users:
+  - default
+  - name: hexroute-ingress
+    system: true
+    primary_group: hexroute-ingress
+    shell: /usr/sbin/nologin
+    lock_passwd: true
+write_files:
+  - path: /etc/systemd/system/hexroute-xray.service
+    owner: root:root
+    permissions: "0644"
+    content: |-
+      ${indent(6, xray_service)}
+  - path: /etc/systemd/system/hexroute-ingress-observer.service
+    owner: root:root
+    permissions: "0644"
+    content: |-
+      ${indent(6, observer_service)}
+  - path: /usr/local/libexec/hexroute-install-runtime
+    owner: root:root
+    permissions: "0700"
+    content: |-
+      ${indent(6, runtime_installer)}
+runcmd:
+  - ["/usr/local/libexec/hexroute-install-runtime"]
+  - ["systemctl", "daemon-reload"]
+  - ["systemctl", "enable", "hexroute-xray.service", "hexroute-ingress-observer.service"]

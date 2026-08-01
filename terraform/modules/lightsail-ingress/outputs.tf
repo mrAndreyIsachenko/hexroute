@@ -32,3 +32,16 @@ output "firewall_rules" {
   value       = local.normalized_public_ports
   description = "Normalized authoritative IPv4 public-port policy."
 }
+
+output "runtime_bootstrap_sha256" {
+  value       = local.runtime_bootstrap == null ? null : sha256(local.runtime_bootstrap)
+  description = "Digest of rendered non-secret cloud-init; null when runtime bootstrap is disabled."
+}
+
+output "runtime_artifact_versions" {
+  value = var.runtime_artifacts == null ? null : {
+    xray     = var.runtime_artifacts.xray.version
+    observer = var.runtime_artifacts.observer.version
+  }
+  description = "Exact non-secret runtime artifact versions."
+}

@@ -1,0 +1,38 @@
+[Unit]
+Description=Hexroute XRay ingress
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/hexroute/runtime/xray.json
+
+[Service]
+Type=simple
+User=hexroute-ingress
+Group=hexroute-ingress
+ExecStart=/usr/local/bin/xray run -config /etc/hexroute/runtime/xray.json
+Restart=on-failure
+RestartSec=5s
+UMask=0027
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+ReadOnlyPaths=/etc/hexroute/runtime/xray.json
+
+[Install]
+WantedBy=multi-user.target

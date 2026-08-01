@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+umask 077
+
+readonly xray_version='${xray_version}'
+readonly xray_url='${xray_url}'
+readonly xray_sha256='${xray_sha256}'
+readonly observer_version='${observer_version}'
+readonly observer_url='${observer_url}'
+readonly observer_sha256='${observer_sha256}'
+
+workdir="$(mktemp -d /tmp/hexroute-runtime.XXXXXX)"
+trap 'rm -rf "$workdir"' EXIT
+
+download_and_verify() {
+  local url="$1" expected="$2" destination="$3"
+  curl --fail --silent --show-error --location \
+    --proto '=https' --tlsv1.2 \
+    --connect-timeout 15 --max-time 180 \
+    --output "$destination" "$url"
+  printf '%s  %s\n' "$expected" "$destination" | sha256sum --check --status
+}
+
+install -d -m 0755 /usr/local/bin /usr/local/share/hexroute
+install -d -m 0750 -o root -g hexroute-ingress /etc/hexroute/runtime
+
+download_and_verify "$xray_url" "$xray_sha256" "$workdir/xray.zip"
+mkdir "$workdir/xray"
+unzip -q "$workdir/xray.zip" -d "$workdir/xray"
+test -f "$workdir/xray/xray"
+install -o root -g root -m 0755 "$workdir/xray/xray" /usr/local/bin/xray
+
+download_and_verify \
+  "$observer_url" "$observer_sha256" "$workdir/observer.tar.gz"
+mkdir "$workdir/observer"
+tar -xzf "$workdir/observer.tar.gz" -C "$workdir/observer"
+test -f "$workdir/observer/hexroute-ingress-observer"
+install -o root -g root -m 0755 \
+  "$workdir/observer/hexroute-ingress-observer" \
+  /usr/local/bin/hexroute-ingress-observer
+
+printf 'xray=%s\nobserver=%s\n' "$xray_version" "$observer_version" \
+  >/usr/local/share/hexroute/runtime-versions
+chmod 0644 /usr/local/share/hexroute/runtime-versions
