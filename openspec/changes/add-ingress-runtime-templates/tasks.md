@@ -15,4 +15,4 @@
 
 - [x] 3.1 Document bootstrap/process/state ownership without claiming activation or production readiness.
 - [x] 3.2 Run strict OpenSpec validation and the full public repository gate.
-- [ ] 3.3 Push the public revision, pin it in private policy, mark parent task 4.2 complete and record pre-adoption rollback.
+- [x] 3.3 Push the public revision, pin it in private policy, mark parent task 4.2 complete and record pre-adoption rollback.
