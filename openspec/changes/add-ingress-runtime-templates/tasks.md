@@ -22,5 +22,5 @@
 - [x] 4.1 Implement the strict loopback-only signed ingress observer with bounded XRay and outbound dependency checks.
 - [x] 4.2 Extend the heartbeat probe with a validated literal-loopback SOCKS retrieval path and keep non-loopback endpoints HTTPS-only.
 - [x] 4.3 Add a deterministic static Linux AMD64 archive builder and double-build reproducibility, archive-content and secret-redaction tests.
-- [ ] 4.4 Update runtime documentation, run the full public gate and publish an immutable observer release with its SHA-256 digest.
+- [x] 4.4 Update runtime documentation, run the full public gate and publish an immutable observer release with its SHA-256 digest.
 - [ ] 4.5 Pin the released observer and official XRay artifacts in private policy before any SSH or runtime apply.
