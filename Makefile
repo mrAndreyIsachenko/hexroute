@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-ctl build-observe-root build-observe-user check container-build container-test fmt postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test vet
+.PHONY: build build-ctl build-ingress-probe build-observe-root build-observe-user check container-build container-test fmt postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test vet
 
 build:
 	go build ./cmd/...
@@ -18,6 +18,10 @@ build-observe-user:
 build-ctl:
 	mkdir -p bin
 	go build -o bin/hexroutectl ./cmd/hexroutectl
+
+build-ingress-probe:
+	mkdir -p bin
+	go build -o bin/hexroute-ingress-probe ./cmd/hexroute-ingress-probe
 
 container-build:
 	docker build -t "$(CONTAINER_IMAGE)" .
