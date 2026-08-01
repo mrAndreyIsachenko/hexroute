@@ -20,4 +20,4 @@
 
 - [x] 4.1 Document probe semantics, secret input ownership and the distinction between fallback and authenticated evidence.
 - [x] 4.2 Run formatting, unit, race, static, secret, strict OpenSpec and full repository checks.
-- [ ] 4.3 Publish the public revision, pin it in private policy, mark parent task 4.3 complete and record pre-adoption rollback.
+- [x] 4.3 Publish the public revision, pin it in private policy, mark parent task 4.3 complete and record pre-adoption rollback.
