@@ -14,4 +14,4 @@
 
 - [x] 3.1 Update public Terraform documentation without claiming production readiness or automatic failover.
 - [x] 3.2 Run strict repository OpenSpec validation and the full public repository check.
-- [ ] 3.3 Mark private parent task 4.1 complete only after the public commit is pushed and record rollback as removal before private adoption.
+- [x] 3.3 Mark private parent task 4.1 complete only after the public commit is pushed and record rollback as removal before private adoption.
