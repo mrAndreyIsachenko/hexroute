@@ -46,7 +46,7 @@ func (runner *Runner) probeHeartbeat(parent context.Context, raw []byte) Categor
 	if !timeoutOK || !maxAgeOK || nodeErr != nil || keyErr != nil ||
 		publicKeyErr != nil || len(publicKey) != ed25519.PublicKeySize ||
 		!validReference(request.ExpectedGeneration) ||
-		!validHTTPSURL(request.EndpointURL) {
+		!validHeartbeatTransport(request.EndpointURL, request.ProxyURL) {
 		return CategoryInvalidInput
 	}
 
@@ -63,6 +63,12 @@ func (runner *Runner) probeHeartbeat(parent context.Context, raw []byte) Categor
 	}
 	httpRequest.Header.Set("Accept", "application/json")
 	client := runner.httpClient(timeout)
+	if request.ProxyURL != "" {
+		client, err = newLoopbackSOCKSClient(timeout, request.ProxyURL)
+		if err != nil {
+			return CategoryInvalidInput
+		}
+	}
 	if client == nil {
 		return CategoryInternal
 	}

@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,6 +83,42 @@ func validHTTPSURL(value string) bool {
 		return false
 	}
 	return parsed.Scheme == "https" && validHost(parsed.Hostname())
+}
+
+func validHeartbeatTransport(endpointURL, proxyURL string) bool {
+	if proxyURL == "" {
+		return validHTTPSURL(endpointURL)
+	}
+	if !validLoopbackSOCKSURL(proxyURL) {
+		return false
+	}
+	return validHTTPSURL(endpointURL) || validLoopbackHTTPURL(endpointURL)
+}
+
+func validLoopbackSOCKSURL(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.Scheme == "socks5" && parsed.User == nil &&
+		parsed.RawQuery == "" && parsed.Fragment == "" && parsed.Path == "" &&
+		validLiteralLoopbackHostPort(parsed)
+}
+
+func validLoopbackHTTPURL(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.Scheme == "http" && parsed.User == nil &&
+		parsed.RawQuery == "" && parsed.Fragment == "" &&
+		validLiteralLoopbackHostPort(parsed)
+}
+
+func validLiteralLoopbackHostPort(parsed *url.URL) bool {
+	if parsed == nil || parsed.Port() == "" {
+		return false
+	}
+	port, err := strconv.ParseUint(parsed.Port(), 10, 16)
+	if err != nil || port == 0 {
+		return false
+	}
+	address := net.ParseIP(parsed.Hostname())
+	return address != nil && address.IsLoopback()
 }
 
 func validUserID(value string) bool {

@@ -40,6 +40,12 @@ renders hardened non-root systemd units and exposes only the cloud-init digest.
 Service activation remains gated on root-provisioned runtime files, so transport
 and heartbeat secrets never enter Terraform configuration or state.
 
+The observer artifact is produced by the deterministic public builder described
+in [`docs/cloud/ingress-observer-runtime.md`](../docs/cloud/ingress-observer-runtime.md).
+It binds only loopback; the Lightsail firewall continues to expose only TCP 443
+globally and an expiring operator SSH `/32` when private provisioning requires
+it.
+
 ## Validation
 
 The fast contract runs as part of the normal repository checks:

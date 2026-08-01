@@ -15,6 +15,10 @@ placing runtime transport credentials in Terraform or Git.
   arbitrary caller-supplied user-data string.
 - Install verified binaries and enable service units whose startup remains
   gated on root-provisioned runtime configuration files.
+- Add the missing `hexroute-ingress-observer` Linux command and a
+  deterministic release archive consumed by the existing bootstrap contract.
+- Keep the observer on loopback and extend the heartbeat probe to retrieve its
+  signed response through an explicitly supplied loopback SOCKS proxy.
 - Add rendering, privilege-boundary, pinning and secret-redaction tests.
 - Keep runtime secret creation/provisioning, live AWS instantiation, monitoring,
   qualification and client failover out of this change.
@@ -32,8 +36,9 @@ placing runtime transport credentials in Terraform or Git.
 
 ## Impact
 
-This change belongs to public Hexroute and affects only the reusable
-`lightsail-ingress` module, synthetic fixtures, tests and public documentation.
+This change belongs to public Hexroute and affects the reusable
+`lightsail-ingress` module, the observer and probe commands, deterministic
+release tooling, synthetic fixtures, tests and public documentation.
 Private `hexroute-infra` continues to own the live provider root, discovered
 artifact coordinates and runtime secret provisioning. Rollout publishes an
 unused module revision; rollback before private adoption reverts that revision.

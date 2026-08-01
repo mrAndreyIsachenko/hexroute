@@ -31,10 +31,12 @@ document.
 At runtime, XRay and the observer are separate restricted processes. XRay owns
 the public transport listener and reads only its root-provisioned runtime
 configuration. The observer has no provider mutation credential; it reports a
-fresh generation-bound signed heartbeat. Private operator automation retrieves
-authenticated-probe material and streams it over stdin to a temporary
-loopback-only sing-box process. External monitoring remains outside the AWS
-failure domain and tests public reachability without receiving AWS credentials.
+fresh generation-bound signed heartbeat from a loopback-only HTTP listener.
+Private operator automation retrieves authenticated-probe material over stdin,
+starts a temporary loopback-only sing-box SOCKS process and reads the observer
+through that authenticated transport. External monitoring remains outside the
+AWS failure domain and tests public reachability without receiving AWS
+credentials.
 
 ## Ownership
 

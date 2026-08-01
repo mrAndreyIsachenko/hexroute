@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-ctl build-ingress-probe build-observe-root build-observe-user check container-build container-test fmt postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test vet
+.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user check container-build container-test fmt ingress-observer-release-test postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test vet
 
 build:
 	go build ./cmd/...
@@ -22,6 +22,13 @@ build-ctl:
 build-ingress-probe:
 	mkdir -p bin
 	go build -o bin/hexroute-ingress-probe ./cmd/hexroute-ingress-probe
+
+build-ingress-observer:
+	mkdir -p bin
+	go build -o bin/hexroute-ingress-observer ./cmd/hexroute-ingress-observer
+
+ingress-observer-release-test:
+	tests/ingress_observer_release_test.sh
 
 container-build:
 	docker build -t "$(CONTAINER_IMAGE)" .
@@ -54,13 +61,14 @@ terraform-state-test:
 	tests/terraform_state_policy_test.sh
 
 shell-test: build-observe-root build-observe-user
-	bash -n scripts/baseline/*.sh scripts/macos/*.sh scripts/terraform-state-policy.sh tests/*.sh
+	bash -n scripts/baseline/*.sh scripts/macos/*.sh scripts/*.sh tests/*.sh
 	tests/baseline_archives_test.sh
 	tests/emergency_restore_test.sh
 	tests/container_contract_test.sh
 	tests/observe_root_launchd_test.sh
 	tests/observe_user_launchd_test.sh
 	tests/provider_b_documentation_test.sh
+	tests/ingress_observer_release_test.sh
 	tests/terraform_contract_test.sh
 	tests/terraform_state_policy_test.sh
 

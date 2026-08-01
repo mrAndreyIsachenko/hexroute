@@ -43,8 +43,8 @@ Requests contain the following fields:
 - `tls-fallback`: the TCP fields plus `server_name`.
 - `authenticated`: endpoint, server name, VLESS user ID, Reality public key and
   short ID, HTTPS canary URL, optional accepted status bounds and timeout.
-- `heartbeat`: HTTPS endpoint, expected node/key IDs, Ed25519 public key,
-  deployment generation, maximum age and timeout.
+- `heartbeat`: endpoint, optional literal-loopback SOCKS URL, expected node/key
+  IDs, Ed25519 public key, deployment generation, maximum age and timeout.
 
 Private automation owns live values and must stream the request through an
 anonymous stdin pipe. It must not persist the authenticated request, place its
@@ -76,6 +76,17 @@ health. Validation requires:
 2. an active expected Ed25519 node/key and valid body digest/signature;
 3. fresh envelope and body timestamps;
 4. exact expected deployment generation and healthy transport state.
+
+The instance observer binds only literal loopback. Private automation may
+retrieve `http://127.0.0.1:<port>/v1/heartbeat` through an explicitly supplied
+`socks5://127.0.0.1:<port>` proxy created by the authenticated transport
+workflow. Plain HTTP without that literal-loopback proxy, hostname aliases such
+as `localhost`, remote SOCKS proxies and credential-bearing proxy URLs are
+rejected before network access. Direct non-loopback heartbeat endpoints remain
+HTTPS-only.
+
+The producer-side environment and release contract is documented in
+[Ingress observer runtime](ingress-observer-runtime.md).
 
 This public component does not schedule probes or publish a qualification
 report. Live provider inventory, external monitors, Keychain retrieval and

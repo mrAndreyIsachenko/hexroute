@@ -90,6 +90,7 @@ type AuthenticatedRequest struct {
 
 type HeartbeatRequest struct {
 	EndpointURL        string `json:"endpoint_url"`
+	ProxyURL           string `json:"proxy_url,omitempty"`
 	ExpectedNodeID     string `json:"expected_node_id"`
 	ExpectedKeyID      string `json:"expected_key_id"`
 	PublicKey          string `json:"public_key"`

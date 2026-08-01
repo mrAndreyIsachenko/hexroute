@@ -16,6 +16,8 @@ testable without becoming a generic secret-bearing input.
 - verify downloads before installation and record only non-secret versions;
 - run XRay and the observer under one dedicated non-login service identity with
   distinct systemd sandbox and writable-path boundaries;
+- publish the missing observer as a deterministic Linux artifact and keep its
+  HTTP listener reachable only through the authenticated transport;
 - gate service startup on root-provisioned runtime files that are absent from
   Terraform and Git;
 - expose only a bootstrap digest for plan/evidence correlation.
@@ -25,6 +27,8 @@ testable without becoming a generic secret-bearing input.
 - accept an arbitrary `user_data` string or any runtime credential;
 - define XRay routing, Reality keys, VLESS identities, SNI, heartbeat keys or
   observer destinations;
+- add a second public listener, a control-plane heartbeat dependency or cloud
+  credentials to the ingress host;
 - start services before runtime files exist;
 - create or mutate live AWS, local routes, Twilight, AdGuard or Pritunl.
 
@@ -69,6 +73,35 @@ provisioning validates runtime files and explicitly starts them. Cloud loss or a
 failed unit leaves Twilight and local recovery untouched because the module has
 no client, route or local process authority.
 
+### Loopback-only signed observer
+
+`hexroute-ingress-observer` reads a strict root-provisioned environment file
+and an existing mode-private Hexroute Ed25519 key file. It binds an explicit
+loopback address, validates that the signing key belongs to the configured
+node, and emits one bounded `hexroute.ingress-heartbeat-response.v1` document.
+Each response carries a fresh request ID and timestamp, the exact deployment
+generation and a signed boolean derived from bounded local XRay and outbound
+dependency probes. Invalid configuration or signing failure is fail-closed and
+never returns configuration values or dependency error text.
+
+The observer does not receive a public firewall rule. Private qualification
+starts a temporary loopback-only sing-box SOCKS listener using the existing
+authenticated VLESS/Reality request, then asks the heartbeat probe to fetch the
+observer's loopback HTTP endpoint through that SOCKS listener. Plain HTTP is
+accepted only for a literal loopback target when the proxy is also literal
+loopback; every non-loopback heartbeat endpoint remains HTTPS-only. This keeps
+TCP 443 as the sole public service while preserving a separately signed runtime
+generation signal.
+
+### Deterministic observer artifact
+
+The public repository builds a static Linux AMD64 observer with trimmed paths
+and no VCS-derived build metadata, then packages the one executable in a
+deterministic gzip-compressed tar archive. The build records the archive
+SHA-256 and a regression test rebuilds it twice to prove byte identity. Private
+infrastructure pins an immutable release URL and digest; floating source
+archives or branch URLs remain invalid.
+
 ## Risks / Trade-offs
 
 - [Artifact host is unavailable during replacement] -> Private policy pins and
@@ -82,11 +115,17 @@ no client, route or local process authority.
   isolates the process from unrelated paths.
 - [Enabled units fail at boot before provisioning] -> `ConditionPathExists`
   skips startup cleanly until runtime activation.
+- [A public observer port expands the ingress attack surface] -> bind only a
+  literal loopback address and retrieve heartbeat through authenticated VLESS.
+- [Artifact bytes differ by build host or time] -> fixed Go build flags,
+  deterministic tar/gzip metadata and a double-build digest test.
 
 ## Migration Plan
 
-1. Publish templates and mock-render tests without changing live roots.
-2. Pin the new public commit in private policy.
+1. Publish templates, observer/probe binaries and deterministic artifact tests
+   without changing live roots.
+2. Publish an immutable observer release and pin the public commit in private
+   policy.
 3. A later private saved plan supplies reviewed artifact coordinates and
    compares the rendered bootstrap digest before apply.
 4. Before adoption, rollback reverts this public revision. After adoption,

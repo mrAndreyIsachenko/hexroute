@@ -16,3 +16,11 @@
 - [x] 3.1 Document bootstrap/process/state ownership without claiming activation or production readiness.
 - [x] 3.2 Run strict OpenSpec validation and the full public repository gate.
 - [x] 3.3 Push the public revision, pin it in private policy, mark parent task 4.2 complete and record pre-adoption rollback.
+
+## 4. Observer Artifact Completion
+
+- [x] 4.1 Implement the strict loopback-only signed ingress observer with bounded XRay and outbound dependency checks.
+- [x] 4.2 Extend the heartbeat probe with a validated literal-loopback SOCKS retrieval path and keep non-loopback endpoints HTTPS-only.
+- [x] 4.3 Add a deterministic static Linux AMD64 archive builder and double-build reproducibility, archive-content and secret-redaction tests.
+- [ ] 4.4 Update runtime documentation, run the full public gate and publish an immutable observer release with its SHA-256 digest.
+- [ ] 4.5 Pin the released observer and official XRay artifacts in private policy before any SSH or runtime apply.
