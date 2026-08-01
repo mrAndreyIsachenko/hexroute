@@ -2,7 +2,9 @@ package ingressprobe
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -20,6 +22,7 @@ import (
 const (
 	defaultStatusMin = 200
 	defaultStatusMax = 399
+	maxIdentityBody  = 4096
 	processStopGrace = 2 * time.Second
 )
 
@@ -145,6 +148,7 @@ func (runner *Runner) probeAuthenticated(
 		ctx,
 		address,
 		request.TargetURL,
+		request.ExpectedBodySHA256,
 		statusMin,
 		statusMax,
 	); err != nil {
@@ -162,7 +166,8 @@ func validAuthenticatedRequest(request AuthenticatedRequest) bool {
 		!validUserID(request.UserID) ||
 		!validRealityPublicKey(request.RealityPublicKey) ||
 		!validRealityShortID(request.RealityShortID) ||
-		!validHTTPSURL(request.TargetURL) {
+		!validHTTPSURL(request.TargetURL) ||
+		!validOptionalSHA256(request.ExpectedBodySHA256) {
 		return false
 	}
 	if _, ok := timeoutDuration(request.TimeoutMS); !ok {
@@ -306,6 +311,7 @@ func fetchThroughSOCKS(
 	ctx context.Context,
 	proxyAddress string,
 	targetURL string,
+	expectedBodySHA256 string,
 	statusMin int,
 	statusMax int,
 ) error {
@@ -345,9 +351,31 @@ func fetchThroughSOCKS(
 		return err
 	}
 	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
 	if response.StatusCode < statusMin || response.StatusCode > statusMax {
 		return errors.New("unexpected canary status")
+	}
+	if expectedBodySHA256 == "" {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxIdentityBody))
+		return nil
+	}
+	if err := verifyExpectedBody(response.Body, expectedBodySHA256); err != nil {
+		return err
+	}
+	return nil
+}
+
+func verifyExpectedBody(body io.Reader, expectedBodySHA256 string) error {
+	if body == nil || expectedBodySHA256 == "" ||
+		!validOptionalSHA256(expectedBodySHA256) {
+		return errors.New("invalid canary identity assertion")
+	}
+	encoded, err := io.ReadAll(io.LimitReader(body, maxIdentityBody+1))
+	if err != nil || len(encoded) > maxIdentityBody {
+		return errors.New("invalid canary identity response")
+	}
+	digest := sha256.Sum256(encoded)
+	if hex.EncodeToString(digest[:]) != expectedBodySHA256 {
+		return errors.New("unexpected canary identity")
 	}
 	return nil
 }

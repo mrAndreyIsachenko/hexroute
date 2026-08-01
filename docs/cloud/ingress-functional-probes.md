@@ -42,7 +42,8 @@ Requests contain the following fields:
 - `tcp`: `endpoint.host`, `endpoint.port`, `timeout_ms`.
 - `tls-fallback`: the TCP fields plus `server_name`.
 - `authenticated`: endpoint, server name, VLESS user ID, Reality public key and
-  short ID, HTTPS canary URL, optional accepted status bounds and timeout.
+  short ID, HTTPS canary URL, optional accepted status bounds, optional expected
+  body SHA-256 and timeout.
 - `heartbeat`: endpoint, optional literal-loopback SOCKS URL, expected node/key
   IDs, Ed25519 public key, deployment generation, maximum age and timeout.
 
@@ -63,6 +64,12 @@ The child receives only `run --disable-color -c <temporary-path>` and its output
 is discarded. Hexroute waits for loopback readiness, performs one HTTPS request
 through SOCKS, stops the child and removes the directory on every return path.
 Probe failure has no restart or mutation authority.
+
+Private automation may include `expected_body_sha256` to bind a canary to an
+exact response identity without exposing the response. The probe reads at most
+4096 bytes for this assertion and reports only the existing redacted
+authenticated-transport category for mismatch or overflow. Omitting the field
+preserves status-only behavior.
 
 ## Signed Heartbeat Contract
 

@@ -140,6 +140,17 @@ func validRealityShortID(value string) bool {
 	return err == nil && len(decoded) >= 1 && len(decoded) <= 8
 }
 
+func validOptionalSHA256(value string) bool {
+	if value == "" {
+		return true
+	}
+	if len(value) != 64 || strings.ToLower(value) != value {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 32
+}
+
 func endpointAddress(endpoint Endpoint) string {
 	return net.JoinHostPort(endpoint.Host, formatPort(endpoint.Port))
 }

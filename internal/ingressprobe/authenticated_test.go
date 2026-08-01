@@ -3,6 +3,7 @@ package ingressprobe
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -74,15 +75,20 @@ func TestAuthenticatedProbeUsesLoopbackPrivateConfigAndCleansUp(t *testing.T) {
 		return process, nil
 	}
 	request := validAuthenticatedFixture()
+	identityDigest := sha256.Sum256([]byte("expected-egress-identity"))
+	request.ExpectedBodySHA256 = hex.EncodeToString(identityDigest[:])
 	runner.socksFetch = func(
 		_ context.Context,
 		proxyAddress string,
 		targetURL string,
+		expectedBodySHA256 string,
 		statusMin int,
 		statusMax int,
 	) error {
 		if !strings.HasPrefix(proxyAddress, "127.0.0.1:") ||
-			targetURL != request.TargetURL || statusMin != 200 || statusMax != 399 {
+			targetURL != request.TargetURL ||
+			expectedBodySHA256 != request.ExpectedBodySHA256 ||
+			statusMin != 200 || statusMax != 399 {
 			t.Fatalf("unexpected SOCKS fetch contract")
 		}
 		return nil
@@ -164,6 +170,8 @@ func TestAuthenticatedProbeFailsWhenPrivateConfigCannotBeRemoved(t *testing.T) {
 
 func TestCLIOutputNeverContainsAuthenticatedRequestValues(t *testing.T) {
 	request := validAuthenticatedFixture()
+	digest := sha256.Sum256([]byte("private-expected-identity"))
+	request.ExpectedBodySHA256 = hex.EncodeToString(digest[:])
 	runner := DefaultRunner()
 	runner.binaryPath = ""
 	var stdout bytes.Buffer
@@ -186,6 +194,7 @@ func TestCLIOutputNeverContainsAuthenticatedRequestValues(t *testing.T) {
 		request.RealityPublicKey,
 		request.RealityShortID,
 		request.TargetURL,
+		request.ExpectedBodySHA256,
 	} {
 		if strings.Contains(stdout.String(), sensitive) || strings.Contains(stderr.String(), sensitive) {
 			t.Fatalf("request value leaked: %q", sensitive)
@@ -293,7 +302,7 @@ func TestAuthenticatedFetchFailureIsRedactedCategory(t *testing.T) {
 		go acceptAndClose(listener)
 		return process, nil
 	}
-	runner.socksFetch = func(context.Context, string, string, int, int) error {
+	runner.socksFetch = func(context.Context, string, string, string, int, int) error {
 		return errors.New("synthetic secret-bearing dependency detail")
 	}
 	result := runner.Probe(
@@ -303,6 +312,40 @@ func TestAuthenticatedFetchFailureIsRedactedCategory(t *testing.T) {
 	)
 	if result.Category != CategoryAuthenticatedTransport {
 		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestExpectedIdentityBodyIsBoundedAndExact(t *testing.T) {
+	body := "198.51.100.42"
+	digest := sha256.Sum256([]byte(body))
+	expected := hex.EncodeToString(digest[:])
+	if err := verifyExpectedBody(strings.NewReader(body), expected); err != nil {
+		t.Fatalf("matching identity body failed: %v", err)
+	}
+	if err := verifyExpectedBody(strings.NewReader(body+"\n"), expected); err == nil {
+		t.Fatal("mismatching identity body passed")
+	}
+	if err := verifyExpectedBody(
+		strings.NewReader(strings.Repeat("x", maxIdentityBody+1)),
+		expected,
+	); err == nil {
+		t.Fatal("oversized identity body passed")
+	}
+}
+
+func TestInvalidExpectedIdentityDigestIsRejectedBeforeProcessStart(t *testing.T) {
+	runner := DefaultRunner()
+	runner.binaryPath = "/synthetic/sing-box"
+	started := false
+	runner.startProcess = func(context.Context, string, string) (probeProcess, error) {
+		started = true
+		return nil, errors.New("must not start")
+	}
+	request := validAuthenticatedFixture()
+	request.ExpectedBodySHA256 = strings.Repeat("A", 64)
+	result := runner.Probe(context.Background(), KindAuthenticated, mustJSON(t, request))
+	if result.Category != CategoryInvalidInput || started {
+		t.Fatalf("result = %+v, started = %v", result, started)
 	}
 }
 

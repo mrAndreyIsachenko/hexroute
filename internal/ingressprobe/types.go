@@ -77,15 +77,16 @@ type TLSFallbackRequest struct {
 }
 
 type AuthenticatedRequest struct {
-	Endpoint          Endpoint `json:"endpoint"`
-	ServerName        string   `json:"server_name"`
-	UserID            string   `json:"user_id"`
-	RealityPublicKey  string   `json:"reality_public_key"`
-	RealityShortID    string   `json:"reality_short_id"`
-	TargetURL         string   `json:"target_url"`
-	ExpectedStatusMin uint16   `json:"expected_status_min,omitempty"`
-	ExpectedStatusMax uint16   `json:"expected_status_max,omitempty"`
-	TimeoutMS         uint32   `json:"timeout_ms"`
+	Endpoint           Endpoint `json:"endpoint"`
+	ServerName         string   `json:"server_name"`
+	UserID             string   `json:"user_id"`
+	RealityPublicKey   string   `json:"reality_public_key"`
+	RealityShortID     string   `json:"reality_short_id"`
+	TargetURL          string   `json:"target_url"`
+	ExpectedBodySHA256 string   `json:"expected_body_sha256,omitempty"`
+	ExpectedStatusMin  uint16   `json:"expected_status_min,omitempty"`
+	ExpectedStatusMax  uint16   `json:"expected_status_max,omitempty"`
+	TimeoutMS          uint32   `json:"timeout_ms"`
 }
 
 type HeartbeatRequest struct {
@@ -105,7 +106,7 @@ type probeProcess interface {
 }
 
 type processStarter func(context.Context, string, string) (probeProcess, error)
-type socksFetcher func(context.Context, string, string, int, int) error
+type socksFetcher func(context.Context, string, string, string, int, int) error
 
 type Runner struct {
 	now          func() time.Time
