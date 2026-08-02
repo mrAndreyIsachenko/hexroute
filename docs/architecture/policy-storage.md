@@ -49,9 +49,7 @@ manifest and payload digests, and approval digest. Commit intents embed the
 single user-presence signed approval and bind both domain generations and
 payload digests. Active pointers embed the same approval and reference the
 immutable commit-intent digest. Storage performs strict canonical-JSON and
-structural binding checks; complete signature, manifest, payload, static and
-validity revalidation remains the daemon verification responsibility in
-OpenSpec task 4.4.
+structural binding checks.
 
 State writes use one fixed sequence:
 
@@ -93,8 +91,32 @@ generation artifacts and transaction records are removed. Retention also
 cleans only recognized crash-temporary state files; it never accepts arbitrary
 deletion paths.
 
+## Startup Revalidation
+
+`RevalidateActive` is a read-only, domain-local startup boundary. Under one
+store lock it derives the active generation from `active.json`, then reads the
+matching prepare receipt, commit intent, active resolution, manifest, local
+payload, review and signed approval from fixed typed names. It rejects any
+missing, malformed or cross-linked evidence before returning policy content.
+
+Manifest, payload, review and approval files must be strict canonical JSON with
+no unknown fields or trailing data. Revalidation recomputes manifest, payload,
+review, approval and commit-intent digests; verifies the Ed25519 approval
+against the statically pinned public key; checks the signed validity window;
+requires `activated_at` to be inside that window and not in the future; and
+requires exact bundle, domain generation, payload, compiler, policy-schema and
+static-configuration compatibility with the installed daemon state. Root and
+user stores verify only their own payload while the signed manifest and approval
+continue to bind both domain digests.
+
+A successful call returns a typed `RevalidatedActive` containing the verified
+manifest and local payload. A failed call returns bounded sentinel errors and
+does not rewrite the pointer, run retention, activate a fallback or mutate any
+network/process state. Daemon integration and resulting safe-mode or
+authorization-suspension behavior remain later explicit tasks.
+
 This storage package is not a live installation or cutover. Signed active
 pointers, prepare receipts, commit intents, terminal resolutions, bounded
-retention and crash-point persistence are implemented, but are not wired to
-either daemon. Full signature, digest and startup revalidation belongs to task
-4.4. Twilight remains the production owner throughout those changes.
+retention, crash-point persistence and startup revalidation are implemented,
+but are not wired to either daemon. Twilight remains the production owner
+throughout those changes.

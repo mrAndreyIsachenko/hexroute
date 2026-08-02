@@ -136,28 +136,16 @@ func (candidate CandidateBundle) Validate() error {
 }
 
 func DecodeCandidateBundle(manifestJSON, rootJSON, userJSON []byte) (CandidateBundle, error) {
-	if len(manifestJSON) == 0 || len(manifestJSON) > MaxBundleArtifactSize ||
-		len(rootJSON) == 0 || len(rootJSON) > MaxBundleArtifactSize ||
-		len(userJSON) == 0 || len(userJSON) > MaxBundleArtifactSize {
-		return CandidateBundle{}, ErrInvalidCandidateBundle
+	manifest, manifestDigest, err := DecodeManifestArtifact(manifestJSON)
+	if err != nil {
+		return CandidateBundle{}, err
 	}
-	var manifest Manifest
-	var root DomainPayload
-	var user DomainPayload
-	if strictJSONDecode(manifestJSON, &manifest) != nil ||
-		strictJSONDecode(rootJSON, &root) != nil || strictJSONDecode(userJSON, &user) != nil {
-		return CandidateBundle{}, ErrInvalidCandidateBundle
+	root, _, err := DecodeDomainPayloadArtifact(rootJSON)
+	if err != nil {
+		return CandidateBundle{}, err
 	}
-	manifestDigest, canonicalManifest, err := CanonicalSHA256(manifest)
-	if err != nil || !bytes.Equal(manifestJSON, canonicalManifest) {
-		return CandidateBundle{}, ErrInvalidCandidateBundle
-	}
-	_, canonicalRoot, err := CanonicalSHA256(root)
-	if err != nil || !bytes.Equal(rootJSON, canonicalRoot) {
-		return CandidateBundle{}, ErrInvalidCandidateBundle
-	}
-	_, canonicalUser, err := CanonicalSHA256(user)
-	if err != nil || !bytes.Equal(userJSON, canonicalUser) {
+	user, _, err := DecodeDomainPayloadArtifact(userJSON)
+	if err != nil {
 		return CandidateBundle{}, ErrInvalidCandidateBundle
 	}
 	snapshot := EffectiveSnapshot{
@@ -176,6 +164,40 @@ func DecodeCandidateBundle(manifestJSON, rootJSON, userJSON []byte) (CandidateBu
 		return CandidateBundle{}, ErrInvalidCandidateBundle
 	}
 	return candidate, nil
+}
+
+func DecodeManifestArtifact(encoded []byte) (Manifest, string, error) {
+	var manifest Manifest
+	digest, err := decodeCanonicalArtifact(encoded, &manifest, func() error {
+		return manifest.Validate()
+	})
+	if err != nil {
+		return Manifest{}, "", ErrInvalidCandidateBundle
+	}
+	return manifest, digest, nil
+}
+
+func DecodeDomainPayloadArtifact(encoded []byte) (DomainPayload, string, error) {
+	var payload DomainPayload
+	digest, err := decodeCanonicalArtifact(encoded, &payload, func() error {
+		return payload.Validate()
+	})
+	if err != nil {
+		return DomainPayload{}, "", ErrInvalidCandidateBundle
+	}
+	return payload, digest, nil
+}
+
+func decodeCanonicalArtifact(encoded []byte, destination any, validate func() error) (string, error) {
+	if len(encoded) == 0 || len(encoded) > MaxBundleArtifactSize ||
+		strictJSONDecode(encoded, destination) != nil || validate() != nil {
+		return "", ErrInvalidCandidateBundle
+	}
+	digest, canonical, err := CanonicalSHA256(destination)
+	if err != nil || !bytes.Equal(encoded, canonical) {
+		return "", ErrInvalidCandidateBundle
+	}
+	return digest, nil
 }
 
 func strictJSONDecode(encoded []byte, destination any) error {

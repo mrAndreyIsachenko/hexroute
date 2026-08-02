@@ -121,3 +121,46 @@ func TestCheckCandidateCompatibilityRejectsUnsafeChanges(t *testing.T) {
 		}
 	})
 }
+
+func TestCheckActiveCompatibilityRequiresExactInstalledState(t *testing.T) {
+	envelope := DefaultSafetyEnvelope()
+	staticDigest, _ := envelope.SHA256()
+	source := validEnvelopeSource(t, envelope)
+	payload, _ := source.DomainPayload(DomainUser)
+	payloadDigest, _, _ := CanonicalSHA256(payload)
+	manifest := validManifest()
+	manifest.StaticSHA256 = staticDigest
+	manifest.User = DomainReference{Generation: payload.PolicyGeneration, PayloadSHA256: payloadDigest}
+	installed := InstalledCompatibility{
+		Domain: DomainUser, MinimumPolicySchema: 1, MaximumPolicySchema: 1,
+		CurrentPolicySchema: 1, CurrentBundleGeneration: manifest.BundleGeneration,
+		CurrentPolicyGeneration: payload.PolicyGeneration, CurrentPayloadSHA256: payloadDigest,
+		StaticSHA256: staticDigest, TrustedCompilerSHA256: []string{testDigest},
+	}
+	if err := CheckActiveCompatibility(manifest, payload, installed); err != nil {
+		t.Fatalf("active compatibility: %v", err)
+	}
+
+	wrongStatic := installed
+	wrongStatic.StaticSHA256 = testDigest
+	if !errors.Is(CheckActiveCompatibility(manifest, payload, wrongStatic), ErrRestartRequired) {
+		t.Fatal("active static mismatch must require restart")
+	}
+	wrongGeneration := installed
+	wrongGeneration.CurrentBundleGeneration++
+	if !errors.Is(CheckActiveCompatibility(manifest, payload, wrongGeneration), ErrActivePolicyMismatch) {
+		t.Fatal("active generation mismatch must fail")
+	}
+	wrongDigest := installed
+	wrongDigest.CurrentPayloadSHA256 = testDigest
+	if !errors.Is(CheckActiveCompatibility(manifest, payload, wrongDigest), ErrActivePolicyMismatch) {
+		t.Fatal("active payload mismatch must fail")
+	}
+	unsupported := installed
+	unsupported.MinimumPolicySchema = 2
+	unsupported.MaximumPolicySchema = 2
+	unsupported.CurrentPolicySchema = 2
+	if !errors.Is(CheckActiveCompatibility(manifest, payload, unsupported), ErrUnsupportedPolicy) {
+		t.Fatal("unsupported active schema must fail")
+	}
+}

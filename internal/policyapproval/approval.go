@@ -1,9 +1,12 @@
 package policyapproval
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"io"
 	"sort"
 	"time"
 
@@ -203,19 +206,78 @@ func VerifyCandidate(
 	if candidate.Validate() != nil || review.Validate() != nil || len(pinnedPublicKey) != ed25519.PublicKeySize {
 		return ErrInvalidApproval
 	}
+	return verifyApprovalBinding(
+		candidate.Manifest,
+		candidate.ManifestSHA256,
+		review,
+		approval,
+		pinnedPublicKey,
+		now,
+	)
+}
+
+func VerifyDomainCandidate(
+	manifest policy.Manifest,
+	manifestSHA256 string,
+	payload policy.DomainPayload,
+	review ReviewReport,
+	approval SignedApproval,
+	pinnedPublicKey ed25519.PublicKey,
+	now time.Time,
+) error {
+	if manifest.Validate() != nil || payload.Validate() != nil || review.Validate() != nil ||
+		len(pinnedPublicKey) != ed25519.PublicKeySize || now.IsZero() {
+		return ErrInvalidApproval
+	}
+	digest, _, err := policy.CanonicalSHA256(manifest)
+	if err != nil || digest != manifestSHA256 {
+		return ErrInvalidApproval
+	}
+	payloadDigest, _, err := policy.CanonicalSHA256(payload)
+	if err != nil {
+		return ErrInvalidApproval
+	}
+	reference := manifest.Root
+	if payload.Domain == policy.DomainUser {
+		reference = manifest.User
+	}
+	if reference.Generation != payload.PolicyGeneration || reference.PayloadSHA256 != payloadDigest {
+		return ErrSignerMismatch
+	}
+	return verifyApprovalBinding(
+		manifest,
+		manifestSHA256,
+		review,
+		approval,
+		pinnedPublicKey,
+		now,
+	)
+}
+
+func verifyApprovalBinding(
+	manifest policy.Manifest,
+	manifestSHA256 string,
+	review ReviewReport,
+	approval SignedApproval,
+	pinnedPublicKey ed25519.PublicKey,
+	now time.Time,
+) error {
+	if approval.validateStructure() != nil || now.IsZero() {
+		return ErrInvalidApproval
+	}
 	reviewDigest, err := ReviewSHA256(review)
 	if err != nil {
 		return ErrInvalidApproval
 	}
 	fingerprint := policy.SHA256Hex(pinnedPublicKey)
 	statement := approval.Statement
-	if statement.Schema != ApprovalSchema || statement.ManifestSHA256 != candidate.ManifestSHA256 ||
-		statement.RootSHA256 != candidate.Manifest.Root.PayloadSHA256 ||
-		statement.UserSHA256 != candidate.Manifest.User.PayloadSHA256 ||
+	if statement.ManifestSHA256 != manifestSHA256 ||
+		statement.RootSHA256 != manifest.Root.PayloadSHA256 ||
+		statement.UserSHA256 != manifest.User.PayloadSHA256 ||
 		statement.ReviewSHA256 != reviewDigest || statement.SignerFingerprint != fingerprint ||
-		candidate.Manifest.SignerFingerprint != fingerprint ||
-		statement.NotBefore != candidate.Manifest.NotBefore || statement.ExpiresAt != candidate.Manifest.ExpiresAt ||
-		review.ManifestSHA256 != candidate.ManifestSHA256 {
+		manifest.SignerFingerprint != fingerprint ||
+		statement.NotBefore != manifest.NotBefore || statement.ExpiresAt != manifest.ExpiresAt ||
+		review.ManifestSHA256 != manifestSHA256 {
 		return ErrSignerMismatch
 	}
 	notBefore, err := time.Parse(time.RFC3339Nano, statement.NotBefore)
@@ -236,6 +298,64 @@ func VerifyCandidate(
 		return ErrApprovalSignature
 	}
 	return nil
+}
+
+func DecodeReviewArtifact(encoded []byte) (ReviewReport, error) {
+	var review ReviewReport
+	if decodeCanonicalArtifact(encoded, &review) != nil || review.Validate() != nil {
+		return ReviewReport{}, ErrInvalidReview
+	}
+	return review, nil
+}
+
+func DecodeApprovalArtifact(encoded []byte) (SignedApproval, error) {
+	var approval SignedApproval
+	if decodeCanonicalArtifact(encoded, &approval) != nil || approval.validateStructure() != nil {
+		return SignedApproval{}, ErrInvalidApproval
+	}
+	return approval, nil
+}
+
+func decodeCanonicalArtifact(encoded []byte, destination any) error {
+	if len(encoded) == 0 || len(encoded) > policy.MaxBundleArtifactSize {
+		return ErrInvalidApproval
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		return ErrInvalidApproval
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return ErrInvalidApproval
+	}
+	canonical, err := policy.MarshalCanonical(destination)
+	if err != nil || !bytes.Equal(encoded, canonical) {
+		return ErrInvalidApproval
+	}
+	return nil
+}
+
+func (approval SignedApproval) validateStructure() error {
+	statement := approval.Statement
+	if statement.Schema != ApprovalSchema || !validDigest(statement.ManifestSHA256) ||
+		!validDigest(statement.RootSHA256) || !validDigest(statement.UserSHA256) ||
+		!validDigest(statement.ReviewSHA256) || !validDigest(statement.SignerFingerprint) ||
+		!validCanonicalUTC(statement.NotBefore) || !validCanonicalUTC(statement.ExpiresAt) {
+		return ErrInvalidApproval
+	}
+	notBefore, _ := time.Parse(time.RFC3339Nano, statement.NotBefore)
+	expiresAt, _ := time.Parse(time.RFC3339Nano, statement.ExpiresAt)
+	signature, err := base64.RawURLEncoding.DecodeString(approval.Signature)
+	if !expiresAt.After(notBefore) || err != nil || len(signature) != ed25519.SignatureSize {
+		return ErrInvalidApproval
+	}
+	return nil
+}
+
+func validCanonicalUTC(value string) bool {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	return err == nil && parsed.Location() == time.UTC && parsed.Format(time.RFC3339Nano) == value
 }
 
 func canonicalStatement(statement ApprovalStatement) ([]byte, error) {

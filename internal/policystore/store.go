@@ -203,13 +203,17 @@ func (store *Store) InstallArtifact(generation Generation, kind ArtifactKind, co
 }
 
 func (store *Store) ReadArtifact(generation Generation, kind ArtifactKind) ([]byte, error) {
-	name, err := generationFilename(storeDomain(store), generation, kind)
-	if err != nil {
-		return nil, err
-	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	if err := store.validateOpenLocked(); err != nil {
+		return nil, err
+	}
+	return store.readArtifactLocked(generation, kind)
+}
+
+func (store *Store) readArtifactLocked(generation Generation, kind ArtifactKind) ([]byte, error) {
+	name, err := generationFilename(store.domain, generation, kind)
+	if err != nil {
 		return nil, err
 	}
 

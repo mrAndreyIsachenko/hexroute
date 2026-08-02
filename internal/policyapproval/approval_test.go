@@ -50,6 +50,54 @@ func TestApproveAndVerifyCandidate(t *testing.T) {
 	}
 }
 
+func TestVerifyDomainCandidateAndCanonicalArtifacts(t *testing.T) {
+	fixture := newApprovalFixture(t)
+	review, approval, err := ApproveCandidate(
+		fixture.candidate, &fixture.current, fixture.diff, fixture.replay,
+		fixture.installed, fixture.signer,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewJSON, err := policy.MarshalCanonical(review)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvalJSON, err := policy.MarshalCanonical(approval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodedReview, err := DecodeReviewArtifact(reviewJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodedApproval, err := DecodeApprovalArtifact(approvalJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, _ := fixture.signer.PublicKey()
+	validAt := time.Date(2026, 8, 2, 9, 30, 0, 0, time.UTC)
+	for _, payload := range []policy.DomainPayload{fixture.candidate.Root, fixture.candidate.User} {
+		if err := VerifyDomainCandidate(
+			fixture.candidate.Manifest,
+			fixture.candidate.ManifestSHA256,
+			payload,
+			decodedReview,
+			decodedApproval,
+			publicKey,
+			validAt,
+		); err != nil {
+			t.Fatalf("verify %s domain: %v", payload.Domain, err)
+		}
+	}
+	if _, err := DecodeReviewArtifact(append(reviewJSON, '\n')); !errors.Is(err, ErrInvalidReview) {
+		t.Fatalf("non-canonical review error = %v", err)
+	}
+	if _, err := DecodeApprovalArtifact(append(approvalJSON, '\n')); !errors.Is(err, ErrInvalidApproval) {
+		t.Fatalf("non-canonical approval error = %v", err)
+	}
+}
+
 func TestSigningGatesRunBeforeSigner(t *testing.T) {
 	t.Run("failed replay", func(t *testing.T) {
 		fixture := newApprovalFixture(t)

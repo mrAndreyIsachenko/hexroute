@@ -50,6 +50,40 @@ func TestDecodeCandidateBundleRejectsTamperedManifestAndPayload(t *testing.T) {
 	}
 }
 
+func TestDecodeIndividualArtifactsRequiresCanonicalTypedJSON(t *testing.T) {
+	envelope := DefaultSafetyEnvelope()
+	candidate := mustCompileBundle(t, validEnvelopeSource(t, envelope), envelope, nil)
+
+	manifest, manifestDigest, err := DecodeManifestArtifact(candidate.ManifestJSON)
+	if err != nil || manifestDigest != candidate.ManifestSHA256 ||
+		manifest.BundleGeneration != candidate.Manifest.BundleGeneration {
+		t.Fatalf("decoded manifest = %+v, %q, %v", manifest, manifestDigest, err)
+	}
+	payload, payloadDigest, err := DecodeDomainPayloadArtifact(candidate.UserJSON)
+	if err != nil || payloadDigest != candidate.Manifest.User.PayloadSHA256 ||
+		payload.Domain != DomainUser {
+		t.Fatalf("decoded payload = %+v, %q, %v", payload, payloadDigest, err)
+	}
+
+	for name, encoded := range map[string][]byte{
+		"manifest trailing data": append(append([]byte(nil), candidate.ManifestJSON...), '\n'),
+		"payload trailing data":  append(append([]byte(nil), candidate.UserJSON...), '\n'),
+		"manifest unknown field": append([]byte(`{"added":true,`), candidate.ManifestJSON[1:]...),
+	} {
+		t.Run(name, func(t *testing.T) {
+			var err error
+			if strings.Contains(name, "payload") {
+				_, _, err = DecodeDomainPayloadArtifact(encoded)
+			} else {
+				_, _, err = DecodeManifestArtifact(encoded)
+			}
+			if !errors.Is(err, ErrInvalidCandidateBundle) {
+				t.Fatalf("decode error = %v", err)
+			}
+		})
+	}
+}
+
 func TestCompileBundleIsStableAcrossSourceOrdering(t *testing.T) {
 	envelope := DefaultSafetyEnvelope()
 	firstSource := validEnvelopeSource(t, envelope)

@@ -23,6 +23,7 @@ var (
 	ErrRestartRequired      = errors.New("policy static configuration requires restart")
 	ErrPolicyDowngrade      = errors.New("policy downgrade is not allowed")
 	ErrPolicyDomainMismatch = errors.New("policy domain does not match daemon")
+	ErrActivePolicyMismatch = errors.New("active policy does not match installed state")
 )
 
 func (installed InstalledCompatibility) Validate() error {
@@ -48,6 +49,52 @@ func (installed InstalledCompatibility) Validate() error {
 		}
 	} else if installed.CurrentPolicyGeneration == 0 || !validSHA256(installed.CurrentPayloadSHA256) {
 		return ErrInvalidCompatibility
+	}
+	return nil
+}
+
+func CheckActiveCompatibility(
+	manifest Manifest,
+	payload DomainPayload,
+	installed InstalledCompatibility,
+) error {
+	if manifest.Validate() != nil || installed.Validate() != nil ||
+		installed.CurrentBundleGeneration == 0 {
+		return ErrInvalidCompatibility
+	}
+	if payload.Validate() != nil {
+		return ErrInvalidCompatibility
+	}
+	if payload.Domain != installed.Domain {
+		return ErrPolicyDomainMismatch
+	}
+	if manifest.PolicySchema < installed.MinimumPolicySchema ||
+		manifest.PolicySchema > installed.MaximumPolicySchema {
+		return ErrUnsupportedPolicy
+	}
+	if manifest.PolicySchema != installed.CurrentPolicySchema {
+		return ErrActivePolicyMismatch
+	}
+	if !containsString(installed.TrustedCompilerSHA256, manifest.CompilerSHA256) {
+		return ErrUntrustedCompiler
+	}
+	if manifest.StaticSHA256 != installed.StaticSHA256 {
+		return ErrRestartRequired
+	}
+	digest, _, err := CanonicalSHA256(payload)
+	if err != nil {
+		return ErrInvalidCompatibility
+	}
+	reference := manifest.Root
+	if installed.Domain == DomainUser {
+		reference = manifest.User
+	}
+	if manifest.BundleGeneration != installed.CurrentBundleGeneration ||
+		payload.PolicyGeneration != installed.CurrentPolicyGeneration ||
+		digest != installed.CurrentPayloadSHA256 ||
+		reference.Generation != payload.PolicyGeneration ||
+		reference.PayloadSHA256 != digest {
+		return ErrActivePolicyMismatch
 	}
 	return nil
 }
