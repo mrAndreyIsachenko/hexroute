@@ -74,6 +74,15 @@ library Ed25519 and SHA-256 are sufficient; a general policy runtime would
 increase the privileged dependency and attack surface without helping the
 bounded selector model.
 
+Biometric protection uses the macOS Data Protection Keychain rather than the
+legacy file-based Keychain ACL model. Provisioning, public-key export,
+fixed-challenge verification and signing run in the same app-like,
+Developer-signed `hexroute-policy` host whose provisioning profile authorizes
+its application identifier. Unsigned, ad-hoc, `go run` and standalone test
+binaries fail closed on missing entitlements. Public source contains no Team ID,
+application identifier value, provisioning profile, generated public key or
+signer fingerprint.
+
 ### Public source contains policy contracts, not live policy
 
 The public Hexroute repository contains the policy schema, compiler and verifier

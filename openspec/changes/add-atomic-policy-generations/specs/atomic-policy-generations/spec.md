@@ -167,6 +167,12 @@ components SHALL NOT possess the private key or mint replacement generations.
 - **THEN** the compiler signs the exact candidate digest once
 - **AND** prepare and commit cannot substitute a different payload or digest
 
+#### Scenario: Unsigned compiler requests the protected signer
+
+- **WHEN** an unsigned, ad-hoc or unprovisioned compiler process attempts to provision or read the Data Protection Keychain item
+- **THEN** Keychain access fails closed with a bounded entitlement reason
+- **AND** Hexroute does not fall back to a legacy ACL item, external secret command or unprotected seed
+
 #### Scenario: Automatic recovery evaluates an active policy
 
 - **WHEN** an already active policy permits an automatic action in a future capability

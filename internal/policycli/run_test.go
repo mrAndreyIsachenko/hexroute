@@ -2,17 +2,22 @@ package policycli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policyapproval"
 	"go.yaml.in/yaml/v3"
 )
 
 func TestRunExposesOfflineSubcommands(t *testing.T) {
-	for _, command := range []string{"compile", "diff", "replay", "sign", "rollback"} {
+	for _, command := range []string{
+		"compile", "diff", "replay", "sign", "rollback",
+		"provision-key", "export-public-key", "verify-key",
+	} {
 		var stdout, stderr bytes.Buffer
 		if code := Run([]string{command}, &stdout, &stderr); code != 1 {
 			t.Fatalf("%s without flags code = %d", command, code)
@@ -20,6 +25,22 @@ func TestRunExposesOfflineSubcommands(t *testing.T) {
 	}
 	if code := Run([]string{"--check"}, ioDiscard{}, ioDiscard{}); code != 0 {
 		t.Fatalf("--check code = %d", code)
+	}
+}
+
+func TestFailureCodeAllowsOnlyBoundedKeychainReasons(t *testing.T) {
+	tests := map[error]string{
+		policyapproval.ErrKeychainDuplicate:          "keychain_item_exists",
+		policyapproval.ErrKeychainInteractionDenied:  "keychain_user_presence_denied",
+		policyapproval.ErrKeychainMissingEntitlement: "keychain_entitlement_required",
+		policyapproval.ErrKeychainAccessControl:      "keychain_access_control_unavailable",
+		policyapproval.ErrKeychainAccess:             "keychain_unavailable",
+		errors.New("synthetic private detail"):       "failed",
+	}
+	for err, expected := range tests {
+		if actual := failureCode(err); actual != expected {
+			t.Fatalf("failureCode(%v)=%q, want %q", err, actual, expected)
+		}
 	}
 }
 
@@ -71,6 +92,21 @@ func TestCompileWritesOnlyPrivateCanonicalCandidate(t *testing.T) {
 	}
 	if _, err := loadBundle(outPath); err != nil {
 		t.Fatalf("load compiled bundle: %v", err)
+	}
+}
+
+func TestWriteArtifactsCreatesPrivateParentHierarchy(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "private", "nested")
+	outPath := filepath.Join(parent, "artifacts")
+	if err := writeArtifacts(outPath, map[string][]byte{"public-key": []byte("synthetic")}); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(root, "private"), parent, outPath} {
+		info, err := os.Stat(path)
+		if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
+			t.Fatalf("private directory %s mode=%v err=%v", path, info.Mode().Perm(), err)
+		}
 	}
 }
 

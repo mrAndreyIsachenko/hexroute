@@ -2,6 +2,7 @@ package policycli
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
@@ -77,15 +78,137 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		err = runReplay(args[1:], stdout)
 	case "sign":
 		err = runSign(args[1:], stdout)
+	case "provision-key":
+		err = runProvisionKey(args[1:], stdout)
+	case "export-public-key":
+		err = runExportPublicKey(args[1:], stdout)
+	case "verify-key":
+		err = runVerifyKey(args[1:], stdout)
 	default:
 		writeError(stderr, "usage")
 		return 2
 	}
 	if err != nil {
-		writeError(stderr, "failed")
+		writeError(stderr, failureCode(err))
 		return 1
 	}
 	return 0
+}
+
+func runVerifyKey(args []string, stdout io.Writer) error {
+	flags := flag.NewFlagSet("verify-key", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	service := flags.String("keychain-service", "", "user-presence Keychain service")
+	account := flags.String("keychain-account", "", "Keychain account")
+	publicKeyPath := flags.String("public-key", "", "pinned public-key file")
+	if flags.Parse(args) != nil || flags.NArg() != 0 || *service == "" || *account == "" || *publicKeyPath == "" {
+		return errors.New("invalid verify-key flags")
+	}
+	publicKey, err := readPublicKey(*publicKeyPath)
+	if err != nil {
+		return err
+	}
+	signer, err := policyapproval.NewKeychainSigner(
+		policyapproval.UserPresenceKeychainStore{},
+		policyapproval.KeychainConfig{
+			Service: *service, Account: *account, PublicKey: publicKey,
+			RequireUserPresence: true, PromptTimeout: 2 * time.Minute,
+		},
+	)
+	if err != nil {
+		return err
+	}
+	challenge := []byte("hexroute policy signer user-presence check v1")
+	signature, err := signer.Sign(challenge)
+	if err != nil || !ed25519.Verify(publicKey, challenge, signature) {
+		return policyapproval.ErrKeychainAccess
+	}
+	return writeOutput(stdout, commandOutput{
+		Schema: outputSchema, Command: "verify-key", ArtifactSHA256: policy.SHA256Hex(publicKey),
+	})
+}
+
+func failureCode(err error) string {
+	switch {
+	case errors.Is(err, policyapproval.ErrKeychainDuplicate):
+		return "keychain_item_exists"
+	case errors.Is(err, policyapproval.ErrKeychainInteractionDenied):
+		return "keychain_user_presence_denied"
+	case errors.Is(err, policyapproval.ErrKeychainMissingEntitlement):
+		return "keychain_entitlement_required"
+	case errors.Is(err, policyapproval.ErrKeychainAccessControl):
+		return "keychain_access_control_unavailable"
+	case errors.Is(err, policyapproval.ErrKeychainAccess):
+		return "keychain_unavailable"
+	default:
+		return "failed"
+	}
+}
+
+func runExportPublicKey(args []string, stdout io.Writer) error {
+	flags := flag.NewFlagSet("export-public-key", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	service := flags.String("keychain-service", "", "user-presence Keychain service")
+	account := flags.String("keychain-account", "", "Keychain account")
+	outPath := flags.String("out", "", "new private output directory")
+	if flags.Parse(args) != nil || flags.NArg() != 0 || *service == "" || *account == "" || *outPath == "" {
+		return errors.New("invalid export flags")
+	}
+	publicKey, fingerprint, err := policyapproval.ExportKeychainPublicIdentity(
+		policyapproval.UserPresenceKeychainStore{}, *service, *account, 2*time.Minute,
+	)
+	if err != nil {
+		return err
+	}
+	encodedPublicKey := make([]byte, base64.RawStdEncoding.EncodedLen(len(publicKey)))
+	base64.RawStdEncoding.Encode(encodedPublicKey, publicKey)
+	if err := writeArtifacts(*outPath, map[string][]byte{
+		"public-key": encodedPublicKey, "fingerprint": []byte(fingerprint),
+	}); err != nil {
+		return err
+	}
+	return writeOutput(stdout, commandOutput{
+		Schema: outputSchema, Command: "export-public-key", ArtifactSHA256: fingerprint,
+	})
+}
+
+func runProvisionKey(args []string, stdout io.Writer) error {
+	flags := flag.NewFlagSet("provision-key", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	service := flags.String("keychain-service", "", "user-presence Keychain service")
+	account := flags.String("keychain-account", "", "Keychain account")
+	outPath := flags.String("out", "", "new private output directory")
+	if flags.Parse(args) != nil || flags.NArg() != 0 || *service == "" || *account == "" || *outPath == "" {
+		return errors.New("invalid provision flags")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := createArtifactDirectory(*outPath); err != nil {
+		return err
+	}
+	success := false
+	defer func() {
+		if !success {
+			_ = os.RemoveAll(*outPath)
+		}
+	}()
+	publicKey, fingerprint, err := policyapproval.ProvisionKeychainKey(
+		ctx, policyapproval.UserPresenceKeychainStore{}, *service, *account, nil,
+	)
+	if err != nil {
+		return err
+	}
+	encodedPublicKey := make([]byte, base64.RawStdEncoding.EncodedLen(len(publicKey)))
+	base64.RawStdEncoding.Encode(encodedPublicKey, publicKey)
+	if err := writeArtifactsToDirectory(*outPath, map[string][]byte{
+		"public-key": encodedPublicKey, "fingerprint": []byte(fingerprint),
+	}); err != nil {
+		return err
+	}
+	success = true
+	return writeOutput(stdout, commandOutput{
+		Schema: outputSchema, Command: "provision-key", ArtifactSHA256: fingerprint,
+	})
 }
 
 func runCompile(args []string, stdout io.Writer, rollback bool) error {
@@ -273,7 +396,7 @@ func runSign(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	signer, err := policyapproval.NewKeychainSigner(policyapproval.ExecKeychainRunner{}, policyapproval.KeychainConfig{
+	signer, err := policyapproval.NewKeychainSigner(policyapproval.UserPresenceKeychainStore{}, policyapproval.KeychainConfig{
 		Service: *service, Account: *account, PublicKey: publicKey,
 		RequireUserPresence: true, PromptTimeout: 2 * time.Minute,
 	})
@@ -331,7 +454,7 @@ func writeArtifacts(directory string, artifacts map[string][]byte) error {
 	if directory == "" || len(artifacts) == 0 {
 		return errors.New("invalid output")
 	}
-	if err := os.Mkdir(directory, 0o700); err != nil {
+	if err := createArtifactDirectory(directory); err != nil {
 		return err
 	}
 	success := false
@@ -340,6 +463,31 @@ func writeArtifacts(directory string, artifacts map[string][]byte) error {
 			_ = os.RemoveAll(directory)
 		}
 	}()
+	if err := writeArtifactsToDirectory(directory, artifacts); err != nil {
+		return err
+	}
+	success = true
+	return nil
+}
+
+func createArtifactDirectory(directory string) error {
+	if directory == "" || filepath.Clean(directory) == "." {
+		return errors.New("invalid output")
+	}
+	if err := os.MkdirAll(filepath.Dir(directory), 0o700); err != nil {
+		return err
+	}
+	return os.Mkdir(directory, 0o700)
+}
+
+func writeArtifactsToDirectory(directory string, artifacts map[string][]byte) error {
+	if directory == "" || len(artifacts) == 0 {
+		return errors.New("invalid output")
+	}
+	info, err := os.Lstat(directory)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
+		return errors.New("invalid output directory")
+	}
 	for name, content := range artifacts {
 		if filepath.Base(name) != name || len(content) == 0 || len(content) > maxInputFile {
 			return errors.New("invalid artifact")
@@ -361,7 +509,6 @@ func writeArtifacts(directory string, artifacts map[string][]byte) error {
 			return err
 		}
 	}
-	success = true
 	return nil
 }
 

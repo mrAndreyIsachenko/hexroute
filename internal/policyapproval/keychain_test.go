@@ -16,11 +16,24 @@ type keychainRunnerStub struct {
 	err    error
 	name   string
 	args   []string
+	input  []byte
 }
 
-func (runner *keychainRunnerStub) Output(_ context.Context, name string, args ...string) ([]byte, error) {
-	runner.name = name
-	runner.args = append([]string(nil), args...)
+func (runner *keychainRunnerStub) StoreUserPresence(
+	_ context.Context,
+	service string,
+	account string,
+	input []byte,
+) error {
+	runner.name = service
+	runner.args = []string{account}
+	runner.input = append([]byte(nil), input...)
+	return runner.err
+}
+
+func (runner *keychainRunnerStub) ReadUserPresence(_ context.Context, service string, account string) ([]byte, error) {
+	runner.name = service
+	runner.args = []string{account}
 	return append([]byte(nil), runner.output...), runner.err
 }
 
@@ -42,9 +55,9 @@ func TestKeychainSignerUsesProtectedLookupAndMatchesPinnedKey(t *testing.T) {
 		t.Fatalf("keychain signature: %v", err)
 	}
 	joined := strings.Join(runner.args, " ")
-	if runner.name != securityCommand || joined != "find-generic-password -s hexroute-policy-signing -a operator -w" ||
+	if runner.name != "hexroute-policy-signing" || joined != "operator" ||
 		strings.Contains(joined, base64.RawStdEncoding.EncodeToString(seed)) {
-		t.Fatalf("unsafe Keychain command: %s %s", runner.name, joined)
+		t.Fatalf("unsafe Keychain lookup: %s %s", runner.name, joined)
 	}
 }
 
@@ -62,5 +75,43 @@ func TestKeychainSignerErrorsNeverExposeSeed(t *testing.T) {
 	_, err = signer.Sign([]byte("message"))
 	if !errors.Is(err, ErrKeychainAccess) || strings.Contains(err.Error(), secret) {
 		t.Fatalf("secret-bearing error escaped: %v", err)
+	}
+}
+
+func TestProvisionKeychainKeyUsesUserPresenceStoreWithoutArguments(t *testing.T) {
+	runner := &keychainRunnerStub{}
+	publicKey, fingerprint, err := ProvisionKeychainKey(
+		context.Background(), runner, "hexroute-policy-signing", "operator",
+		bytes.NewReader(bytes.Repeat([]byte{6}, ed25519.SeedSize)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := base64.RawStdEncoding.DecodeString(strings.TrimSpace(string(runner.input)))
+	if err != nil || len(decoded) != ed25519.SeedSize {
+		t.Fatal("provisioner did not receive an Ed25519 seed through its private input")
+	}
+	privateKey := ed25519.NewKeyFromSeed(decoded)
+	if !bytes.Equal(publicKey, privateKey.Public().(ed25519.PublicKey)) || fingerprint != fmtDigest(publicKey) {
+		t.Fatal("provisioned public identity does not match generated seed")
+	}
+	if runner.name != "hexroute-policy-signing" || len(runner.args) != 1 || runner.args[0] != "operator" ||
+		strings.Contains(strings.Join(runner.args, " "), strings.TrimSpace(string(runner.input))) {
+		t.Fatal("seed escaped the user-presence Keychain store input")
+	}
+}
+
+func TestExportKeychainPublicIdentityDerivesOnlyPublicMetadata(t *testing.T) {
+	seed := bytes.Repeat([]byte{5}, ed25519.SeedSize)
+	runner := &keychainRunnerStub{output: []byte(base64.RawStdEncoding.EncodeToString(seed))}
+	publicKey, fingerprint, err := ExportKeychainPublicIdentity(
+		runner, "hexroute-policy-signing", "operator", time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)
+	if !bytes.Equal(publicKey, expected) || fingerprint != fmtDigest(expected) {
+		t.Fatal("exported public identity does not match Keychain seed")
 	}
 }
