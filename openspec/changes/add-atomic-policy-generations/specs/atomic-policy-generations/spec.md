@@ -280,6 +280,9 @@ policy generations. Active-bundle corruption, signature or digest mismatch,
 domain mismatch, clock anomaly or IPC ownership violation SHALL suspend new
 mutations, preserve the existing data plane and emit a bounded incident. The
 overlay SHALL clear only after local revalidation and SHALL never expand policy.
+Its bounded reason SHALL be one of `corruption`, `invalid_signature`,
+`digest_mismatch`, `domain_mismatch`, `clock_anomaly` or `ipc_ownership`, and
+the overlay SHALL NOT replace the active lifecycle state or generation identity.
 
 #### Scenario: Active payload is corrupted on disk
 

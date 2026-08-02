@@ -168,7 +168,7 @@ func TestStoreStartupRevalidationRejectsInvalidActiveEvidence(t *testing.T) {
 		fixture := newStartupFixture(t, policy.DomainRoot, 1)
 		fixture.pointer.ActivatedAt = "2030-01-01T00:45:00Z"
 		installStartupFixture(t, store, fixture)
-		if _, err := store.RevalidateActive(fixture.installed, fixture.publicKey, validAt); !errors.Is(err, ErrActivePointerConsistency) {
+		if _, err := store.RevalidateActive(fixture.installed, fixture.publicKey, validAt); !errors.Is(err, ErrActiveClockAnomaly) {
 			t.Fatalf("future activation timestamp error = %v", err)
 		}
 	})

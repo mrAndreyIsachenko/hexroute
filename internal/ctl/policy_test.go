@@ -24,10 +24,16 @@ func TestPolicyStatusQueriesBothDomains(t *testing.T) {
 		}
 		return ipc.Response{
 			Version: ipc.ProtocolVersion, RequestID: request.RequestID, OK: true,
-			PolicyStatus: &ipc.PolicyStatusResult{Status: policy.Status{
-				Schema: policy.PolicyStatusSchema, Domain: domain,
-				State: policy.PolicyNone, Reason: policy.ReasonNoValidGeneration,
-			}},
+			PolicyStatus: &ipc.PolicyStatusResult{
+				Status: policy.Status{
+					Schema: policy.PolicyStatusSchema, Domain: domain,
+					State: policy.PolicyNone, Reason: policy.ReasonNoValidGeneration,
+				},
+				AuthorizationSuspension: policy.AuthorizationSuspension{
+					Schema: policy.AuthorizationSuspensionSchema,
+					Reason: policy.ReasonNone,
+				},
+			},
 		}, nil
 	})
 	var stdout, stderr bytes.Buffer

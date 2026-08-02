@@ -257,6 +257,32 @@ func (status Status) Validate() error {
 	return nil
 }
 
+func (suspension AuthorizationSuspension) Validate() error {
+	if suspension.Schema != AuthorizationSuspensionSchema {
+		return ErrInvalidStatus
+	}
+	if !suspension.Suspended {
+		if suspension.Reason != ReasonNone || suspension.Since != "" {
+			return ErrInvalidStatus
+		}
+		return nil
+	}
+	if _, ok := parseCanonicalUTC(suspension.Since); !ok {
+		return ErrInvalidStatus
+	}
+	switch suspension.Reason {
+	case ReasonCorruption,
+		ReasonInvalidSignature,
+		ReasonDigestMismatch,
+		ReasonDomainMismatch,
+		ReasonClockAnomaly,
+		ReasonIPCOwnership:
+		return nil
+	default:
+		return ErrInvalidStatus
+	}
+}
+
 func validSHA256(value string) bool {
 	if len(value) != 64 || strings.ToLower(value) != value {
 		return false

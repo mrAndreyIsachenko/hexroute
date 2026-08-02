@@ -21,7 +21,10 @@ type RevalidatedActive struct {
 	Intent         CommitIntent
 }
 
-var ErrActivePointerConsistency = errors.New("active policy evidence is inconsistent")
+var (
+	ErrActivePointerConsistency = errors.New("active policy evidence is inconsistent")
+	ErrActiveClockAnomaly       = errors.New("active policy clock evidence is inconsistent")
+)
 
 func (store *Store) RevalidateActive(
 	installed policy.InstalledCompatibility,
@@ -107,8 +110,11 @@ func (store *Store) revalidateActive(
 	approvalDigest, err := approvalSHA256(approval)
 	if err != nil || manifestDigest != pointer.ManifestSHA256 ||
 		payloadDigest != pointer.PayloadSHA256 || approvalDigest != pointer.ApprovalSHA256 ||
-		approval != pointer.Approval || !activePointerTimeConsistent(pointer, manifest, now.UTC()) {
+		approval != pointer.Approval {
 		return RevalidatedActive{}, ErrActivePointerConsistency
+	}
+	if !activePointerTimeConsistent(pointer, manifest, now.UTC()) {
+		return RevalidatedActive{}, ErrActiveClockAnomaly
 	}
 	if err := policyapproval.VerifyDomainCandidate(
 		manifest,

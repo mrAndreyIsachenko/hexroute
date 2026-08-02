@@ -12,6 +12,7 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policyapproval"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
 )
 
@@ -81,7 +82,12 @@ func (store *recordingCandidateStore) ConfirmCandidate(
 	store.confirmCalls++
 	store.input = input
 	store.preparedAt = committedAt
-	return store.commitResult, store.commitErr
+	result := store.commitResult
+	if result.Pointer.ConfirmedAt == "" {
+		result.Pointer.ConfirmedAt = committedAt.UTC().Format(time.RFC3339Nano)
+		store.commitResult.Pointer.ConfirmedAt = result.Pointer.ConfirmedAt
+	}
+	return result, store.commitErr
 }
 
 func (store *recordingCandidateStore) AbortCandidate(
@@ -116,6 +122,7 @@ func (store *recordingCandidateStore) RecoverActive(
 			ManifestSHA256: pointer.ManifestSHA256,
 			PayloadSHA256:  pointer.PayloadSHA256,
 			ActivatedAt:    pointer.ActivatedAt,
+			ConfirmedAt:    pointer.ConfirmedAt,
 			Manifest:       policy.Manifest{PolicySchema: store.commitResult.PolicySchema},
 			Intent: policystore.CommitIntent{
 				TransactionID:        store.input.TransactionID,
@@ -459,6 +466,10 @@ func TestHandlerRestoresConfirmedAndUnconfirmedActiveStatusAtStartup(t *testing.
 				handler.MutationAllowed() != test.allowed {
 				t.Fatalf("status=%+v allowed=%t", response, handler.MutationAllowed())
 			}
+			if response.PolicyStatus.AuthorizationSuspension.Suspended != !test.allowed ||
+				(!test.allowed && response.PolicyStatus.AuthorizationSuspension.Reason != policy.ReasonDomainMismatch) {
+				t.Fatalf("authorization suspension = %+v", response.PolicyStatus.AuthorizationSuspension)
+			}
 			if test.confirmedAt != "" {
 				prepare := handler.HandleIPC(context.Background(), ipc.Request{
 					Version: ipc.ProtocolVersion, RequestID: "retry-prepare",
@@ -522,8 +533,118 @@ func TestHandlerRestoresPendingCommitAsMismatchAtStartup(t *testing.T) {
 		Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
 	})
 	if !response.OK || response.PolicyStatus.Status.State != policy.PolicyDomainMismatch ||
+		!response.PolicyStatus.AuthorizationSuspension.Suspended ||
+		response.PolicyStatus.AuthorizationSuspension.Reason != policy.ReasonDomainMismatch ||
 		handler.MutationAllowed() {
 		t.Fatalf("pending status=%+v allowed=%t", response, handler.MutationAllowed())
+	}
+}
+
+func TestHandlerSuspendsStartupAuthorizationWithBoundedReasons(t *testing.T) {
+	publicKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{3}, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainRoot, publicKey).Runtime(policy.DomainRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name   string
+		cause  error
+		reason policy.PolicyReason
+	}{
+		{name: "corruption", cause: policystore.ErrInvalidArtifact, reason: policy.ReasonCorruption},
+		{name: "digest", cause: policystore.ErrActivePointerConsistency, reason: policy.ReasonDigestMismatch},
+		{name: "signature", cause: policyapproval.ErrApprovalSignature, reason: policy.ReasonInvalidSignature},
+		{name: "clock", cause: policystore.ErrActiveClockAnomaly, reason: policy.ReasonClockAnomaly},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := &recordingCandidateStore{domain: policy.DomainRoot, recoverErr: test.cause}
+			now := time.Date(2030, time.January, 1, 0, 40, 0, 0, time.UTC)
+			handler, err := NewHandler(store, runtime, func() time.Time { return now })
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := handler.HandleIPC(context.Background(), ipc.Request{
+				Version: ipc.ProtocolVersion, RequestID: "suspended-status",
+				Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+			})
+			suspension := response.PolicyStatus.AuthorizationSuspension
+			if !response.OK || response.PolicyStatus.Status.State != policy.PolicyNone ||
+				!suspension.Suspended || suspension.Reason != test.reason ||
+				suspension.Since != "2030-01-01T00:40:00Z" || handler.MutationAllowed() {
+				t.Fatalf("response=%+v allowed=%t", response, handler.MutationAllowed())
+			}
+		})
+	}
+}
+
+func TestHandlerClearsSuspensionOnlyAfterActiveRevalidation(t *testing.T) {
+	publicKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{2}, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainUser, publicKey).Runtime(policy.DomainUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := syntheticIPCIdentity()
+	store := &recordingCandidateStore{
+		domain:     policy.DomainUser,
+		recoverErr: policystore.ErrActivePointerConsistency,
+	}
+	now := time.Date(2030, time.January, 1, 0, 45, 0, 0, time.UTC)
+	handler, err := NewHandler(store, runtime, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.SuspendAuthorization(policy.ReasonIPCOwnership)
+	if handler.MutationAllowed() {
+		t.Fatal("mutation allowed before revalidation")
+	}
+	store.recoverErr = nil
+	store.recoverResult = revalidatedActiveFixture(identity, policy.DomainUser, runtime, true)
+	response := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "revalidated-status",
+		Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+	})
+	if !response.OK || response.PolicyStatus.Status.State != policy.PolicyActive ||
+		response.PolicyStatus.AuthorizationSuspension.Suspended || !handler.MutationAllowed() {
+		t.Fatalf("response=%+v allowed=%t", response, handler.MutationAllowed())
+	}
+}
+
+func revalidatedActiveFixture(
+	identity ipc.PolicyTransactionIdentity,
+	domain policy.Domain,
+	runtime RuntimeConfig,
+	confirmed bool,
+) policystore.RevalidatedActive {
+	policyGeneration := identity.RootPolicyGeneration
+	payloadSHA256 := identity.RootPayloadSHA256
+	if domain == policy.DomainUser {
+		policyGeneration = identity.UserPolicyGeneration
+		payloadSHA256 = identity.UserPayloadSHA256
+	}
+	confirmedAt := ""
+	if confirmed {
+		confirmedAt = "2030-01-01T00:31:00Z"
+	}
+	return policystore.RevalidatedActive{
+		Domain: domain,
+		Generation: policystore.Generation{
+			Bundle: identity.BundleGeneration, Policy: policyGeneration,
+		},
+		ManifestSHA256: identity.ManifestSHA256,
+		PayloadSHA256:  payloadSHA256,
+		ActivatedAt:    "2030-01-01T00:30:00Z", ConfirmedAt: confirmedAt,
+		Manifest: policy.Manifest{PolicySchema: runtime.Installed.CurrentPolicySchema},
+		Intent: policystore.CommitIntent{
+			TransactionID:        identity.TransactionID,
+			BundleGeneration:     identity.BundleGeneration,
+			RootPolicyGeneration: identity.RootPolicyGeneration,
+			UserPolicyGeneration: identity.UserPolicyGeneration,
+			ManifestSHA256:       identity.ManifestSHA256,
+			RootPayloadSHA256:    identity.RootPayloadSHA256,
+			UserPayloadSHA256:    identity.UserPayloadSHA256,
+			ApprovalSHA256:       identity.ApprovalSHA256,
+		},
 	}
 }
 

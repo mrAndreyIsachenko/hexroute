@@ -233,6 +233,10 @@ after local revalidation. A daemon cannot invent a replacement policy; even an
 emergency revoke is a valid signed deny generation. The built-in observe-only
 safe mode needs no external signature.
 
+The overlay exposes only `corruption`, `invalid_signature`, `digest_mismatch`,
+`domain_mismatch`, `clock_anomaly` or `ipc_ownership`, plus the first assertion
+time. It does not replace the active lifecycle state or generation identity.
+
 Cloud availability is irrelevant to activation and local policy evaluation.
 The cloud receives telemetry but can neither supply a candidate nor request a
 commit, rollback or local action.

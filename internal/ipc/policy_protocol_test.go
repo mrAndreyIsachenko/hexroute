@@ -57,7 +57,13 @@ func TestPolicyResponseFrameRoundTrip(t *testing.T) {
 	responses := []Response{
 		{
 			Version: ProtocolVersion, RequestID: "policy-status-01", OK: true,
-			PolicyStatus: &PolicyStatusResult{Status: status},
+			PolicyStatus: &PolicyStatusResult{
+				Status: status,
+				AuthorizationSuspension: policy.AuthorizationSuspension{
+					Schema: policy.AuthorizationSuspensionSchema,
+					Reason: policy.ReasonNone,
+				},
+			},
 		},
 		{
 			Version: ProtocolVersion, RequestID: "policy-prepare-01", OK: true,

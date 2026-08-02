@@ -43,19 +43,21 @@ type CandidateStore interface {
 }
 
 type Handler struct {
-	mu     sync.Mutex
-	domain policy.Domain
-	store  CandidateStore
-	config RuntimeConfig
-	now    func() time.Time
-	status policy.Status
+	mu                      sync.Mutex
+	domain                  policy.Domain
+	store                   CandidateStore
+	config                  RuntimeConfig
+	now                     func() time.Time
+	status                  policy.Status
+	authorizationSuspension policy.AuthorizationSuspension
 
-	preparedIdentity ipc.PolicyTransactionIdentity
-	previousStatus   policy.Status
-	hasPrepared      bool
-	activeIdentity   ipc.PolicyTransactionIdentity
-	activeReceipt    policystore.PrepareReceipt
-	hasActive        bool
+	preparedIdentity   ipc.PolicyTransactionIdentity
+	previousStatus     policy.Status
+	previousSuspension policy.AuthorizationSuspension
+	hasPrepared        bool
+	activeIdentity     ipc.PolicyTransactionIdentity
+	activeReceipt      policystore.PrepareReceipt
+	hasActive          bool
 }
 
 func NewHandler(
@@ -74,9 +76,11 @@ func NewHandler(
 	)
 	handler := &Handler{
 		domain: store.Domain(), store: store, config: config, now: now,
-		status: noPolicyStatus(store.Domain()),
+		status:                  noPolicyStatus(store.Domain()),
+		authorizationSuspension: clearAuthorizationSuspension(),
 	}
-	active, err := store.RecoverActive(config.Installed, config.PinnedPublicKey, now())
+	currentTime := now()
+	active, err := store.RecoverActive(config.Installed, config.PinnedPublicKey, currentTime)
 	if errors.Is(err, policystore.ErrRecordNotFound) {
 		pending, pendingErr := store.RecoverPendingCommit()
 		if errors.Is(pendingErr, policystore.ErrRecordNotFound) {
@@ -91,6 +95,10 @@ func NewHandler(
 		return handler, nil
 	}
 	if err != nil {
+		if reason, ok := classifyActiveFailure(err); ok {
+			handler.suspendAuthorizationLocked(reason, currentTime)
+			return handler, nil
+		}
 		return nil, err
 	}
 	handler.restoreActive(active)
@@ -101,7 +109,10 @@ func NewUnavailableHandler(domain policy.Domain) (*Handler, error) {
 	if !domain.Valid() {
 		return nil, ErrInvalidConfig
 	}
-	return &Handler{domain: domain, status: noPolicyStatus(domain)}, nil
+	return &Handler{
+		domain: domain, status: noPolicyStatus(domain), now: time.Now,
+		authorizationSuspension: clearAuthorizationSuspension(),
+	}, nil
 }
 
 func (handler *Handler) HandleIPC(ctx context.Context, request ipc.Request) ipc.Response {
@@ -119,9 +130,13 @@ func (handler *Handler) HandleIPC(ctx context.Context, request ipc.Request) ipc.
 
 	switch request.Action {
 	case ipc.ActionPolicyStatus:
+		handler.refreshAuthorizationLocked()
 		status := handler.status
 		response.OK = true
-		response.PolicyStatus = &ipc.PolicyStatusResult{Status: status}
+		response.PolicyStatus = &ipc.PolicyStatusResult{
+			Status:                  status,
+			AuthorizationSuspension: handler.authorizationSuspension,
+		}
 	case ipc.ActionPreparePolicy:
 		return handler.prepare(request, response)
 	case ipc.ActionCommitPolicy:
@@ -168,6 +183,7 @@ func (handler *Handler) prepare(
 	}
 	if !handler.hasPrepared {
 		handler.previousStatus = handler.status
+		handler.previousSuspension = handler.authorizationSuspension
 	}
 	handler.preparedIdentity = identity
 	handler.hasPrepared = true
@@ -225,6 +241,7 @@ func (handler *Handler) stage(
 	}
 	if !handler.hasActive || handler.activeIdentity != identity {
 		handler.status = stagedMismatchStatus(identity, handler.domain)
+		handler.suspendAuthorizationLocked(policy.ReasonDomainMismatch, now)
 	}
 	response.OK = true
 	response.CommitPolicy = &ipc.CommitPolicyResult{
@@ -249,6 +266,7 @@ func (handler *Handler) activate(
 	pointer := committed.Pointer
 	handler.setInstalled(pointer, committed.PolicySchema)
 	handler.status = statusFromPointer(pointer)
+	handler.suspendAuthorizationLocked(policy.ReasonDomainMismatch, now)
 	handler.hasPrepared = false
 	handler.setActiveIdentity(identity, pointer)
 	response.OK = true
@@ -285,6 +303,7 @@ func (handler *Handler) confirm(
 		ActivatedAt:      pointer.ActivatedAt, Reason: policy.ReasonNone,
 	}
 	handler.setActiveIdentity(identity, pointer)
+	handler.authorizationSuspension = clearAuthorizationSuspension()
 	response.OK = true
 	response.CommitPolicy = &ipc.CommitPolicyResult{
 		TransactionID: identity.TransactionID, Phase: ipc.CommitPolicyConfirm,
@@ -310,6 +329,7 @@ func (handler *Handler) abort(
 		return handler.lifecycleFailure(err, response)
 	}
 	handler.status = handler.previousStatus
+	handler.authorizationSuspension = handler.previousSuspension
 	handler.hasPrepared = false
 	response.OK = true
 	response.AbortPolicy = &ipc.AbortPolicyResult{
@@ -348,8 +368,23 @@ func (handler *Handler) MutationAllowed() bool {
 	}
 	handler.mu.Lock()
 	defer handler.mu.Unlock()
+	handler.refreshAuthorizationLocked()
+	if handler.authorizationSuspension.Suspended {
+		return false
+	}
 	return handler.status.State != policy.PolicyDomainMismatch &&
 		handler.status.State != policy.PolicyAuthorizationSuspended
+}
+
+// SuspendAuthorization narrows local authority without changing policy state or
+// generation. Invalid reasons are ignored so callers cannot invent telemetry.
+func (handler *Handler) SuspendAuthorization(reason policy.PolicyReason) {
+	if handler == nil || !validSuspensionReason(reason) {
+		return
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	handler.suspendAuthorizationLocked(reason, handler.now())
 }
 
 func (handler *Handler) revalidate(
@@ -363,6 +398,9 @@ func (handler *Handler) revalidate(
 			now,
 		)
 		if err != nil {
+			if reason, ok := classifyActiveFailure(err); ok {
+				handler.suspendAuthorizationLocked(reason, now)
+			}
 			return err
 		}
 		if identityFromIntent(active.Intent) != identity {
@@ -411,6 +449,11 @@ func (handler *Handler) restoreActive(active policystore.RevalidatedActive) {
 		ManifestSHA256:   active.ManifestSHA256,
 		ActivatedAt:      active.ActivatedAt, Reason: reason,
 	}
+	if active.ConfirmedAt == "" {
+		handler.suspendAuthorizationLocked(policy.ReasonDomainMismatch, handler.now())
+	} else {
+		handler.authorizationSuspension = clearAuthorizationSuspension()
+	}
 }
 
 func (handler *Handler) restorePending(intent policystore.CommitIntent) error {
@@ -431,7 +474,98 @@ func (handler *Handler) restorePending(intent policystore.CommitIntent) error {
 	handler.preparedIdentity = identity
 	handler.hasPrepared = true
 	handler.status = stagedMismatchStatus(identity, handler.domain)
+	handler.suspendAuthorizationLocked(policy.ReasonDomainMismatch, handler.now())
 	return nil
+}
+
+func (handler *Handler) refreshAuthorizationLocked() {
+	if handler.store == nil || (!handler.hasActive && !handler.authorizationSuspension.Suspended) {
+		return
+	}
+	active, err := handler.store.RecoverActive(
+		handler.config.Installed,
+		handler.config.PinnedPublicKey,
+		handler.now(),
+	)
+	if err != nil {
+		if errors.Is(err, policystore.ErrRecordNotFound) && handler.hasActive {
+			handler.suspendAuthorizationLocked(policy.ReasonCorruption, handler.now())
+			return
+		}
+		if reason, ok := classifyActiveFailure(err); ok {
+			handler.suspendAuthorizationLocked(reason, handler.now())
+		}
+		return
+	}
+	if handler.hasActive && identityFromIntent(active.Intent) != handler.activeIdentity {
+		handler.suspendAuthorizationLocked(policy.ReasonDigestMismatch, handler.now())
+		return
+	}
+	handler.restoreActive(active)
+}
+
+func (handler *Handler) suspendAuthorizationLocked(reason policy.PolicyReason, at time.Time) {
+	if !validSuspensionReason(reason) || at.IsZero() {
+		return
+	}
+	since := at.UTC().Format(time.RFC3339Nano)
+	if handler.authorizationSuspension.Suspended &&
+		handler.authorizationSuspension.Since != "" {
+		since = handler.authorizationSuspension.Since
+	}
+	handler.authorizationSuspension = policy.AuthorizationSuspension{
+		Schema:    policy.AuthorizationSuspensionSchema,
+		Suspended: true,
+		Reason:    reason,
+		Since:     since,
+	}
+}
+
+func clearAuthorizationSuspension() policy.AuthorizationSuspension {
+	return policy.AuthorizationSuspension{
+		Schema: policy.AuthorizationSuspensionSchema,
+		Reason: policy.ReasonNone,
+	}
+}
+
+func validSuspensionReason(reason policy.PolicyReason) bool {
+	switch reason {
+	case policy.ReasonCorruption,
+		policy.ReasonInvalidSignature,
+		policy.ReasonDigestMismatch,
+		policy.ReasonDomainMismatch,
+		policy.ReasonClockAnomaly,
+		policy.ReasonIPCOwnership:
+		return true
+	default:
+		return false
+	}
+}
+
+func classifyActiveFailure(cause error) (policy.PolicyReason, bool) {
+	switch {
+	case errors.Is(cause, policystore.ErrActiveClockAnomaly),
+		errors.Is(cause, policyapproval.ErrApprovalExpired):
+		return policy.ReasonClockAnomaly, true
+	case errors.Is(cause, policyapproval.ErrApprovalSignature),
+		errors.Is(cause, policyapproval.ErrSignerMismatch),
+		errors.Is(cause, policyapproval.ErrInvalidApproval):
+		return policy.ReasonInvalidSignature, true
+	case errors.Is(cause, policystore.ErrActivePointerConsistency),
+		errors.Is(cause, policy.ErrInvalidCandidateBundle):
+		return policy.ReasonDigestMismatch, true
+	case errors.Is(cause, policystore.ErrInvalidRecord),
+		errors.Is(cause, policystore.ErrRecordConflict),
+		errors.Is(cause, policystore.ErrGenerationNotFound),
+		errors.Is(cause, policystore.ErrInvalidArtifact),
+		errors.Is(cause, policystore.ErrInsecureArtifact),
+		errors.Is(cause, policystore.ErrInsecureStore),
+		errors.Is(cause, policystore.ErrStoreUnavailable),
+		errors.Is(cause, policyapproval.ErrInvalidReview):
+		return policy.ReasonCorruption, true
+	default:
+		return policy.ReasonNone, false
+	}
 }
 
 func (handler *Handler) setInstalled(pointer policystore.ActivePointer, policySchema uint16) {

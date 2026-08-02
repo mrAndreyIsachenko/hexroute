@@ -43,7 +43,7 @@
 
 ## 6. Suspension, Time And Existing-State Safety
 
-- [ ] 6.1 Add the local `authorization_suspended` overlay for corruption, signature/digest mismatch, domain mismatch, clock anomaly and IPC ownership violation.
+- [x] 6.1 Add the local `authorization_suspended` overlay for corruption, signature/digest mismatch, domain mismatch, clock anomaly and IPC ownership violation.
 - [ ] 6.2 Verify suspension and invalid candidates preserve the last valid policy or enter observe-only `SAFE_MODE` without stopping AdGuard, Twilight, Pritunl, sing-box or established sessions.
 - [ ] 6.3 Add UTC policy validity and clock-skew checks plus monotonic lease timing, boot-ID invalidation and sleep-counts-toward-TTL tests.
 - [ ] 6.4 Add active-policy reboot revalidation and prove unfinished pre-reboot leases cannot resume.

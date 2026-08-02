@@ -191,6 +191,41 @@ func TestStatusValidate(t *testing.T) {
 	}
 }
 
+func TestAuthorizationSuspensionValidate(t *testing.T) {
+	clear := AuthorizationSuspension{
+		Schema: AuthorizationSuspensionSchema,
+		Reason: ReasonNone,
+	}
+	if err := clear.Validate(); err != nil {
+		t.Fatalf("valid clear suspension: %v", err)
+	}
+	for _, reason := range []PolicyReason{
+		ReasonCorruption,
+		ReasonInvalidSignature,
+		ReasonDigestMismatch,
+		ReasonDomainMismatch,
+		ReasonClockAnomaly,
+		ReasonIPCOwnership,
+	} {
+		suspended := AuthorizationSuspension{
+			Schema:    AuthorizationSuspensionSchema,
+			Suspended: true,
+			Reason:    reason,
+			Since:     testTime,
+		}
+		if err := suspended.Validate(); err != nil {
+			t.Fatalf("valid suspension for %s: %v", reason, err)
+		}
+	}
+	invalid := clear
+	invalid.Suspended = true
+	invalid.Reason = ReasonUnsupportedSchema
+	invalid.Since = testTime
+	if !errors.Is(invalid.Validate(), ErrInvalidStatus) {
+		t.Fatal("non-suspension reason should be rejected")
+	}
+}
+
 func TestIdentifierBounds(t *testing.T) {
 	selector := validPayload().Rules[0].Selector
 	selector.ID = "a" + strings.Repeat("b", MaxIdentifierBytes)

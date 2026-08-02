@@ -3,17 +3,18 @@ package policy
 import "github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 
 const (
-	ManifestSchema         = "hexroute.policy-manifest.v1"
-	DomainPayloadSchema    = "hexroute.policy-domain.v1"
-	ActionLeaseSchema      = "hexroute.action-lease.v1"
-	PolicyStatusSchema     = "hexroute.policy-status.v1"
-	MaxRules               = 256
-	MaxAuthorizationLeases = 128
-	MaxSelectorsPerLease   = 64
-	MaxPortRanges          = 32
-	MaxIdentifierBytes     = 64
-	MaxTargetBytes         = 64
-	MaxCompilerVersion     = 32
+	ManifestSchema                = "hexroute.policy-manifest.v1"
+	DomainPayloadSchema           = "hexroute.policy-domain.v1"
+	ActionLeaseSchema             = "hexroute.action-lease.v1"
+	PolicyStatusSchema            = "hexroute.policy-status.v1"
+	AuthorizationSuspensionSchema = "hexroute.authorization-suspension.v1"
+	MaxRules                      = 256
+	MaxAuthorizationLeases        = 128
+	MaxSelectorsPerLease          = 64
+	MaxPortRanges                 = 32
+	MaxIdentifierBytes            = 64
+	MaxTargetBytes                = 64
+	MaxCompilerVersion            = 32
 )
 
 type Domain string
@@ -159,6 +160,7 @@ type PolicyReason string
 
 const (
 	ReasonNone              PolicyReason = "none"
+	ReasonCorruption        PolicyReason = "corruption"
 	ReasonInvalidSignature  PolicyReason = "invalid_signature"
 	ReasonDigestMismatch    PolicyReason = "digest_mismatch"
 	ReasonUnsupportedSchema PolicyReason = "unsupported_schema"
@@ -174,6 +176,7 @@ const (
 func (reason PolicyReason) Valid() bool {
 	switch reason {
 	case ReasonNone,
+		ReasonCorruption,
 		ReasonInvalidSignature,
 		ReasonDigestMismatch,
 		ReasonUnsupportedSchema,
@@ -299,4 +302,13 @@ type Status struct {
 	ManifestSHA256   string       `json:"manifest_sha256,omitempty"`
 	ActivatedAt      string       `json:"activated_at,omitempty"`
 	Reason           PolicyReason `json:"reason"`
+}
+
+// AuthorizationSuspension is a local, non-generational authority overlay.
+// It can only narrow the active policy and never identifies policy content.
+type AuthorizationSuspension struct {
+	Schema    string       `json:"schema"`
+	Suspended bool         `json:"suspended"`
+	Reason    PolicyReason `json:"reason"`
+	Since     string       `json:"since,omitempty"`
 }

@@ -188,12 +188,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return 1
 		}
+		policyReporter := policycontrol.NewRejectionReporter(reporter, policyHandler)
 		server, err = ipc.Listen(
 			*socketPath,
 			uint32(config.OperatorUID),
 			uint32(config.OperatorUID),
 			dispatcher,
-			reporter,
+			policyReporter,
 		)
 		if err != nil {
 			return rejected(errorLog, logging.ReasonInvalidConfiguration)
