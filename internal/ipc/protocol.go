@@ -34,14 +34,22 @@ const (
 	ActionExportDiagnostics    Action = "export_diagnostics"
 	ActionResumeTarget         Action = "resume_target"
 	ActionRescuePritunlService Action = "rescue_pritunl_service"
+	ActionPolicyStatus         Action = "policy_status"
+	ActionPreparePolicy        Action = "prepare_policy"
+	ActionCommitPolicy         Action = "commit_policy"
+	ActionAbortPolicy          Action = "abort_policy"
 )
 
 type Request struct {
-	Version            uint16            `json:"version"`
-	RequestID          string            `json:"request_id"`
-	Action             Action            `json:"action"`
-	Target             control.Component `json:"target,omitempty"`
-	ExpectedGeneration uint64            `json:"expected_generation"`
+	Version            uint16                `json:"version"`
+	RequestID          string                `json:"request_id"`
+	Action             Action                `json:"action"`
+	Target             control.Component     `json:"target,omitempty"`
+	ExpectedGeneration uint64                `json:"expected_generation"`
+	PolicyStatus       *PolicyStatusRequest  `json:"policy_status,omitempty"`
+	PreparePolicy      *PreparePolicyRequest `json:"prepare_policy,omitempty"`
+	CommitPolicy       *CommitPolicyRequest  `json:"commit_policy,omitempty"`
+	AbortPolicy        *AbortPolicyRequest   `json:"abort_policy,omitempty"`
 }
 
 type ErrorCode string
@@ -56,13 +64,17 @@ const (
 )
 
 type Response struct {
-	Version     uint16        `json:"version"`
-	RequestID   string        `json:"request_id"`
-	OK          bool          `json:"ok"`
-	Error       ErrorCode     `json:"error,omitempty"`
-	Status      *Status       `json:"status,omitempty"`
-	Diagnostics *Diagnostics  `json:"diagnostics,omitempty"`
-	Resume      *ResumeResult `json:"resume,omitempty"`
+	Version       uint16               `json:"version"`
+	RequestID     string               `json:"request_id"`
+	OK            bool                 `json:"ok"`
+	Error         ErrorCode            `json:"error,omitempty"`
+	Status        *Status              `json:"status,omitempty"`
+	Diagnostics   *Diagnostics         `json:"diagnostics,omitempty"`
+	Resume        *ResumeResult        `json:"resume,omitempty"`
+	PolicyStatus  *PolicyStatusResult  `json:"policy_status,omitempty"`
+	PreparePolicy *PreparePolicyResult `json:"prepare_policy,omitempty"`
+	CommitPolicy  *CommitPolicyResult  `json:"commit_policy,omitempty"`
+	AbortPolicy   *AbortPolicyResult   `json:"abort_policy,omitempty"`
 }
 
 type Status struct {
@@ -94,10 +106,11 @@ type ResumeResult struct {
 }
 
 var (
-	ErrUnsupportedVersion = errors.New("unsupported IPC protocol version")
-	ErrInvalidRequestID   = errors.New("invalid IPC request id")
-	ErrUnknownAction      = errors.New("IPC action is not allowlisted")
-	ErrInvalidTarget      = errors.New("invalid IPC action target")
+	ErrUnsupportedVersion   = errors.New("unsupported IPC protocol version")
+	ErrInvalidRequestID     = errors.New("invalid IPC request id")
+	ErrUnknownAction        = errors.New("IPC action is not allowlisted")
+	ErrInvalidTarget        = errors.New("invalid IPC action target")
+	ErrInvalidPolicyMessage = errors.New("invalid IPC policy message")
 )
 
 func (request Request) Validate() error {
@@ -108,18 +121,47 @@ func (request Request) Validate() error {
 		return ErrInvalidRequestID
 	}
 
+	policyPayloads := request.policyPayloadCount()
 	switch request.Action {
 	case ActionStatus, ActionExportDiagnostics:
+		if policyPayloads != 0 {
+			return ErrInvalidPolicyMessage
+		}
 		if request.Target != "" || request.ExpectedGeneration != 0 {
 			return ErrInvalidTarget
 		}
 	case ActionResumeTarget:
+		if policyPayloads != 0 {
+			return ErrInvalidPolicyMessage
+		}
 		if !validComponent(request.Target) {
 			return ErrInvalidTarget
 		}
 	case ActionRescuePritunlService:
+		if policyPayloads != 0 {
+			return ErrInvalidPolicyMessage
+		}
 		if request.Target != control.ComponentPritunl {
 			return ErrInvalidTarget
+		}
+	case ActionPolicyStatus:
+		if !request.validPolicyEnvelope(policyPayloads, request.PolicyStatus != nil) {
+			return ErrInvalidPolicyMessage
+		}
+	case ActionPreparePolicy:
+		if !request.validPolicyEnvelope(policyPayloads, request.PreparePolicy != nil) ||
+			request.PreparePolicy.Validate() != nil {
+			return ErrInvalidPolicyMessage
+		}
+	case ActionCommitPolicy:
+		if !request.validPolicyEnvelope(policyPayloads, request.CommitPolicy != nil) ||
+			request.CommitPolicy.Validate() != nil {
+			return ErrInvalidPolicyMessage
+		}
+	case ActionAbortPolicy:
+		if !request.validPolicyEnvelope(policyPayloads, request.AbortPolicy != nil) ||
+			request.AbortPolicy.Validate() != nil {
+			return ErrInvalidPolicyMessage
 		}
 	default:
 		return ErrUnknownAction
@@ -150,6 +192,30 @@ func (response Response) Validate() error {
 			return ErrMalformedFrame
 		}
 	}
+	if response.PolicyStatus != nil {
+		payloads++
+		if response.PolicyStatus.Validate() != nil {
+			return ErrMalformedFrame
+		}
+	}
+	if response.PreparePolicy != nil {
+		payloads++
+		if response.PreparePolicy.Validate() != nil {
+			return ErrMalformedFrame
+		}
+	}
+	if response.CommitPolicy != nil {
+		payloads++
+		if response.CommitPolicy.Validate() != nil {
+			return ErrMalformedFrame
+		}
+	}
+	if response.AbortPolicy != nil {
+		payloads++
+		if response.AbortPolicy.Validate() != nil {
+			return ErrMalformedFrame
+		}
+	}
 	if response.OK {
 		if response.Error != ErrorNone || payloads != 1 {
 			return ErrMalformedFrame
@@ -160,6 +226,26 @@ func (response Response) Validate() error {
 		return ErrMalformedFrame
 	}
 	return nil
+}
+
+func (request Request) policyPayloadCount() int {
+	payloads := 0
+	for _, present := range []bool{
+		request.PolicyStatus != nil,
+		request.PreparePolicy != nil,
+		request.CommitPolicy != nil,
+		request.AbortPolicy != nil,
+	} {
+		if present {
+			payloads++
+		}
+	}
+	return payloads
+}
+
+func (request Request) validPolicyEnvelope(payloads int, expected bool) bool {
+	return request.Target == "" && request.ExpectedGeneration == 0 &&
+		payloads == 1 && expected
 }
 
 func (status Status) valid() bool {

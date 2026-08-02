@@ -34,7 +34,7 @@
 
 ## 5. Typed IPC And Cross-Domain Activation
 
-- [ ] 5.1 Extend the versioned bounded IPC protocol with typed policy status, `PreparePolicy`, `CommitPolicy` and `AbortPolicy` messages carrying no paths or payloads.
+- [x] 5.1 Extend the versioned bounded IPC protocol with typed policy status, `PreparePolicy`, `CommitPolicy` and `AbortPolicy` messages carrying no paths or payloads.
 - [ ] 5.2 Add peer-UID, transaction-ID, generation and digest validation tests for root and user sockets, including arbitrary-path and unknown-operation rejection.
 - [ ] 5.3 Integrate independent prepare verification and durable receipts into `hexrouted` and `hexroute-userd` without granting process, route or credential authority.
 - [ ] 5.4 Implement the `hexroutectl policy status|prepare|commit|abort|rollback` coordinator and require matching receipts before commit.
