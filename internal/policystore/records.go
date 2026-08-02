@@ -555,10 +555,7 @@ func validateApprovalStructure(approval policyapproval.SignedApproval) error {
 }
 
 func approvalSHA256(approval policyapproval.SignedApproval) (string, error) {
-	if validateApprovalStructure(approval) != nil {
-		return "", ErrInvalidRecord
-	}
-	digest, _, err := policy.CanonicalSHA256(approval)
+	digest, err := policyapproval.ApprovalSHA256(approval)
 	if err != nil {
 		return "", ErrInvalidRecord
 	}

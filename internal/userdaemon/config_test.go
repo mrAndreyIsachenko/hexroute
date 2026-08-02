@@ -1,10 +1,17 @@
 package userdaemon
 
 import (
+	"bytes"
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policycontrol"
 )
 
 const validConfig = `{
@@ -61,4 +68,45 @@ func TestDecodeConfigRejectsMutationAndCredentialFields(t *testing.T) {
 			t.Fatalf("DecodeConfig() error = %v, want %v", err, ErrInvalidConfig)
 		}
 	}
+}
+
+func TestDecodeConfigAcceptsOnlyUserPolicyControlIdentity(t *testing.T) {
+	fixture := userConfigWithPolicyControl(t, validConfig, policy.DomainUser)
+	config, err := DecodeConfig(bytes.NewReader(fixture))
+	if err != nil || config.PolicyControl == nil ||
+		config.PolicyControl.Installed.Domain != policy.DomainUser {
+		t.Fatalf("DecodeConfig() = %+v, %v", config, err)
+	}
+	fixture = userConfigWithPolicyControl(t, validConfig, policy.DomainRoot)
+	if _, err := DecodeConfig(bytes.NewReader(fixture)); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("cross-domain policy control error = %v", err)
+	}
+}
+
+func userConfigWithPolicyControl(
+	t *testing.T,
+	base string,
+	domain policy.Domain,
+) []byte {
+	t.Helper()
+	var document map[string]any
+	if err := json.Unmarshal([]byte(base), &document); err != nil {
+		t.Fatal(err)
+	}
+	publicKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{6}, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	document["policy_control"] = policycontrol.StaticConfig{
+		Schema: policycontrol.StaticConfigSchema,
+		Installed: policy.InstalledCompatibility{
+			Domain: domain, MinimumPolicySchema: 1, MaximumPolicySchema: 1,
+			CurrentPolicySchema: 1, StaticSHA256: policy.SHA256Hex([]byte("synthetic-static")),
+			TrustedCompilerSHA256: []string{policy.SHA256Hex([]byte("synthetic-compiler"))},
+		},
+		PinnedPublicKey:   base64.RawStdEncoding.EncodeToString(publicKey),
+		SignerFingerprint: policy.SHA256Hex(publicKey),
+	}
+	encoded, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
 }

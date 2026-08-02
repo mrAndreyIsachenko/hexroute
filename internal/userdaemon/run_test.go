@@ -16,6 +16,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/notification"
 	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlplan"
 )
 
@@ -259,6 +260,22 @@ func TestOpenSnapshotStoreRejectsSymlink(t *testing.T) {
 
 	if _, _, err := openSnapshotStore(path); err == nil {
 		t.Fatal("openSnapshotStore() accepted a symlink")
+	}
+}
+
+func TestUserDaemonProvidesFailClosedPolicyStatusWithoutStaticTrust(t *testing.T) {
+	handler, store, err := openUserPolicyHandler(nil)
+	if err != nil || store != nil {
+		t.Fatalf("openUserPolicyHandler() store=%v error=%v", store, err)
+	}
+	response := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "user-policy-status",
+		Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+	})
+	if !response.OK || response.PolicyStatus == nil ||
+		response.PolicyStatus.Status.Domain != policy.DomainUser ||
+		response.PolicyStatus.Status.State != policy.PolicyNone {
+		t.Fatalf("policy status = %+v", response)
 	}
 }
 

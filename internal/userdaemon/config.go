@@ -13,6 +13,8 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
+	authorizationpolicy "github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policycontrol"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlplan"
 )
 
@@ -22,14 +24,15 @@ const (
 )
 
 type Config struct {
-	Schema               string         `json:"schema"`
-	Mode                 string         `json:"mode"`
-	ObservationIntervalS uint32         `json:"observation_interval_seconds"`
-	ExpectedUID          int            `json:"expected_uid"`
-	ProfileID            string         `json:"profile_id"`
-	PritunlCLI           string         `json:"pritunl_cli"`
-	OuterEndpoint        EndpointConfig `json:"outer_endpoint"`
-	Policy               PolicyConfig   `json:"policy"`
+	Schema               string                      `json:"schema"`
+	Mode                 string                      `json:"mode"`
+	ObservationIntervalS uint32                      `json:"observation_interval_seconds"`
+	ExpectedUID          int                         `json:"expected_uid"`
+	ProfileID            string                      `json:"profile_id"`
+	PritunlCLI           string                      `json:"pritunl_cli"`
+	OuterEndpoint        EndpointConfig              `json:"outer_endpoint"`
+	Policy               PolicyConfig                `json:"policy"`
+	PolicyControl        *policycontrol.StaticConfig `json:"policy_control,omitempty"`
 }
 
 type EndpointConfig struct {
@@ -60,6 +63,7 @@ type RuntimeConfig struct {
 	PritunlCLI    string
 	OuterEndpoint observe.Endpoint
 	Policy        pritunlplan.Policy
+	PolicyControl *policycontrol.RuntimeConfig
 }
 
 var (
@@ -167,6 +171,14 @@ func (config Config) runtime() (RuntimeConfig, error) {
 	); err != nil {
 		return RuntimeConfig{}, ErrInvalidConfig
 	}
+	var policyRuntime *policycontrol.RuntimeConfig
+	if config.PolicyControl != nil {
+		compiled, err := config.PolicyControl.Runtime(authorizationpolicy.DomainUser)
+		if err != nil {
+			return RuntimeConfig{}, ErrInvalidConfig
+		}
+		policyRuntime = &compiled
+	}
 	return RuntimeConfig{
 		Interval:      interval,
 		ExpectedUID:   config.ExpectedUID,
@@ -174,5 +186,6 @@ func (config Config) runtime() (RuntimeConfig, error) {
 		PritunlCLI:    config.PritunlCLI,
 		OuterEndpoint: endpoint,
 		Policy:        policy,
+		PolicyControl: policyRuntime,
 	}, nil
 }

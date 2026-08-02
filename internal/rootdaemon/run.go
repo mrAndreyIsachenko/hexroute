@@ -18,6 +18,9 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policycontrol"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 )
 
@@ -170,7 +173,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return 1
 		}
-		dispatcher, err := operator.NewDispatcher(controller, broker)
+		policyHandler, policyStore, err := openRootPolicyHandler(config.PolicyControl)
+		if err != nil {
+			return rejected(errorLog, logging.ReasonInvalidConfiguration)
+		}
+		if policyStore != nil {
+			defer policyStore.Close()
+		}
+		dispatcher, err := operator.NewDispatcher(controller, broker, policyHandler)
 		if err != nil {
 			return 1
 		}
@@ -216,6 +226,25 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func openRootPolicyHandler(
+	config *policycontrol.RuntimeConfig,
+) (*policycontrol.Handler, *policystore.Store, error) {
+	if config == nil {
+		handler, err := policycontrol.NewUnavailableHandler(policy.DomainRoot)
+		return handler, nil, err
+	}
+	store, err := policystore.OpenRoot()
+	if err != nil {
+		return nil, nil, err
+	}
+	handler, err := policycontrol.NewHandler(store, *config, time.Now)
+	if err != nil {
+		_ = store.Close()
+		return nil, nil, err
+	}
+	return handler, store, nil
 }
 
 func validateRootSocketPath(path string, operatorUID int) error {

@@ -20,6 +20,10 @@ type countingMutationHandler struct {
 	calls int
 }
 
+type countingPolicyHandler struct {
+	calls int
+}
+
 func (handler *countingMutationHandler) HandleIPC(
 	context.Context,
 	ipc.Request,
@@ -32,10 +36,21 @@ func (handler *countingMutationHandler) HandleIPC(
 	}
 }
 
+func (handler *countingPolicyHandler) HandleIPC(
+	_ context.Context,
+	request ipc.Request,
+) ipc.Response {
+	handler.calls++
+	return ipc.Response{
+		Version: request.Version, RequestID: request.RequestID, Error: ipc.ErrorInternal,
+	}
+}
+
 func TestDispatcherSeparatesReadOnlyAndMutatingRequests(t *testing.T) {
 	readOnly := &countingReadHandler{}
 	mutating := &countingMutationHandler{}
-	dispatcher, err := NewDispatcher(readOnly, mutating)
+	policyHandler := &countingPolicyHandler{}
+	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler)
 	if err != nil {
 		t.Fatalf("NewDispatcher() error: %v", err)
 	}
@@ -60,7 +75,22 @@ func TestDispatcherSeparatesReadOnlyAndMutatingRequests(t *testing.T) {
 			Action:    action,
 		})
 	}
-	if readOnly.calls != 2 || mutating.calls != 2 {
-		t.Fatalf("read-only calls=%d mutating calls=%d", readOnly.calls, mutating.calls)
+	for _, action := range []ipc.Action{
+		ipc.ActionPolicyStatus,
+		ipc.ActionPreparePolicy,
+		ipc.ActionCommitPolicy,
+		ipc.ActionAbortPolicy,
+	} {
+		dispatcher.HandleIPC(context.Background(), ipc.Request{
+			Version: ipc.ProtocolVersion, RequestID: "policy", Action: action,
+		})
+	}
+	if readOnly.calls != 2 || mutating.calls != 2 || policyHandler.calls != 4 {
+		t.Fatalf(
+			"read-only calls=%d mutating calls=%d policy calls=%d",
+			readOnly.calls,
+			mutating.calls,
+			policyHandler.calls,
+		)
 	}
 }

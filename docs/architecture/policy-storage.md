@@ -112,8 +112,25 @@ continue to bind both domain digests.
 A successful call returns a typed `RevalidatedActive` containing the verified
 manifest and local payload. A failed call returns bounded sentinel errors and
 does not rewrite the pointer, run retention, activate a fallback or mutate any
-network/process state. Daemon integration and resulting safe-mode or
-authorization-suspension behavior remain later explicit tasks.
+network/process state. Startup use of this active revalidation and resulting
+safe-mode or authorization-suspension behavior remain later explicit tasks.
+
+## Domain-Local Prepare
+
+`PrepareCandidate` accepts only bounded transaction, generation and digest
+identity. It derives all four immutable artifact names from the local store
+domain and generation, then repeats canonical manifest/payload/review/approval,
+signature, validity, static, compiler and schema validation. It persists a
+prepare receipt only after every check succeeds. The method cannot accept a
+filesystem path, policy payload, command or runtime mutation callback.
+
+Root `hexrouted` and user `hexroute-userd` expose this boundary through a
+dedicated policy IPC handler. The handler is separate from the existing
+operator mutation broker. Private static startup configuration pins the daemon
+domain, supported schema, static digest, compiler identities and signer public
+key. If that configuration is absent, policy status reports `none` and prepare
+fails closed. `CommitPolicy` and `AbortPolicy` remain unavailable until their
+later activation tasks are implemented.
 
 ## Monotonic Rollback Candidates
 
@@ -149,8 +166,8 @@ lease and active pointer are never reused. Selecting a target from retained
 active store history and coordinating activation remain later typed-IPC tasks;
 this compiler path performs no daemon, store or network mutation.
 
-This storage package is not a live installation or cutover. Signed active
-pointers, prepare receipts, commit intents, terminal resolutions, bounded
-retention, crash-point persistence, startup revalidation and monotonic rollback
-compilation are implemented, but are not wired to either daemon. Twilight
-remains the production owner throughout those changes.
+This storage package is not a live installation or cutover. Candidate prepare
+verification and durable receipts are wired to the root and user daemon IPC
+handlers, but no commit, abort, action enforcement, process, route, credential
+or network mutation is enabled. Twilight remains the production owner
+throughout these changes.

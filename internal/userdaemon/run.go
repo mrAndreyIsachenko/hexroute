@@ -20,6 +20,9 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/notification"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policycontrol"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlplan"
 	"github.com/mrAndreyIsachenko/hexroute/internal/userobserve"
 )
@@ -219,7 +222,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return 1
 		}
-		dispatcher, err := operator.NewDispatcher(controller, broker)
+		policyHandler, policyStore, err := openUserPolicyHandler(config.PolicyControl)
+		if err != nil {
+			return rejected(errorLog, logging.ReasonInvalidConfiguration)
+		}
+		if policyStore != nil {
+			defer policyStore.Close()
+		}
+		dispatcher, err := operator.NewDispatcher(controller, broker, policyHandler)
 		if err != nil {
 			return 1
 		}
@@ -266,6 +276,25 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func openUserPolicyHandler(
+	config *policycontrol.RuntimeConfig,
+) (*policycontrol.Handler, *policystore.Store, error) {
+	if config == nil {
+		handler, err := policycontrol.NewUnavailableHandler(policy.DomainUser)
+		return handler, nil, err
+	}
+	store, err := policystore.OpenCurrentUser()
+	if err != nil {
+		return nil, nil, err
+	}
+	handler, err := policycontrol.NewHandler(store, *config, time.Now)
+	if err != nil {
+		_ = store.Close()
+		return nil, nil, err
+	}
+	return handler, store, nil
 }
 
 func validateUserSocketPath(path string, statePath string, expectedUID int) error {

@@ -151,6 +151,17 @@ func ReviewSHA256(report ReviewReport) (string, error) {
 	return digest, err
 }
 
+func ApprovalSHA256(approval SignedApproval) (string, error) {
+	if approval.validateStructure() != nil {
+		return "", ErrInvalidApproval
+	}
+	digest, _, err := policy.CanonicalSHA256(approval)
+	if err != nil {
+		return "", ErrInvalidApproval
+	}
+	return digest, nil
+}
+
 func ApproveCandidate(
 	candidate policy.CandidateBundle,
 	current *policy.EffectiveSnapshot,

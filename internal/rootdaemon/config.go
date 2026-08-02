@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policycontrol"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
 )
@@ -34,16 +36,17 @@ const (
 )
 
 type Config struct {
-	Schema                string           `json:"schema"`
-	Mode                  string           `json:"mode"`
-	ObservationIntervalS  uint32           `json:"observation_interval_seconds"`
-	OperatorUID           int              `json:"operator_uid,omitempty"`
-	PhysicalInterface     string           `json:"physical_interface"`
-	ManagedTUNAddress     string           `json:"managed_tun_address"`
-	UpstreamProbeAddress  string           `json:"upstream_probe_address,omitempty"`
-	ExpectedSingBoxParent int              `json:"expected_sing_box_parent_pid,omitempty"`
-	Routes                []RouteConfig    `json:"routes"`
-	Endpoints             []EndpointConfig `json:"endpoints"`
+	Schema                string                      `json:"schema"`
+	Mode                  string                      `json:"mode"`
+	ObservationIntervalS  uint32                      `json:"observation_interval_seconds"`
+	OperatorUID           int                         `json:"operator_uid,omitempty"`
+	PhysicalInterface     string                      `json:"physical_interface"`
+	ManagedTUNAddress     string                      `json:"managed_tun_address"`
+	UpstreamProbeAddress  string                      `json:"upstream_probe_address,omitempty"`
+	ExpectedSingBoxParent int                         `json:"expected_sing_box_parent_pid,omitempty"`
+	Routes                []RouteConfig               `json:"routes"`
+	Endpoints             []EndpointConfig            `json:"endpoints"`
+	PolicyControl         *policycontrol.StaticConfig `json:"policy_control,omitempty"`
 }
 
 type RouteConfig struct {
@@ -73,6 +76,7 @@ type RuntimeConfig struct {
 	ExpectedSingBoxParent int
 	Targets               []routeplan.Target
 	Endpoints             []RuntimeEndpoint
+	PolicyControl         *policycontrol.RuntimeConfig
 }
 
 type RuntimeEndpoint struct {
@@ -149,6 +153,13 @@ func (config Config) runtime() (RuntimeConfig, error) {
 		ManagedTUNAddress:     tunAddress,
 		UpstreamProbeAddress:  upstreamAddress,
 		ExpectedSingBoxParent: config.ExpectedSingBoxParent,
+	}
+	if config.PolicyControl != nil {
+		policyRuntime, err := config.PolicyControl.Runtime(policy.DomainRoot)
+		if err != nil {
+			return RuntimeConfig{}, ErrInvalidConfig
+		}
+		runtime.PolicyControl = &policyRuntime
 	}
 	names := make(map[string]struct{})
 	addresses := make(map[netip.Addr]struct{})

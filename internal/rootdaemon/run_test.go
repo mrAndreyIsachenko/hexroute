@@ -14,6 +14,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 )
 
@@ -136,5 +137,21 @@ func TestRootOperatorSnapshotContainsOnlyBoundedState(t *testing.T) {
 		next.LastTick != 15 ||
 		next.Generation != 1 {
 		t.Fatalf("nextRootOperatorSnapshot() = %+v", next)
+	}
+}
+
+func TestRootDaemonProvidesFailClosedPolicyStatusWithoutStaticTrust(t *testing.T) {
+	handler, store, err := openRootPolicyHandler(nil)
+	if err != nil || store != nil {
+		t.Fatalf("openRootPolicyHandler() store=%v error=%v", store, err)
+	}
+	response := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "root-policy-status",
+		Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+	})
+	if !response.OK || response.PolicyStatus == nil ||
+		response.PolicyStatus.Status.Domain != policy.DomainRoot ||
+		response.PolicyStatus.Status.State != policy.PolicyNone {
+		t.Fatalf("policy status = %+v", response)
 	}
 }
