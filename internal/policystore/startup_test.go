@@ -51,6 +51,44 @@ func TestStoreRevalidatesActiveGenerationForEachDomainWithoutWrites(t *testing.T
 	}
 }
 
+func TestStoreReopensAfterRebootAndRevalidatesActiveGeneration(t *testing.T) {
+	validAt := time.Date(2030, time.January, 1, 0, 30, 0, 0, time.UTC)
+	for _, domain := range []policy.Domain{policy.DomainRoot, policy.DomainUser} {
+		t.Run(string(domain), func(t *testing.T) {
+			store, path := newTestStore(t, domain)
+			fixture := newStartupFixture(t, domain, 1)
+			installStartupFixture(t, store, fixture)
+			before := snapshotStoreTree(t, path)
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			reopened, err := openStoreAt(path, domain, currentUID(), currentGID())
+			if err != nil {
+				t.Fatalf("reopen store: %v", err)
+			}
+			defer reopened.Close()
+			active, err := reopened.RecoverActive(
+				fixture.installed,
+				fixture.publicKey,
+				validAt,
+			)
+			if err != nil {
+				t.Fatalf("recover active after reboot: %v", err)
+			}
+			if active.Domain != domain || active.Generation != fixture.generation ||
+				active.ManifestSHA256 != fixture.manifestDigest ||
+				active.PayloadSHA256 != fixture.payloadDigest {
+				t.Fatalf("recovered active = %+v", active)
+			}
+			after := snapshotStoreTree(t, path)
+			if !reflect.DeepEqual(before, after) {
+				t.Fatalf("reboot recovery modified store:\nbefore=%v\nafter=%v", before, after)
+			}
+		})
+	}
+}
+
 func TestStoreStartupRevalidationRejectsInvalidActiveEvidence(t *testing.T) {
 	validAt := time.Date(2030, time.January, 1, 0, 30, 0, 0, time.UTC)
 

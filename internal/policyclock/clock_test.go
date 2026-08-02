@@ -70,6 +70,23 @@ func TestPendingLeaseUsesMonotonicExpiryAndBootIdentity(t *testing.T) {
 	}
 }
 
+func TestUnfinishedPreRebootLeaseCannotResume(t *testing.T) {
+	lease := syntheticLease()
+	lease.ExpiresAt = "2030-01-01T01:00:00Z"
+	if err := ValidatePendingLease(
+		lease,
+		LeaseSample{MonotonicNS: 15, BootID: bootOne},
+	); err != nil {
+		t.Fatalf("lease before reboot: %v", err)
+	}
+	if err := ValidatePendingLease(
+		lease,
+		LeaseSample{MonotonicNS: 1, BootID: bootTwo},
+	); !errors.Is(err, ErrLeaseBootMismatch) {
+		t.Fatalf("pre-reboot lease error = %v", err)
+	}
+}
+
 func syntheticLease() policy.ActionLease {
 	return policy.ActionLease{
 		Schema:   policy.ActionLeaseSchema,
