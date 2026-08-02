@@ -69,6 +69,7 @@
 - [ ] 9.2 Add redacted policy telemetry schemas and secret-canary tests that reject selectors, endpoints, source paths, leases, credential references and credential values before persistence or upload.
 - [ ] 9.3 Prove cloud API, PostgreSQL and worker loss cannot block local compile, prepare, commit, resume, suspension or safe-mode behavior and cannot request a local mutation.
 - [ ] 9.4 Add a redacted advisor output format that can draft operator YAML changes but has no merge, signing, installation or activation path.
+- [ ] 9.5 Add Git ignore, repository-boundary and secret-canary checks that reject live YAML, signed bundles, trust fingerprints, non-synthetic selectors and credential references from public Git.
 
 ## 10. Documentation And Shadow Qualification
 

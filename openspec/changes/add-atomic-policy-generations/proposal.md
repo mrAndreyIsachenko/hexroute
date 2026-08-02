@@ -23,6 +23,10 @@ one intended change into unrelated local mutations.
   invariants and recent redacted observations before a policy can be signed.
 - Add redacted local and cloud-visible policy status without exposing selectors,
   endpoints, source paths, leases or credential references.
+- Enforce a repository boundary in which public Hexroute contains only policy
+  contracts, schemas, synthetic examples and tests; live policy sources, signed
+  bundles, trust fingerprints and activation evidence remain operational
+  artifacts outside public Git.
 - Authorize only the existing `operator_resume` state transition in the first
   active rollout; it still cannot restart a process, reconnect Pritunl, change a
   route, alter sing-box or access a credential.
@@ -67,5 +71,8 @@ change.
   restart-required, mismatch, suspension and action-lease metadata.
 - Adds synthetic conflict, replay, crash-recovery, sleep/wake and reboot fixtures
   plus bounded, secret-redacted telemetry schemas.
+- Adds ignore and secret-canary gates that reject live policy material from the
+  public source tree; private infrastructure may retain only redacted digests and
+  deployment references while secret values stay in their designated stores.
 - Does not change live provider resources, DNS, AdGuard, Twilight, Pritunl,
   sing-box, routes or current cloud mutation authority.

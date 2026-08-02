@@ -74,6 +74,22 @@ library Ed25519 and SHA-256 are sufficient; a general policy runtime would
 increase the privileged dependency and attack surface without helping the
 bounded selector model.
 
+### Public source contains policy contracts, not live policy
+
+The public Hexroute repository contains the policy schema, compiler and verifier
+code, OpenSpec requirements, reserved synthetic examples and secret-canary test
+fixtures. It does not contain operator policy for a real machine, compiled or
+signed bundles, signer fingerprints, live selectors or endpoints, profile and
+credential references, activation receipts or deployment evidence.
+
+Live YAML and generated bundles are mode-private local operational artifacts and
+are excluded from Git. The private infrastructure repository may carry only
+redacted digests, release references and private deployment workflow; actual
+secret values remain in Keychain or the designated provider secret store. Git
+ignore rules, repository tests and secret canaries fail before live policy
+material can enter the public tree. This separation keeps the public design
+auditable without publishing a deployable authorization snapshot.
+
 ### Canonical effective content defines generation identity
 
 The compiler applies deterministic ordering and RFC 8785 JSON canonicalization.
@@ -290,6 +306,9 @@ transactional cutover. Twilight continues to own the production data plane.
   Twilight authoritative.
 - **[Telemetry leaks infrastructure or credentials]** -> Use allowlisted event
   schemas and secret-canary tests that fail before persistence or upload.
+- **[A live policy artifact is accidentally staged]** -> Ignore operational
+  policy roots and fail repository checks on signed bundles, fingerprints,
+  non-synthetic selectors and credential references.
 - **[OpenShell behavior changes upstream]** -> Treat the cited revision as design
   input only and test Hexroute's independent contract.
 

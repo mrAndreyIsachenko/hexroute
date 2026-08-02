@@ -408,6 +408,32 @@ signing and activation gates.
 - **THEN** the proposal remains an unsigned operator source draft
 - **AND** daemon authorization remains unchanged
 
+### Requirement: Public repository excludes live policy material
+
+The public Hexroute repository SHALL contain only generic policy contracts,
+schemas, compiler and verifier code, reserved synthetic examples and synthetic
+test fixtures. Real operator policy sources, compiled or signed bundles, signer
+fingerprints, live selectors and endpoints, profile or credential references,
+activation receipts and deployment evidence SHALL remain outside public Git.
+
+#### Scenario: Live policy artifact is added to the source tree
+
+- **WHEN** repository checks detect a signed bundle, trust fingerprint, non-synthetic selector or credential reference in a tracked public artifact
+- **THEN** the secret and repository-boundary gate fails
+- **AND** the artifact cannot pass the public release checks
+
+#### Scenario: Public synthetic example is evaluated
+
+- **WHEN** an example uses reserved synthetic identities, endpoints and credential canaries only
+- **THEN** it may be tracked for compiler and verifier regression coverage
+- **AND** it cannot be activated as a live machine policy
+
+#### Scenario: Private deployment records policy state
+
+- **WHEN** private infrastructure records a policy deployment
+- **THEN** it retains only redacted digests, release references and bounded evidence in Git
+- **AND** live source, bundle and secret values remain in mode-private local or designated secret storage
+
 ### Requirement: Shadow-gated bounded first activation
 
 Policy evaluation SHALL remain shadow-only until it completes 72 continuous
