@@ -69,9 +69,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	var err error
 	switch args[0] {
 	case "compile":
-		err = runCompile(args[1:], stdout, false)
+		err = runCompile(args[1:], stdout)
 	case "rollback":
-		err = runCompile(args[1:], stdout, true)
+		err = runRollback(args[1:], stdout)
 	case "diff":
 		err = runDiff(args[1:], stdout)
 	case "replay":
@@ -211,12 +211,8 @@ func runProvisionKey(args []string, stdout io.Writer) error {
 	})
 }
 
-func runCompile(args []string, stdout io.Writer, rollback bool) error {
-	name := "compile"
-	if rollback {
-		name = "rollback"
-	}
-	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+func runCompile(args []string, stdout io.Writer) error {
+	flags := flag.NewFlagSet("compile", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	sourcePath := flags.String("source", "", "strict operator YAML source")
 	currentPath := flags.String("current", "", "current candidate directory")
@@ -225,8 +221,7 @@ func runCompile(args []string, stdout io.Writer, rollback bool) error {
 	compilerSHA := flags.String("compiler-sha256", "", "compiler digest")
 	signerFingerprint := flags.String("signer-fingerprint", "", "pinned signer fingerprint")
 	if flags.Parse(args) != nil || flags.NArg() != 0 || *sourcePath == "" || *outPath == "" ||
-		*compilerVersion == "" || *compilerSHA == "" || *signerFingerprint == "" ||
-		(rollback && *currentPath == "") {
+		*compilerVersion == "" || *compilerSHA == "" || *signerFingerprint == "" {
 		return errors.New("invalid compile flags")
 	}
 	sourceFile, err := openRegular(*sourcePath, policy.MaxOperatorSourceSize)
@@ -257,7 +252,51 @@ func runCompile(args []string, stdout io.Writer, rollback bool) error {
 	if err := writeBundle(*outPath, candidate); err != nil {
 		return err
 	}
-	return writeOutput(stdout, commandOutput{Schema: outputSchema, Command: name, ManifestSHA256: candidate.ManifestSHA256})
+	return writeOutput(stdout, commandOutput{Schema: outputSchema, Command: "compile", ManifestSHA256: candidate.ManifestSHA256})
+}
+
+func runRollback(args []string, stdout io.Writer) error {
+	flags := flag.NewFlagSet("rollback", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	targetPath := flags.String("target", "", "historical candidate directory")
+	currentPath := flags.String("current", "", "current candidate directory")
+	outPath := flags.String("out", "", "new private output directory")
+	compilerVersion := flags.String("compiler-version", "", "compiler version")
+	compilerSHA := flags.String("compiler-sha256", "", "compiler digest")
+	signerFingerprint := flags.String("signer-fingerprint", "", "pinned signer fingerprint")
+	issuedAt := flags.String("issued-at", "", "new canonical UTC issue time")
+	notBefore := flags.String("not-before", "", "new canonical UTC activation start")
+	expiresAt := flags.String("expires-at", "", "new canonical UTC expiry")
+	if flags.Parse(args) != nil || flags.NArg() != 0 || *targetPath == "" || *currentPath == "" ||
+		*outPath == "" || *compilerVersion == "" || *compilerSHA == "" ||
+		*signerFingerprint == "" || *issuedAt == "" || *notBefore == "" || *expiresAt == "" {
+		return errors.New("invalid rollback flags")
+	}
+	target, err := loadBundle(*targetPath)
+	if err != nil {
+		return err
+	}
+	current, err := loadBundle(*currentPath)
+	if err != nil {
+		return err
+	}
+	candidate, err := policy.CompileRollback(
+		target,
+		current,
+		policy.DefaultSafetyEnvelope(),
+		policy.CompilerIdentity{Version: *compilerVersion, SHA256: *compilerSHA},
+		*signerFingerprint,
+		policy.RollbackValidity{IssuedAt: *issuedAt, NotBefore: *notBefore, ExpiresAt: *expiresAt},
+	)
+	if err != nil {
+		return err
+	}
+	if err := writeBundle(*outPath, candidate); err != nil {
+		return err
+	}
+	return writeOutput(stdout, commandOutput{
+		Schema: outputSchema, Command: "rollback", ManifestSHA256: candidate.ManifestSHA256,
+	})
 }
 
 func runDiff(args []string, stdout io.Writer) error {

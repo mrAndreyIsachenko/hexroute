@@ -50,6 +50,83 @@ func TestApproveAndVerifyCandidate(t *testing.T) {
 	}
 }
 
+func TestRollbackCandidatePassesNormalSigningAndVerificationGates(t *testing.T) {
+	signer := &syntheticSigner{private: ed25519.NewKeyFromSeed(bytes.Repeat([]byte{8}, ed25519.SeedSize))}
+	publicKey, _ := signer.PublicKey()
+	fingerprint := policy.SHA256Hex(publicKey)
+	envelope := policy.DefaultSafetyEnvelope()
+	staticDigest, err := envelope.SHA256()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := policy.CompilerIdentity{Version: "v0.1.0", SHA256: strings.Repeat("b", 64)}
+	targetSource := approvalSource(staticDigest, 2, 1, 2, policy.EffectAllow)
+	target, err := policy.CompileBundle(targetSource, envelope, identity, fingerprint, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentSource := approvalSource(staticDigest, 3, 1, 3, policy.EffectDeny)
+	current, err := policy.CompileBundle(currentSource, envelope, identity, fingerprint, &target.Snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := policy.CompileRollback(
+		target,
+		current,
+		envelope,
+		identity,
+		fingerprint,
+		policy.RollbackValidity{
+			IssuedAt:  "2026-08-02T09:10:00Z",
+			NotBefore: "2026-08-02T09:10:00Z",
+			ExpiresAt: "2026-08-02T09:50:00Z",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff, err := policy.BuildSemanticDiff(&current.Snapshot, candidate.Snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayReport, err := replay.EvaluatePolicy(candidate.Snapshot, []replay.PolicyCase{
+		approvalCase("synthetic-root-deny", policy.DomainRoot, "routes", replay.DecisionDeny),
+		approvalCase("synthetic-user-allow", policy.DomainUser, "pritunl", replay.DecisionAllow),
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootDigest, _, _ := policy.CanonicalSHA256(current.Root)
+	userDigest, _, _ := policy.CanonicalSHA256(current.User)
+	installed := InstalledDomains{
+		Root: policy.InstalledCompatibility{
+			Domain: policy.DomainRoot, MinimumPolicySchema: 1, MaximumPolicySchema: 1, CurrentPolicySchema: 1,
+			CurrentBundleGeneration: current.Manifest.BundleGeneration,
+			CurrentPolicyGeneration: current.Root.PolicyGeneration, CurrentPayloadSHA256: rootDigest,
+			StaticSHA256: staticDigest, TrustedCompilerSHA256: []string{identity.SHA256},
+		},
+		User: policy.InstalledCompatibility{
+			Domain: policy.DomainUser, MinimumPolicySchema: 1, MaximumPolicySchema: 1, CurrentPolicySchema: 1,
+			CurrentBundleGeneration: current.Manifest.BundleGeneration,
+			CurrentPolicyGeneration: current.User.PolicyGeneration, CurrentPayloadSHA256: userDigest,
+			StaticSHA256: staticDigest, TrustedCompilerSHA256: []string{identity.SHA256},
+		},
+	}
+	review, approval, err := ApproveCandidate(
+		candidate, &current.Snapshot, diff, replayReport, installed, signer,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signer.signCalls != 1 {
+		t.Fatalf("rollback sign calls=%d", signer.signCalls)
+	}
+	validAt := time.Date(2026, 8, 2, 9, 30, 0, 0, time.UTC)
+	if err := VerifyCandidate(candidate, review, approval, publicKey, validAt); err != nil {
+		t.Fatalf("verify signed rollback: %v", err)
+	}
+}
+
 func TestVerifyDomainCandidateAndCanonicalArtifacts(t *testing.T) {
 	fixture := newApprovalFixture(t)
 	review, approval, err := ApproveCandidate(

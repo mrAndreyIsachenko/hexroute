@@ -104,7 +104,12 @@ func (candidate CandidateBundle) Validate() error {
 		candidate.Root.Validate() != nil || candidate.User.Validate() != nil ||
 		candidate.Root.Domain != DomainRoot || candidate.User.Domain != DomainUser ||
 		candidate.Manifest.BundleGeneration != candidate.Snapshot.BundleGeneration ||
-		candidate.Manifest.StaticSHA256 != candidate.Snapshot.StaticSHA256 {
+		candidate.Manifest.ParentBundleGeneration != candidate.Snapshot.ParentBundleGeneration ||
+		candidate.Manifest.PolicySchema != candidate.Snapshot.PolicySchema ||
+		candidate.Manifest.StaticSHA256 != candidate.Snapshot.StaticSHA256 ||
+		candidate.Manifest.IssuedAt != candidate.Snapshot.IssuedAt ||
+		candidate.Manifest.NotBefore != candidate.Snapshot.NotBefore ||
+		candidate.Manifest.ExpiresAt != candidate.Snapshot.ExpiresAt {
 		return ErrInvalidCandidateBundle
 	}
 	rootDigest, rootJSON, err := CanonicalSHA256(candidate.Root)

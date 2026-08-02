@@ -115,8 +115,42 @@ does not rewrite the pointer, run retention, activate a fallback or mutate any
 network/process state. Daemon integration and resulting safe-mode or
 authorization-suspension behavior remain later explicit tasks.
 
+## Monotonic Rollback Candidates
+
+Rollback is forward-only compilation, not an active-pointer rewind.
+`hexroute-policy rollback` reads one canonical historical target bundle and the
+canonical current bundle, then creates a new unsigned candidate. The target
+bundle generation must be lower than current, and both bundles must match the
+current policy schema and compiled static safety envelope.
+
+The compiler derives all counters instead of accepting them from operator
+source:
+
+- `bundle_generation` is current plus one;
+- `parent_bundle_generation` is exactly current;
+- an unchanged domain keeps its current policy generation;
+- a changed domain advances its current policy generation by one.
+
+The candidate receives new canonical UTC issue, activation and expiry values.
+A historical authorization lease is retained only when it is already effective
+at the new `not_before` and remains unexpired; its original expiry is never
+extended. Composition removes allow rules that no retained lease authorizes.
+
+Credential policy is continuity-protected. The historical and current
+effective credential-rule sets must be semantically identical. If a credential
+reference or its effect was removed or changed after the target generation,
+rollback fails rather than restoring it. An intentional credential change must
+use a normal reviewed policy source, not rollback.
+
+The generated candidate still has no activation authority. It must pass the
+normal semantic diff, deterministic replay, compatibility, user-presence
+signature, installation, prepare and commit gates. The old signature, approval,
+lease and active pointer are never reused. Selecting a target from retained
+active store history and coordinating activation remain later typed-IPC tasks;
+this compiler path performs no daemon, store or network mutation.
+
 This storage package is not a live installation or cutover. Signed active
 pointers, prepare receipts, commit intents, terminal resolutions, bounded
-retention, crash-point persistence and startup revalidation are implemented,
-but are not wired to either daemon. Twilight remains the production owner
-throughout those changes.
+retention, crash-point persistence, startup revalidation and monotonic rollback
+compilation are implemented, but are not wired to either daemon. Twilight
+remains the production owner throughout those changes.

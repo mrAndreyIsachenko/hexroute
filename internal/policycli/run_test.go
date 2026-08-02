@@ -95,6 +95,80 @@ func TestCompileWritesOnlyPrivateCanonicalCandidate(t *testing.T) {
 	}
 }
 
+func TestRollbackWritesMonotonicCandidateFromHistoricalBundle(t *testing.T) {
+	envelope := policy.DefaultSafetyEnvelope()
+	staticDigest, err := envelope.SHA256()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := policy.CompilerIdentity{Version: "v0.1.0", SHA256: strings.Repeat("b", 64)}
+	signerFingerprint := strings.Repeat("c", 64)
+	targetSource := cliRollbackSource(staticDigest, 1, 0, 1, policy.EffectDeny, "routes")
+	target, err := policy.CompileBundle(targetSource, envelope, identity, signerFingerprint, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentSource := cliRollbackSource(staticDigest, 2, 1, 2, policy.EffectDeny, "network")
+	current, err := policy.CompileBundle(currentSource, envelope, identity, signerFingerprint, &target.Snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetPath := filepath.Join(t.TempDir(), "target")
+	currentPath := filepath.Join(t.TempDir(), "current")
+	if err := writeBundle(targetPath, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeBundle(currentPath, current); err != nil {
+		t.Fatal(err)
+	}
+	outPath := filepath.Join(t.TempDir(), "rollback")
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{
+		"rollback", "--target", targetPath, "--current", currentPath, "--out", outPath,
+		"--issued-at", "2026-08-02T09:10:00Z",
+		"--not-before", "2026-08-02T09:10:00Z",
+		"--expires-at", "2026-08-02T10:00:00Z",
+		"--compiler-version", identity.Version, "--compiler-sha256", identity.SHA256,
+		"--signer-fingerprint", signerFingerprint,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("rollback code=%d stderr=%s", code, stderr.String())
+	}
+	candidate, err := loadBundle(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.Manifest.BundleGeneration != 3 || candidate.Manifest.ParentBundleGeneration != 2 ||
+		candidate.Root.PolicyGeneration != 3 {
+		t.Fatalf("rollback generations: manifest=%+v root=%+v", candidate.Manifest, candidate.Root)
+	}
+	if len(candidate.Root.Rules) != 1 || candidate.Root.Rules[0].Selector.Action.Target != "routes" {
+		t.Fatalf("rollback did not use historical effective content: %+v", candidate.Root.Rules)
+	}
+}
+
+func cliRollbackSource(
+	staticDigest string,
+	bundle uint64,
+	parent uint64,
+	rootGeneration uint64,
+	effect policy.Effect,
+	target string,
+) policy.OperatorSource {
+	return policy.OperatorSource{
+		Schema: policy.OperatorSourceSchema, PolicySchema: 1,
+		BundleGeneration: bundle, ParentBundleGeneration: parent,
+		StaticSHA256: staticDigest,
+		IssuedAt:     "2026-08-02T09:00:00Z", NotBefore: "2026-08-02T09:00:00Z", ExpiresAt: "2026-08-02T10:00:00Z",
+		Root: policy.DomainSource{PolicyGeneration: rootGeneration, Rules: []policy.Rule{{
+			ID: "root.rollback-rule", Effect: effect,
+			Selector: policy.Selector{ID: "root.rollback-selector", Kind: policy.SelectorAction,
+				Action: &policy.ActionSelector{Capability: policy.CapabilityOperatorResume, Target: target}},
+		}}},
+		User: policy.DomainSource{PolicyGeneration: 1},
+	}
+}
+
 func TestWriteArtifactsCreatesPrivateParentHierarchy(t *testing.T) {
 	root := t.TempDir()
 	parent := filepath.Join(root, "private", "nested")

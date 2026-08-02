@@ -50,6 +50,27 @@ func TestDecodeCandidateBundleRejectsTamperedManifestAndPayload(t *testing.T) {
 	}
 }
 
+func TestCandidateBundleRejectsManifestSnapshotMetadataMismatch(t *testing.T) {
+	envelope := DefaultSafetyEnvelope()
+	candidate := mustCompileBundle(t, validEnvelopeSource(t, envelope), envelope, nil)
+	tests := map[string]func(*EffectiveSnapshot){
+		"policy schema": func(snapshot *EffectiveSnapshot) { snapshot.PolicySchema++ },
+		"parent":        func(snapshot *EffectiveSnapshot) { snapshot.ParentBundleGeneration = 0 },
+		"issued at":     func(snapshot *EffectiveSnapshot) { snapshot.IssuedAt = "2026-08-02T08:59:00Z" },
+		"not before":    func(snapshot *EffectiveSnapshot) { snapshot.NotBefore = "2026-08-02T09:01:00Z" },
+		"expires at":    func(snapshot *EffectiveSnapshot) { snapshot.ExpiresAt = "2026-08-02T10:01:00Z" },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			tampered := candidate
+			mutate(&tampered.Snapshot)
+			if !errors.Is(tampered.Validate(), ErrInvalidCandidateBundle) {
+				t.Fatal("manifest/snapshot metadata mismatch must be rejected")
+			}
+		})
+	}
+}
+
 func TestDecodeIndividualArtifactsRequiresCanonicalTypedJSON(t *testing.T) {
 	envelope := DefaultSafetyEnvelope()
 	candidate := mustCompileBundle(t, validEnvelopeSource(t, envelope), envelope, nil)
