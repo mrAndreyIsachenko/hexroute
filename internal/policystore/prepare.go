@@ -109,6 +109,23 @@ func (store *Store) PrepareCandidate(
 		return PrepareReceipt{}, err
 	}
 
+	name, err := transactionRecordFilename(recordPrepare, input.TransactionID)
+	if err != nil {
+		return PrepareReceipt{}, err
+	}
+	existing, err := store.readRecordLocked(name)
+	if err == nil {
+		receipt, decodeErr := decodeRecord[PrepareReceipt](existing)
+		if decodeErr != nil || receipt.Validate() != nil ||
+			!receiptMatchesCandidateInput(receipt, input, store.domain) {
+			return PrepareReceipt{}, ErrRecordConflict
+		}
+		return receipt, nil
+	}
+	if !errors.Is(err, ErrRecordNotFound) {
+		return PrepareReceipt{}, err
+	}
+
 	receipt := PrepareReceipt{
 		Schema: PrepareReceiptSchema, TransactionID: input.TransactionID,
 		Domain: store.domain, BundleGeneration: input.BundleGeneration,
@@ -117,10 +134,6 @@ func (store *Store) PrepareCandidate(
 		PreparedAt: now.UTC().Format(time.RFC3339Nano),
 	}
 	encoded, err := marshalRecord(receipt)
-	if err != nil {
-		return PrepareReceipt{}, err
-	}
-	name, err := transactionRecordFilename(recordPrepare, receipt.TransactionID)
 	if err != nil {
 		return PrepareReceipt{}, err
 	}

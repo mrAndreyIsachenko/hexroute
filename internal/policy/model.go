@@ -168,6 +168,7 @@ const (
 	ReasonDomainMismatch    PolicyReason = "domain_mismatch"
 	ReasonIPCOwnership      PolicyReason = "ipc_ownership"
 	ReasonNoValidGeneration PolicyReason = "no_valid_generation"
+	ReasonOperatorAborted   PolicyReason = "operator_aborted"
 )
 
 func (reason PolicyReason) Valid() bool {
@@ -181,7 +182,8 @@ func (reason PolicyReason) Valid() bool {
 		ReasonClockAnomaly,
 		ReasonDomainMismatch,
 		ReasonIPCOwnership,
-		ReasonNoValidGeneration:
+		ReasonNoValidGeneration,
+		ReasonOperatorAborted:
 		return true
 	default:
 		return false

@@ -21,6 +21,11 @@ type CandidateStore interface {
 		ed25519.PublicKey,
 		time.Time,
 	) (policystore.PrepareReceipt, error)
+	CommitCandidate(
+		policystore.PrepareCandidateInput,
+		time.Time,
+	) (policystore.CommitCandidateResult, error)
+	AbortCandidate(policystore.PrepareCandidateInput, time.Time) error
 }
 
 type Handler struct {
@@ -30,6 +35,10 @@ type Handler struct {
 	config RuntimeConfig
 	now    func() time.Time
 	status policy.Status
+
+	preparedIdentity ipc.PolicyTransactionIdentity
+	previousStatus   policy.Status
+	hasPrepared      bool
 }
 
 func NewHandler(
@@ -79,8 +88,10 @@ func (handler *Handler) HandleIPC(ctx context.Context, request ipc.Request) ipc.
 		response.PolicyStatus = &ipc.PolicyStatusResult{Status: status}
 	case ipc.ActionPreparePolicy:
 		return handler.prepare(request, response)
-	case ipc.ActionCommitPolicy, ipc.ActionAbortPolicy:
-		response.Error = ipc.ErrorInvalidRequest
+	case ipc.ActionCommitPolicy:
+		return handler.commit(request, response)
+	case ipc.ActionAbortPolicy:
+		return handler.abort(request, response)
 	default:
 		response.Error = ipc.ErrorInvalidRequest
 	}
@@ -100,17 +111,12 @@ func (handler *Handler) prepare(
 		response.Error = ipc.ErrorPrecondition
 		return response
 	}
+	if handler.hasPrepared && handler.preparedIdentity != identity {
+		response.Error = ipc.ErrorPrecondition
+		return response
+	}
 	receipt, err := handler.store.PrepareCandidate(
-		policystore.PrepareCandidateInput{
-			TransactionID:        identity.TransactionID,
-			BundleGeneration:     identity.BundleGeneration,
-			RootPolicyGeneration: identity.RootPolicyGeneration,
-			UserPolicyGeneration: identity.UserPolicyGeneration,
-			ManifestSHA256:       identity.ManifestSHA256,
-			RootPayloadSHA256:    identity.RootPayloadSHA256,
-			UserPayloadSHA256:    identity.UserPayloadSHA256,
-			ApprovalSHA256:       identity.ApprovalSHA256,
-		},
+		candidateInput(identity),
 		handler.config.Installed,
 		handler.config.PinnedPublicKey,
 		handler.now(),
@@ -118,6 +124,11 @@ func (handler *Handler) prepare(
 	if err != nil {
 		return handler.prepareFailure(identity, err, response)
 	}
+	if !handler.hasPrepared {
+		handler.previousStatus = handler.status
+	}
+	handler.preparedIdentity = identity
+	handler.hasPrepared = true
 	handler.status = policy.Status{
 		Schema: policy.PolicyStatusSchema, Domain: receipt.Domain,
 		State: policy.PolicyPrepared, BundleGeneration: receipt.BundleGeneration,
@@ -134,6 +145,138 @@ func (handler *Handler) prepare(
 		ApprovalSHA256:   receipt.ApprovalSHA256,
 	}
 	return response
+}
+
+func (handler *Handler) commit(
+	request ipc.Request,
+	response ipc.Response,
+) ipc.Response {
+	if request.CommitPolicy == nil {
+		response.Error = ipc.ErrorInvalidRequest
+		return response
+	}
+	identity := request.CommitPolicy.Transaction
+	if handler.store == nil || !handler.hasPrepared || handler.preparedIdentity != identity {
+		response.Error = ipc.ErrorPrecondition
+		return response
+	}
+	now := handler.now()
+	receipt, err := handler.store.PrepareCandidate(
+		candidateInput(identity),
+		handler.config.Installed,
+		handler.config.PinnedPublicKey,
+		now,
+	)
+	if err != nil || !receiptMatchesIdentity(receipt, identity, handler.domain) {
+		if err == nil {
+			err = policystore.ErrRecordConflict
+		}
+		return handler.lifecycleFailure(err, response)
+	}
+	committed, err := handler.store.CommitCandidate(candidateInput(identity), now)
+	if err != nil {
+		return handler.lifecycleFailure(err, response)
+	}
+	pointer := committed.Pointer
+	handler.config.Installed.CurrentPolicySchema = committed.PolicySchema
+	handler.config.Installed.CurrentBundleGeneration = pointer.BundleGeneration
+	handler.config.Installed.CurrentPolicyGeneration = pointer.PolicyGeneration
+	handler.config.Installed.CurrentPayloadSHA256 = pointer.PayloadSHA256
+	handler.status = policy.Status{
+		Schema: policy.PolicyStatusSchema, Domain: pointer.Domain,
+		State: policy.PolicyActive, BundleGeneration: pointer.BundleGeneration,
+		PolicyGeneration: pointer.PolicyGeneration,
+		ManifestSHA256:   pointer.ManifestSHA256,
+		ActivatedAt:      pointer.ActivatedAt, Reason: policy.ReasonNone,
+	}
+	handler.hasPrepared = false
+	response.OK = true
+	response.CommitPolicy = &ipc.CommitPolicyResult{
+		TransactionID: identity.TransactionID,
+		Status:        handler.status,
+	}
+	return response
+}
+
+func (handler *Handler) abort(
+	request ipc.Request,
+	response ipc.Response,
+) ipc.Response {
+	if request.AbortPolicy == nil {
+		response.Error = ipc.ErrorInvalidRequest
+		return response
+	}
+	identity := request.AbortPolicy.Transaction
+	if handler.store == nil || !handler.hasPrepared || handler.preparedIdentity != identity {
+		response.Error = ipc.ErrorPrecondition
+		return response
+	}
+	if err := handler.store.AbortCandidate(candidateInput(identity), handler.now()); err != nil {
+		return handler.lifecycleFailure(err, response)
+	}
+	handler.status = handler.previousStatus
+	handler.hasPrepared = false
+	response.OK = true
+	response.AbortPolicy = &ipc.AbortPolicyResult{
+		TransactionID: identity.TransactionID,
+		Status:        handler.status,
+	}
+	return response
+}
+
+func (handler *Handler) lifecycleFailure(cause error, response ipc.Response) ipc.Response {
+	switch {
+	case errors.Is(cause, policystore.ErrCandidateIdentity),
+		errors.Is(cause, policystore.ErrRecordConflict),
+		errors.Is(cause, policystore.ErrRecordNotFound),
+		errors.Is(cause, policystore.ErrGenerationNotFound),
+		errors.Is(cause, policystore.ErrStaleActivePointer),
+		errors.Is(cause, policyapproval.ErrApprovalExpired),
+		errors.Is(cause, policyapproval.ErrApprovalSignature),
+		errors.Is(cause, policyapproval.ErrSignerMismatch),
+		errors.Is(cause, policyapproval.ErrInvalidApproval),
+		errors.Is(cause, policy.ErrInvalidCandidateBundle),
+		errors.Is(cause, policy.ErrPolicyDowngrade),
+		errors.Is(cause, policy.ErrUnsupportedPolicy),
+		errors.Is(cause, policy.ErrUntrustedCompiler),
+		errors.Is(cause, policy.ErrRestartRequired):
+		response.Error = ipc.ErrorPrecondition
+	default:
+		response.Error = ipc.ErrorInternal
+	}
+	return response
+}
+
+func candidateInput(identity ipc.PolicyTransactionIdentity) policystore.PrepareCandidateInput {
+	return policystore.PrepareCandidateInput{
+		TransactionID:        identity.TransactionID,
+		BundleGeneration:     identity.BundleGeneration,
+		RootPolicyGeneration: identity.RootPolicyGeneration,
+		UserPolicyGeneration: identity.UserPolicyGeneration,
+		ManifestSHA256:       identity.ManifestSHA256,
+		RootPayloadSHA256:    identity.RootPayloadSHA256,
+		UserPayloadSHA256:    identity.UserPayloadSHA256,
+		ApprovalSHA256:       identity.ApprovalSHA256,
+	}
+}
+
+func receiptMatchesIdentity(
+	receipt policystore.PrepareReceipt,
+	identity ipc.PolicyTransactionIdentity,
+	domain policy.Domain,
+) bool {
+	policyGeneration := identity.RootPolicyGeneration
+	payloadSHA256 := identity.RootPayloadSHA256
+	if domain == policy.DomainUser {
+		policyGeneration = identity.UserPolicyGeneration
+		payloadSHA256 = identity.UserPayloadSHA256
+	}
+	return receipt.TransactionID == identity.TransactionID && receipt.Domain == domain &&
+		receipt.BundleGeneration == identity.BundleGeneration &&
+		receipt.PolicyGeneration == policyGeneration &&
+		receipt.ManifestSHA256 == identity.ManifestSHA256 &&
+		receipt.PayloadSHA256 == payloadSHA256 &&
+		receipt.ApprovalSHA256 == identity.ApprovalSHA256
 }
 
 func (handler *Handler) prepareFailure(

@@ -37,12 +37,16 @@ type commandOutput struct {
 }
 
 type resultOutput struct {
-	Role        ipc.DaemonRole    `json:"role"`
-	Available   bool              `json:"available"`
-	Error       ipc.ErrorCode     `json:"error,omitempty"`
-	Status      *ipc.Status       `json:"status,omitempty"`
-	Diagnostics *ipc.Diagnostics  `json:"diagnostics,omitempty"`
-	Resume      *ipc.ResumeResult `json:"resume,omitempty"`
+	Role          ipc.DaemonRole           `json:"role"`
+	Available     bool                     `json:"available"`
+	Error         ipc.ErrorCode            `json:"error,omitempty"`
+	Status        *ipc.Status              `json:"status,omitempty"`
+	Diagnostics   *ipc.Diagnostics         `json:"diagnostics,omitempty"`
+	Resume        *ipc.ResumeResult        `json:"resume,omitempty"`
+	PolicyStatus  *ipc.PolicyStatusResult  `json:"policy_status,omitempty"`
+	PreparePolicy *ipc.PreparePolicyResult `json:"prepare_policy,omitempty"`
+	CommitPolicy  *ipc.CommitPolicyResult  `json:"commit_policy,omitempty"`
+	AbortPolicy   *ipc.AbortPolicyResult   `json:"abort_policy,omitempty"`
 }
 
 type scope string
@@ -115,6 +119,8 @@ func Run(args []string, stdout, stderr io.Writer, config Config) int {
 			return 2
 		}
 		return runResume(selected, target, generation, stdout, stderr, config)
+	case "policy":
+		return runPolicy(args[1:], stdout, stderr, config)
 	default:
 		writeGenericError(stderr)
 		return 2
@@ -199,18 +205,26 @@ func roundTrip(
 	generation uint64,
 	config Config,
 ) (resultOutput, bool) {
+	request := ipc.Request{
+		Action:             action,
+		Target:             target,
+		ExpectedGeneration: generation,
+	}
+	return roundTripRequest(role, request, config)
+}
+
+func roundTripRequest(
+	role ipc.DaemonRole,
+	request ipc.Request,
+	config Config,
+) (resultOutput, bool) {
 	result := resultOutput{Role: role}
 	requestID, err := config.RequestID()
 	if err != nil {
 		return result, false
 	}
-	request := ipc.Request{
-		Version:            ipc.ProtocolVersion,
-		RequestID:          requestID,
-		Action:             action,
-		Target:             target,
-		ExpectedGeneration: generation,
-	}
+	request.Version = ipc.ProtocolVersion
+	request.RequestID = requestID
 	path := config.RootSocket
 	if role == ipc.RoleUser {
 		path = config.UserSocket
@@ -226,6 +240,10 @@ func roundTrip(
 	result.Status = response.Status
 	result.Diagnostics = response.Diagnostics
 	result.Resume = response.Resume
+	result.PolicyStatus = response.PolicyStatus
+	result.PreparePolicy = response.PreparePolicy
+	result.CommitPolicy = response.CommitPolicy
+	result.AbortPolicy = response.AbortPolicy
 	if !response.OK {
 		return result, false
 	}
@@ -236,6 +254,19 @@ func roundTrip(
 		return resultOutput{Role: role}, false
 	}
 	if response.Resume != nil && response.Resume.Role != role {
+		return resultOutput{Role: role}, false
+	}
+	expectedDomain := roleDomain(role)
+	if response.PolicyStatus != nil && response.PolicyStatus.Status.Domain != expectedDomain {
+		return resultOutput{Role: role}, false
+	}
+	if response.PreparePolicy != nil && response.PreparePolicy.Domain != expectedDomain {
+		return resultOutput{Role: role}, false
+	}
+	if response.CommitPolicy != nil && response.CommitPolicy.Status.Domain != expectedDomain {
+		return resultOutput{Role: role}, false
+	}
+	if response.AbortPolicy != nil && response.AbortPolicy.Status.Domain != expectedDomain {
 		return resultOutput{Role: role}, false
 	}
 	return result, true
