@@ -26,7 +26,7 @@
 
 ## 4. Immutable Domain Stores
 
-- [ ] 4.1 Add separate root and user policy stores with fixed paths, mode/owner checks, regular-file and no-symlink enforcement, and immutable generation filenames.
+- [x] 4.1 Add separate root and user policy stores with fixed paths, mode/owner checks, regular-file and no-symlink enforcement, and immutable generation filenames.
 - [ ] 4.2 Add atomic signed active-pointer, durable prepare-receipt and signed commit-intent persistence with crash-point tests around every rename and fsync boundary.
 - [ ] 4.3 Retain 16 resolved valid generations plus unresolved prepares, remove rejected payload bodies and enforce a 90-day bounded redacted audit index.
 - [ ] 4.4 Implement startup revalidation of signature, canonical digest, static binding, schema, validity and active-pointer consistency.
