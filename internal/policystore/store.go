@@ -23,6 +23,7 @@ const (
 	MaxArtifactSize       = policy.MaxBundleArtifactSize
 
 	generationsDirectory = "generations"
+	stateDirectory       = "state"
 )
 
 type ArtifactKind string
@@ -40,17 +41,21 @@ type Generation struct {
 }
 
 type Store struct {
-	mu            sync.Mutex
-	path          string
-	domain        policy.Domain
-	expectedUID   uint32
-	expectedGID   uint32
-	rootFD        int
-	generationsFD int
-	rootDevice    uint64
-	rootInode     uint64
-	generationDev uint64
-	generationIno uint64
+	mu               sync.Mutex
+	path             string
+	domain           policy.Domain
+	expectedUID      uint32
+	expectedGID      uint32
+	rootFD           int
+	generationsFD    int
+	stateFD          int
+	rootDevice       uint64
+	rootInode        uint64
+	generationDev    uint64
+	generationIno    uint64
+	stateDevice      uint64
+	stateInode       uint64
+	persistenceFault persistenceFault
 }
 
 var (
@@ -118,12 +123,16 @@ func (store *Store) Close() error {
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	if store.rootFD < 0 && store.generationsFD < 0 {
+	if store.rootFD < 0 && store.generationsFD < 0 && store.stateFD < 0 {
 		return nil
 	}
 	failed := false
+	if store.stateFD >= 0 {
+		failed = unix.Close(store.stateFD) != nil
+		store.stateFD = -1
+	}
 	if store.generationsFD >= 0 {
-		failed = unix.Close(store.generationsFD) != nil
+		failed = unix.Close(store.generationsFD) != nil || failed
 		store.generationsFD = -1
 	}
 	if store.rootFD >= 0 {
@@ -300,6 +309,17 @@ func initializeStoreAt(path string, domain policy.Domain, uid, gid uint32) (*Sto
 	if err := unix.Close(generationsFD); err != nil {
 		return nil, ErrStoreUnavailable
 	}
+	stateFD, stateCreated, err := ensureDirectoryAt(rootFD, stateDirectory, uid, gid)
+	if err != nil {
+		return nil, err
+	}
+	if stateCreated && unix.Fsync(rootFD) != nil {
+		_ = unix.Close(stateFD)
+		return nil, ErrStoreUnavailable
+	}
+	if err := unix.Close(stateFD); err != nil {
+		return nil, ErrStoreUnavailable
+	}
 	return openStoreAt(path, domain, uid, gid)
 }
 
@@ -328,33 +348,58 @@ func openStoreAt(path string, domain policy.Domain, uid, gid uint32) (*Store, er
 		_ = unix.Close(rootFD)
 		return nil, ErrInsecureStore
 	}
+	stateFD, err := unix.Openat(
+		rootFD,
+		stateDirectory,
+		unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC,
+		0,
+	)
+	if err != nil || validateDirectoryFD(stateFD, uid, gid) != nil {
+		if stateFD >= 0 {
+			_ = unix.Close(stateFD)
+		}
+		_ = unix.Close(generationsFD)
+		_ = unix.Close(rootFD)
+		return nil, ErrInsecureStore
+	}
 	rootDevice, rootInode, err := directoryIdentity(rootFD)
 	if err != nil {
+		_ = unix.Close(stateFD)
 		_ = unix.Close(generationsFD)
 		_ = unix.Close(rootFD)
 		return nil, err
 	}
 	generationDev, generationIno, err := directoryIdentity(generationsFD)
 	if err != nil {
+		_ = unix.Close(stateFD)
+		_ = unix.Close(generationsFD)
+		_ = unix.Close(rootFD)
+		return nil, err
+	}
+	stateDevice, stateInode, err := directoryIdentity(stateFD)
+	if err != nil {
+		_ = unix.Close(stateFD)
 		_ = unix.Close(generationsFD)
 		_ = unix.Close(rootFD)
 		return nil, err
 	}
 	return &Store{
 		path: path, domain: domain, expectedUID: uid, expectedGID: gid,
-		rootFD: rootFD, generationsFD: generationsFD,
+		rootFD: rootFD, generationsFD: generationsFD, stateFD: stateFD,
 		rootDevice: rootDevice, rootInode: rootInode,
 		generationDev: generationDev, generationIno: generationIno,
+		stateDevice: stateDevice, stateInode: stateInode,
 	}, nil
 }
 
 func (store *Store) validateOpenLocked() error {
-	if store == nil || store.rootFD < 0 || store.generationsFD < 0 {
+	if store == nil || store.rootFD < 0 || store.generationsFD < 0 || store.stateFD < 0 {
 		return ErrStoreClosed
 	}
 	if uint32(os.Geteuid()) != store.expectedUID || uint32(os.Getegid()) != store.expectedGID ||
 		validateDirectoryFD(store.rootFD, store.expectedUID, store.expectedGID) != nil ||
-		validateDirectoryFD(store.generationsFD, store.expectedUID, store.expectedGID) != nil {
+		validateDirectoryFD(store.generationsFD, store.expectedUID, store.expectedGID) != nil ||
+		validateDirectoryFD(store.stateFD, store.expectedUID, store.expectedGID) != nil {
 		return ErrInsecureStore
 	}
 	return store.validatePathBindingLocked()
@@ -382,6 +427,20 @@ func (store *Store) validatePathBindingLocked() error {
 	defer unix.Close(generationsFD)
 	if validateDirectoryFD(generationsFD, store.expectedUID, store.expectedGID) != nil ||
 		!sameDirectory(generationsFD, store.generationDev, store.generationIno) {
+		return ErrInsecureStore
+	}
+	stateFD, err := unix.Openat(
+		rootFD,
+		stateDirectory,
+		unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC,
+		0,
+	)
+	if err != nil {
+		return ErrInsecureStore
+	}
+	defer unix.Close(stateFD)
+	if validateDirectoryFD(stateFD, store.expectedUID, store.expectedGID) != nil ||
+		!sameDirectory(stateFD, store.stateDevice, store.stateInode) {
 		return ErrInsecureStore
 	}
 	return nil
