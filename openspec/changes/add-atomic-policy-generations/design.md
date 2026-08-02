@@ -270,10 +270,14 @@ drain requires an explicit transition plan in a separate change.
 ### Wall-clock validity and monotonic execution serve different purposes
 
 The signed bundle carries UTC `issued_at`, `not_before` and `expires_at` values.
-Clock rollback or excessive skew blocks a new activation. Action leases use a
-continuous monotonic clock plus a boot ID; sleep counts toward TTL and reboot
-invalidates unfinished leases. An active policy can survive reboot only after
-its signature, digest, static binding and validity are rechecked.
+Policy validity uses the half-open interval `[not_before, expires_at)`. After the
+first trusted runtime sample, the daemon compares wall-clock movement with its
+continuous monotonic clock and suspends authorization when they diverge by more
+than two minutes or monotonic time moves backward. Action leases use only that
+continuous monotonic clock plus a boot ID for execution timing; wall timestamps
+remain signed audit metadata. Sleep counts toward TTL and reboot invalidates
+unfinished leases. An active policy can survive reboot only after its signature,
+digest, static binding and validity are rechecked.
 
 This avoids treating a wall clock as an execution timer while still making
 signed policy expiry portable and auditable.

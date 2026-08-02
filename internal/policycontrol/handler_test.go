@@ -39,6 +39,16 @@ type recordingCandidateStore struct {
 	pendingErr    error
 }
 
+type deterministicPolicyClock struct {
+	wall      time.Time
+	monotonic time.Duration
+}
+
+func (clock *deterministicPolicyClock) now() time.Time { return clock.wall }
+func (clock *deterministicPolicyClock) monotonicNow() time.Duration {
+	return clock.monotonic
+}
+
 func (store *recordingCandidateStore) Domain() policy.Domain { return store.domain }
 
 func (store *recordingCandidateStore) PrepareCandidate(
@@ -728,6 +738,52 @@ func TestSuspensionPreservesActiveGenerationAndDoesNotEnterActivationPaths(t *te
 		store.stageCalls != 0 || store.activateCalls != 0 ||
 		store.confirmCalls != 0 || store.abortCalls != 0 {
 		t.Fatalf("status=%+v store=%+v", status, store)
+	}
+}
+
+func TestClockSkewBlocksActivationUntilContinuousTimeIsRestored(t *testing.T) {
+	publicKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{13}, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainRoot, publicKey).Runtime(policy.DomainRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := syntheticIPCIdentity()
+	store := &recordingCandidateStore{
+		domain: policy.DomainRoot,
+		recoverResult: revalidatedActiveFixture(
+			identity, policy.DomainRoot, runtime, true,
+		),
+	}
+	base := time.Date(2030, time.January, 1, 1, 10, 0, 0, time.UTC)
+	clock := &deterministicPolicyClock{wall: base, monotonic: 10 * time.Second}
+	handler, err := newHandlerWithClock(store, runtime, clock.now, clock.monotonicNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock.wall = base.Add(-5 * time.Minute)
+	clock.monotonic = 11 * time.Second
+	candidate := identity
+	candidate.TransactionID = "323e4567-e89b-42d3-a456-426614174000"
+	candidate.BundleGeneration++
+	candidate.RootPolicyGeneration++
+	candidate.UserPolicyGeneration++
+	blocked := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "clock-skew-prepare",
+		Action:        ipc.ActionPreparePolicy,
+		PreparePolicy: &ipc.PreparePolicyRequest{Transaction: candidate},
+	})
+	if blocked.Error != ipc.ErrorPrecondition || store.calls != 0 || handler.MutationAllowed() {
+		t.Fatalf("blocked=%+v calls=%d allowed=%t", blocked, store.calls, handler.MutationAllowed())
+	}
+	clock.wall = base.Add(2 * time.Second)
+	clock.monotonic = 12 * time.Second
+	status := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "clock-restored-status",
+		Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+	})
+	if !status.OK || status.PolicyStatus.AuthorizationSuspension.Suspended ||
+		status.PolicyStatus.Status.State != policy.PolicyActive || !handler.MutationAllowed() {
+		t.Fatalf("restored status=%+v allowed=%t", status, handler.MutationAllowed())
 	}
 }
 

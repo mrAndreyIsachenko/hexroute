@@ -308,6 +308,10 @@ func TestVerifierRejectsWrongSignerTamperingAndExpiry(t *testing.T) {
 	if !errors.Is(VerifyCandidate(fixture.candidate, review, approval, publicKey, expiredAt), ErrApprovalExpired) {
 		t.Fatal("expired approval must be rejected")
 	}
+	tooEarly := time.Date(2026, 8, 2, 8, 59, 59, 0, time.UTC)
+	if !errors.Is(VerifyCandidate(fixture.candidate, review, approval, publicKey, tooEarly), ErrApprovalExpired) {
+		t.Fatal("not-yet-valid approval must be rejected")
+	}
 }
 
 func clonePayload(source policy.DomainPayload) policy.DomainPayload {

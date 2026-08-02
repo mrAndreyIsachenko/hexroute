@@ -359,10 +359,14 @@ state SHALL remain unchanged.
 ### Requirement: Policy and lease time semantics
 
 Signed policy SHALL use UTC `issued_at`, `not_before` and `expires_at` bounds,
-while action leases SHALL use a continuous monotonic clock plus boot ID. Clock
-rollback or excessive skew SHALL block new activation, sleep SHALL count toward
-lease TTL, and reboot SHALL require active-policy signature, digest, static and
-validity revalidation.
+while action leases SHALL use a continuous monotonic clock plus boot ID. Policy
+validity SHALL use the half-open interval `[not_before, expires_at)`.
+After the first trusted runtime sample, wall-clock movement that diverges from
+continuous monotonic progress by more than two minutes, or monotonic rollback,
+SHALL block new activation. Lease execution SHALL use monotonic issue and expiry
+values rather than wall timestamps, sleep SHALL count toward lease TTL, and
+reboot SHALL require active-policy signature, digest, static and validity
+revalidation.
 
 #### Scenario: Wall clock moves backward before activation
 

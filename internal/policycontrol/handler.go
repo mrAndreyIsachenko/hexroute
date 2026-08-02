@@ -10,6 +10,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyapproval"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policyclock"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
 )
 
@@ -48,6 +49,8 @@ type Handler struct {
 	store                   CandidateStore
 	config                  RuntimeConfig
 	now                     func() time.Time
+	monotonicNow            func() time.Duration
+	clockGuard              *policyclock.Guard
 	status                  policy.Status
 	authorizationSuspension policy.AuthorizationSuspension
 
@@ -65,8 +68,24 @@ func NewHandler(
 	config RuntimeConfig,
 	now func() time.Time,
 ) (*Handler, error) {
+	started := time.Now()
+	return newHandlerWithClock(store, config, now, func() time.Duration {
+		return time.Since(started)
+	})
+}
+
+func newHandlerWithClock(
+	store CandidateStore,
+	config RuntimeConfig,
+	now func() time.Time,
+	monotonicNow func() time.Duration,
+) (*Handler, error) {
 	if store == nil || !store.Domain().Valid() || config.Validate() != nil ||
-		config.Installed.Domain != store.Domain() || now == nil {
+		config.Installed.Domain != store.Domain() || now == nil || monotonicNow == nil {
+		return nil, ErrInvalidConfig
+	}
+	clockGuard, err := policyclock.NewGuard(policyclock.DefaultMaxWallSkew)
+	if err != nil {
 		return nil, ErrInvalidConfig
 	}
 	config.PinnedPublicKey = append(ed25519.PublicKey(nil), config.PinnedPublicKey...)
@@ -76,10 +95,14 @@ func NewHandler(
 	)
 	handler := &Handler{
 		domain: store.Domain(), store: store, config: config, now: now,
+		monotonicNow: monotonicNow, clockGuard: clockGuard,
 		status:                  noPolicyStatus(store.Domain()),
 		authorizationSuspension: clearAuthorizationSuspension(),
 	}
-	currentTime := now()
+	currentTime, err := handler.checkedNowLocked()
+	if err != nil {
+		return nil, ErrInvalidConfig
+	}
 	active, err := store.RecoverActive(config.Installed, config.PinnedPublicKey, currentTime)
 	if errors.Is(err, policystore.ErrRecordNotFound) {
 		pending, pendingErr := store.RecoverPendingCommit()
@@ -89,7 +112,7 @@ func NewHandler(
 		if pendingErr != nil {
 			return nil, pendingErr
 		}
-		if err := handler.restorePending(pending); err != nil {
+		if err := handler.restorePending(pending, currentTime); err != nil {
 			return nil, err
 		}
 		return handler, nil
@@ -101,7 +124,7 @@ func NewHandler(
 		}
 		return nil, err
 	}
-	handler.restoreActive(active)
+	handler.restoreActive(active, currentTime)
 	return handler, nil
 }
 
@@ -109,8 +132,15 @@ func NewUnavailableHandler(domain policy.Domain) (*Handler, error) {
 	if !domain.Valid() {
 		return nil, ErrInvalidConfig
 	}
+	clockGuard, err := policyclock.NewGuard(policyclock.DefaultMaxWallSkew)
+	if err != nil {
+		return nil, ErrInvalidConfig
+	}
+	started := time.Now()
 	return &Handler{
 		domain: domain, status: noPolicyStatus(domain), now: time.Now,
+		monotonicNow:            func() time.Duration { return time.Since(started) },
+		clockGuard:              clockGuard,
 		authorizationSuspension: clearAuthorizationSuspension(),
 	}, nil
 }
@@ -162,6 +192,10 @@ func (handler *Handler) prepare(
 		response.Error = ipc.ErrorPrecondition
 		return response
 	}
+	now, err := handler.checkedNowLocked()
+	if err != nil {
+		return handler.clockFailure(response)
+	}
 	if handler.hasPrepared && handler.preparedIdentity != identity {
 		response.Error = ipc.ErrorPrecondition
 		return response
@@ -176,7 +210,7 @@ func (handler *Handler) prepare(
 		candidateInput(identity),
 		handler.config.Installed,
 		handler.config.PinnedPublicKey,
-		handler.now(),
+		now,
 	)
 	if err != nil {
 		return handler.prepareFailure(identity, err, response)
@@ -231,11 +265,14 @@ func (handler *Handler) stage(
 	identity ipc.PolicyTransactionIdentity,
 	response ipc.Response,
 ) ipc.Response {
-	now := handler.now()
+	now, err := handler.checkedNowLocked()
+	if err != nil {
+		return handler.clockFailure(response)
+	}
 	if err := handler.revalidate(identity, now); err != nil {
 		return handler.lifecycleFailure(err, response)
 	}
-	_, err := handler.store.StageCommitCandidate(candidateInput(identity), now)
+	_, err = handler.store.StageCommitCandidate(candidateInput(identity), now)
 	if err != nil {
 		return handler.lifecycleFailure(err, response)
 	}
@@ -255,7 +292,10 @@ func (handler *Handler) activate(
 	identity ipc.PolicyTransactionIdentity,
 	response ipc.Response,
 ) ipc.Response {
-	now := handler.now()
+	now, err := handler.checkedNowLocked()
+	if err != nil {
+		return handler.clockFailure(response)
+	}
 	if err := handler.revalidate(identity, now); err != nil {
 		return handler.lifecycleFailure(err, response)
 	}
@@ -285,7 +325,10 @@ func (handler *Handler) confirm(
 		response.Error = ipc.ErrorPrecondition
 		return response
 	}
-	now := handler.now()
+	now, err := handler.checkedNowLocked()
+	if err != nil {
+		return handler.clockFailure(response)
+	}
 	if err := handler.revalidate(identity, now); err != nil {
 		return handler.lifecycleFailure(err, response)
 	}
@@ -325,7 +368,7 @@ func (handler *Handler) abort(
 		response.Error = ipc.ErrorPrecondition
 		return response
 	}
-	if err := handler.store.AbortCandidate(candidateInput(identity), handler.now()); err != nil {
+	if err := handler.store.AbortCandidate(candidateInput(identity), handler.now().UTC()); err != nil {
 		return handler.lifecycleFailure(err, response)
 	}
 	handler.status = handler.previousStatus
@@ -426,7 +469,10 @@ func (handler *Handler) revalidate(
 	return nil
 }
 
-func (handler *Handler) restoreActive(active policystore.RevalidatedActive) {
+func (handler *Handler) restoreActive(
+	active policystore.RevalidatedActive,
+	observedAt time.Time,
+) {
 	identity := identityFromIntent(active.Intent)
 	pointer := policystore.ActivePointer{
 		TransactionID: identity.TransactionID, Domain: active.Domain,
@@ -453,19 +499,22 @@ func (handler *Handler) restoreActive(active policystore.RevalidatedActive) {
 		ActivatedAt:      active.ActivatedAt, Reason: reason,
 	}
 	if active.ConfirmedAt == "" {
-		handler.suspendAuthorizationLocked(policy.ReasonDomainMismatch, handler.now())
+		handler.suspendAuthorizationLocked(policy.ReasonDomainMismatch, observedAt)
 	} else {
 		handler.authorizationSuspension = clearAuthorizationSuspension()
 	}
 }
 
-func (handler *Handler) restorePending(intent policystore.CommitIntent) error {
+func (handler *Handler) restorePending(
+	intent policystore.CommitIntent,
+	now time.Time,
+) error {
 	identity := identityFromIntent(intent)
 	receipt, err := handler.store.PrepareCandidate(
 		candidateInput(identity),
 		handler.config.Installed,
 		handler.config.PinnedPublicKey,
-		handler.now(),
+		now,
 	)
 	if err != nil {
 		return err
@@ -477,7 +526,7 @@ func (handler *Handler) restorePending(intent policystore.CommitIntent) error {
 	handler.preparedIdentity = identity
 	handler.hasPrepared = true
 	handler.status = stagedMismatchStatus(identity, handler.domain)
-	handler.suspendAuthorizationLocked(policy.ReasonDomainMismatch, handler.now())
+	handler.suspendAuthorizationLocked(policy.ReasonDomainMismatch, now)
 	return nil
 }
 
@@ -485,26 +534,52 @@ func (handler *Handler) refreshAuthorizationLocked() {
 	if handler.store == nil || (!handler.hasActive && !handler.authorizationSuspension.Suspended) {
 		return
 	}
+	now, err := handler.checkedNowLocked()
+	if err != nil {
+		return
+	}
 	active, err := handler.store.RecoverActive(
 		handler.config.Installed,
 		handler.config.PinnedPublicKey,
-		handler.now(),
+		now,
 	)
 	if err != nil {
 		if errors.Is(err, policystore.ErrRecordNotFound) && handler.hasActive {
-			handler.suspendAuthorizationLocked(policy.ReasonCorruption, handler.now())
+			handler.suspendAuthorizationLocked(policy.ReasonCorruption, now)
 			return
 		}
 		if reason, ok := classifyActiveFailure(err); ok {
-			handler.suspendAuthorizationLocked(reason, handler.now())
+			handler.suspendAuthorizationLocked(reason, now)
 		}
 		return
 	}
 	if handler.hasActive && identityFromIntent(active.Intent) != handler.activeIdentity {
-		handler.suspendAuthorizationLocked(policy.ReasonDigestMismatch, handler.now())
+		handler.suspendAuthorizationLocked(policy.ReasonDigestMismatch, now)
 		return
 	}
-	handler.restoreActive(active)
+	handler.restoreActive(active, now)
+}
+
+func (handler *Handler) checkedNowLocked() (time.Time, error) {
+	if handler == nil || handler.now == nil || handler.monotonicNow == nil ||
+		handler.clockGuard == nil {
+		return time.Time{}, policyclock.ErrInvalidClock
+	}
+	now := handler.now().UTC()
+	sample := policyclock.Sample{
+		WallUTC:     now,
+		MonotonicNS: handler.monotonicNow().Nanoseconds(),
+	}
+	if err := handler.clockGuard.Observe(sample); err != nil {
+		handler.suspendAuthorizationLocked(policy.ReasonClockAnomaly, now)
+		return time.Time{}, err
+	}
+	return now, nil
+}
+
+func (handler *Handler) clockFailure(response ipc.Response) ipc.Response {
+	response.Error = ipc.ErrorPrecondition
+	return response
 }
 
 func (handler *Handler) suspendAuthorizationLocked(reason policy.PolicyReason, at time.Time) {
