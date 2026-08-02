@@ -18,6 +18,17 @@ unsigned binary, `go run`, ad-hoc signature or standalone test binary is
 expected to fail closed with `keychain_entitlement_required`; do not replace
 this boundary with a legacy file-based Keychain item.
 
+Create an ignored `.local/policy-signing.xcconfig` with private
+`HEXROUTE_POLICY_TEAM_ID` and unique `HEXROUTE_POLICY_BUNDLE_ID` values, then
+build and validate the signer app:
+
+```sh
+scripts/macos/build-policy-signer-app.sh .local/policy-signing.xcconfig
+```
+
+The command reports the local `.app` path. Use its
+`Contents/MacOS/hexroute-policy` executable for every command below.
+
 Using the installed signed binary, provision a new item and private local
 public-key metadata without exposing the seed in argv:
 
@@ -56,6 +67,9 @@ Passing unit tests proves only native bridge behavior, seed redaction and
 key/fingerprint matching. Only a successful `verify-key` run from the installed
 signed executable, with the macOS user-presence prompt completed, is accepted
 as live integration evidence.
+
+The current bounded integration record is in
+[`docs/testing/policy-signer-live-evidence.md`](../testing/policy-signer-live-evidence.md).
 
 Apple platform references:
 

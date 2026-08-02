@@ -21,7 +21,7 @@
 - [x] 3.3 Implement semantic diff classification for newly allowed, newly denied and changed plans, with explicit authorization-expansion highlighting.
 - [x] 3.4 Extend deterministic replay to evaluate candidate policy against synthetic safety fixtures and recent redacted observation traces offline.
 - [x] 3.5 Block signing when conflict, compatibility, semantic no-op or replay safety gates fail, and bind the report digest to the candidate workflow.
-- [ ] 3.6 Add a macOS user-presence Keychain Ed25519 signer adapter, signer-fingerprint pinning and manual Touch ID integration evidence without logging private key material.
+- [x] 3.6 Add a macOS user-presence Keychain Ed25519 signer adapter, signer-fingerprint pinning and manual Touch ID integration evidence without logging private key material.
 - [x] 3.7 Add signature, tampered-manifest, tampered-domain-payload, wrong-signer and expired-validity regression tests using synthetic keys only.
 
 ## 4. Immutable Domain Stores
