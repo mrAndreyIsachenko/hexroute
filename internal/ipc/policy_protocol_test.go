@@ -63,6 +63,12 @@ func TestPolicyResponseFrameRoundTrip(t *testing.T) {
 					Schema: policy.AuthorizationSuspensionSchema,
 					Reason: policy.ReasonNone,
 				},
+				ExistingState: &policy.ExistingStateStatus{
+					Schema: policy.ExistingStateStatusSchema, Domain: policy.DomainRoot,
+					State:            policy.ExistingStateGrandfatheredNoncompliant,
+					BundleGeneration: 9, PolicyGeneration: 5,
+					ReportedAt: "2026-08-02T12:10:00Z", ReconcileBy: "2026-08-02T12:30:00Z",
+				},
 			},
 		},
 		{
@@ -163,6 +169,41 @@ func TestPolicyMessagesExposeOnlyBoundedIdentityFields(t *testing.T) {
 		if len(encoded) > MaxFrameBytes {
 			t.Fatalf("policy message size = %d, max %d", len(encoded), MaxFrameBytes)
 		}
+	}
+}
+
+func TestExistingStateStatusHasNoExecutableFields(t *testing.T) {
+	status := PolicyStatusResult{
+		Status: syntheticPolicyStatus(),
+		AuthorizationSuspension: policy.AuthorizationSuspension{
+			Schema: policy.AuthorizationSuspensionSchema,
+			Reason: policy.ReasonNone,
+		},
+		ExistingState: &policy.ExistingStateStatus{
+			Schema: policy.ExistingStateStatusSchema, Domain: policy.DomainRoot,
+			State:            policy.ExistingStateGrandfatheredNoncompliant,
+			BundleGeneration: 9, PolicyGeneration: 5,
+			ReportedAt: "2026-08-02T12:10:00Z", ReconcileBy: "2026-08-02T12:30:00Z",
+		},
+	}
+	encoded, err := json.Marshal(status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{
+		`"target":`, `"endpoint":`, `"path":`, `"command":`, `"action":`,
+		`"disconnect":`, `"stop":`,
+	} {
+		if bytes.Contains(encoded, []byte(forbidden)) {
+			t.Fatalf("existing-state status %s contains executable field %s", encoded, forbidden)
+		}
+	}
+	status.Status = policy.Status{
+		Schema: policy.PolicyStatusSchema, Domain: policy.DomainRoot,
+		State: policy.PolicyNone, Reason: policy.ReasonNoValidGeneration,
+	}
+	if !errors.Is(status.Validate(), ErrInvalidPolicyMessage) {
+		t.Fatal("existing-state report without an installed generation should be rejected")
 	}
 }
 

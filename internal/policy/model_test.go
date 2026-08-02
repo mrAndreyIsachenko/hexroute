@@ -226,6 +226,31 @@ func TestAuthorizationSuspensionValidate(t *testing.T) {
 	}
 }
 
+func TestExistingStateStatusValidate(t *testing.T) {
+	status := ExistingStateStatus{
+		Schema: ExistingStateStatusSchema, Domain: DomainUser,
+		State:            ExistingStateGrandfatheredNoncompliant,
+		BundleGeneration: 9, PolicyGeneration: 5,
+		ReportedAt: testTime, ReconcileBy: testExpiry,
+	}
+	if err := status.Validate(); err != nil {
+		t.Fatalf("valid existing-state status: %v", err)
+	}
+	status.IncidentAt = testExpiry
+	if err := status.Validate(); err != nil {
+		t.Fatalf("valid overdue existing-state status: %v", err)
+	}
+	status.IncidentAt = "2026-08-02T09:59:59Z"
+	if !errors.Is(status.Validate(), ErrInvalidStatus) {
+		t.Fatal("incident before reconcile deadline should be rejected")
+	}
+	status.IncidentAt = ""
+	status.ReconcileBy = "2026-08-02T08:59:59Z"
+	if !errors.Is(status.Validate(), ErrInvalidStatus) {
+		t.Fatal("reconcile deadline before report should be rejected")
+	}
+}
+
 func TestIdentifierBounds(t *testing.T) {
 	selector := validPayload().Rules[0].Selector
 	selector.ID = "a" + strings.Repeat("b", MaxIdentifierBytes)

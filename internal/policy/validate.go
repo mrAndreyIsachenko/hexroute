@@ -283,6 +283,25 @@ func (suspension AuthorizationSuspension) Validate() error {
 	}
 }
 
+func (status ExistingStateStatus) Validate() error {
+	reportedAt, reportedOK := parseCanonicalUTC(status.ReportedAt)
+	reconcileBy, reconcileOK := parseCanonicalUTC(status.ReconcileBy)
+	if status.Schema != ExistingStateStatusSchema || !status.Domain.Valid() ||
+		!status.State.Valid() || status.BundleGeneration == 0 ||
+		status.PolicyGeneration == 0 || !reportedOK || !reconcileOK ||
+		reconcileBy.Before(reportedAt) {
+		return ErrInvalidStatus
+	}
+	if status.IncidentAt == "" {
+		return nil
+	}
+	incidentAt, incidentOK := parseCanonicalUTC(status.IncidentAt)
+	if !incidentOK || incidentAt.Before(reconcileBy) {
+		return ErrInvalidStatus
+	}
+	return nil
+}
+
 func validSHA256(value string) bool {
 	if len(value) != 64 || strings.ToLower(value) != value {
 		return false

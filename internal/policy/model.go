@@ -8,6 +8,7 @@ const (
 	ActionLeaseSchema             = "hexroute.action-lease.v1"
 	PolicyStatusSchema            = "hexroute.policy-status.v1"
 	AuthorizationSuspensionSchema = "hexroute.authorization-suspension.v1"
+	ExistingStateStatusSchema     = "hexroute.existing-state-status.v1"
 	MaxRules                      = 256
 	MaxAuthorizationLeases        = 128
 	MaxSelectorsPerLease          = 64
@@ -154,6 +155,16 @@ func (state PolicyState) Valid() bool {
 	default:
 		return false
 	}
+}
+
+type ExistingStateState string
+
+const (
+	ExistingStateGrandfatheredNoncompliant ExistingStateState = "grandfathered_noncompliant"
+)
+
+func (state ExistingStateState) Valid() bool {
+	return state == ExistingStateGrandfatheredNoncompliant
 }
 
 type PolicyReason string
@@ -311,4 +322,17 @@ type AuthorizationSuspension struct {
 	Suspended bool         `json:"suspended"`
 	Reason    PolicyReason `json:"reason"`
 	Since     string       `json:"since,omitempty"`
+}
+
+// ExistingStateStatus is a bounded generation-bound report. It intentionally
+// carries no target, endpoint, command or executable action.
+type ExistingStateStatus struct {
+	Schema           string             `json:"schema"`
+	Domain           Domain             `json:"domain"`
+	State            ExistingStateState `json:"state"`
+	BundleGeneration uint64             `json:"bundle_generation"`
+	PolicyGeneration uint64             `json:"policy_generation"`
+	ReportedAt       string             `json:"reported_at"`
+	ReconcileBy      string             `json:"reconcile_by"`
+	IncidentAt       string             `json:"incident_at,omitempty"`
 }

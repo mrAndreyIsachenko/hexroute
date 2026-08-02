@@ -53,6 +53,7 @@ type Handler struct {
 	clockGuard              *policyclock.Guard
 	status                  policy.Status
 	authorizationSuspension policy.AuthorizationSuspension
+	existingState           *policy.ExistingStateStatus
 
 	preparedIdentity   ipc.PolicyTransactionIdentity
 	previousStatus     policy.Status
@@ -161,11 +162,13 @@ func (handler *Handler) HandleIPC(ctx context.Context, request ipc.Request) ipc.
 	switch request.Action {
 	case ipc.ActionPolicyStatus:
 		handler.refreshAuthorizationLocked()
+		handler.refreshExistingStateLocked()
 		status := handler.status
 		response.OK = true
 		response.PolicyStatus = &ipc.PolicyStatusResult{
 			Status:                  status,
 			AuthorizationSuspension: handler.authorizationSuspension,
+			ExistingState:           cloneExistingState(handler.existingState),
 		}
 	case ipc.ActionPreparePolicy:
 		return handler.prepare(request, response)
@@ -412,7 +415,12 @@ func (handler *Handler) MutationAllowed() bool {
 	handler.mu.Lock()
 	defer handler.mu.Unlock()
 	handler.refreshAuthorizationLocked()
+	handler.refreshExistingStateLocked()
 	if handler.authorizationSuspension.Suspended {
+		return false
+	}
+	if handler.existingState != nil &&
+		handler.existingState.State == policy.ExistingStateGrandfatheredNoncompliant {
 		return false
 	}
 	if handler.store != nil && !handler.hasActive {
@@ -420,6 +428,43 @@ func (handler *Handler) MutationAllowed() bool {
 	}
 	return handler.status.State != policy.PolicyDomainMismatch &&
 		handler.status.State != policy.PolicyAuthorizationSuspended
+}
+
+// ReportGrandfatheredNoncompliance records that established data-plane state
+// no longer conforms to the active policy. It has no execution or disconnect
+// path and only narrows mutation authority.
+func (handler *Handler) ReportGrandfatheredNoncompliance(reconcileBy time.Time) error {
+	if handler == nil || reconcileBy.IsZero() {
+		return policy.ErrInvalidStatus
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	now, err := handler.checkedNowLocked()
+	if err != nil {
+		return err
+	}
+	if !handler.hasActive || handler.status.State != policy.PolicyActive {
+		return policy.ErrInvalidStatus
+	}
+	if handler.existingState != nil {
+		return policy.ErrInvalidStatus
+	}
+	status := policy.ExistingStateStatus{
+		Schema: policy.ExistingStateStatusSchema, Domain: handler.domain,
+		State:            policy.ExistingStateGrandfatheredNoncompliant,
+		BundleGeneration: handler.activeReceipt.BundleGeneration,
+		PolicyGeneration: handler.activeReceipt.PolicyGeneration,
+		ReportedAt:       now.Format(time.RFC3339Nano),
+		ReconcileBy:      reconcileBy.UTC().Format(time.RFC3339Nano),
+	}
+	if !now.Before(reconcileBy) {
+		status.IncidentAt = now.Format(time.RFC3339Nano)
+	}
+	if status.Validate() != nil {
+		return policy.ErrInvalidStatus
+	}
+	handler.existingState = &status
+	return nil
 }
 
 // SuspendAuthorization narrows local authority without changing policy state or
@@ -558,6 +603,21 @@ func (handler *Handler) refreshAuthorizationLocked() {
 		return
 	}
 	handler.restoreActive(active, now)
+}
+
+func (handler *Handler) refreshExistingStateLocked() {
+	if handler.existingState == nil || handler.existingState.IncidentAt != "" {
+		return
+	}
+	now, err := handler.checkedNowLocked()
+	if err != nil {
+		return
+	}
+	reconcileBy, err := time.Parse(time.RFC3339Nano, handler.existingState.ReconcileBy)
+	if err != nil || now.Before(reconcileBy) {
+		return
+	}
+	handler.existingState.IncidentAt = now.Format(time.RFC3339Nano)
 }
 
 func (handler *Handler) checkedNowLocked() (time.Time, error) {
@@ -703,6 +763,20 @@ func (handler *Handler) setActiveIdentity(
 		PreparedAt:       pointer.ActivatedAt,
 	}
 	handler.hasActive = true
+	if handler.existingState != nil &&
+		(handler.existingState.Domain != pointer.Domain ||
+			handler.existingState.BundleGeneration != pointer.BundleGeneration ||
+			handler.existingState.PolicyGeneration != pointer.PolicyGeneration) {
+		handler.existingState = nil
+	}
+}
+
+func cloneExistingState(source *policy.ExistingStateStatus) *policy.ExistingStateStatus {
+	if source == nil {
+		return nil
+	}
+	cloned := *source
+	return &cloned
 }
 
 func identityFromIntent(intent policystore.CommitIntent) ipc.PolicyTransactionIdentity {

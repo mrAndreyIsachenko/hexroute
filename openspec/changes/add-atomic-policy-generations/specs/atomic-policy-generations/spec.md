@@ -388,6 +388,12 @@ receive no new recovery action under the old authorization and SHALL require an
 exact reconcile or drain plan under a new lease. Passing `reconcile_by` SHALL
 raise an incident but SHALL NOT create an implicit stop action.
 
+The marker SHALL be reported separately from policy lifecycle state, SHALL bind
+the owning domain and active bundle and policy generations, and SHALL contain
+only UTC `reported_at`, `reconcile_by` and optional `incident_at` timestamps.
+It SHALL contain no target, endpoint, command or action, and a repeated report
+SHALL NOT postpone an existing reconciliation deadline.
+
 #### Scenario: New policy denies an established VPN session
 
 - **WHEN** a newly active policy no longer authorizes an already established session

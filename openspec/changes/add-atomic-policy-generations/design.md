@@ -291,6 +291,13 @@ under a new lease. Passing `reconcile_by` raises an incident but does not cause
 an implicit disconnect. A hard policy violation suspends new mutations; it does
 not create a hidden stop command for AdGuard, Twilight or VPN processes.
 
+The policy handler reports this as a separate generation-bound existing-state
+overlay rather than changing policy lifecycle state. The bounded report carries
+only domain, policy generations and UTC `reported_at`, `reconcile_by` and
+optional `incident_at` timestamps. It contains no target, endpoint, command or
+action. Detailed per-component reconciliation remains owned by the separate
+observable connectivity state-machine change.
+
 ### Observability is redacted and cloud authority remains one-way
 
 Local journals and telemetry may expose generation numbers and digests,

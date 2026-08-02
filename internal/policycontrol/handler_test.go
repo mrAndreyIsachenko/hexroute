@@ -787,6 +787,59 @@ func TestClockSkewBlocksActivationUntilContinuousTimeIsRestored(t *testing.T) {
 	}
 }
 
+func TestGrandfatheredNoncomplianceRaisesIncidentWithoutExecution(t *testing.T) {
+	publicKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{14}, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainUser, publicKey).Runtime(policy.DomainUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := syntheticIPCIdentity()
+	store := &recordingCandidateStore{
+		domain: policy.DomainUser,
+		recoverResult: revalidatedActiveFixture(
+			identity, policy.DomainUser, runtime, true,
+		),
+	}
+	base := time.Date(2030, time.January, 1, 1, 20, 0, 0, time.UTC)
+	clock := &deterministicPolicyClock{wall: base, monotonic: 20 * time.Second}
+	handler, err := newHandlerWithClock(store, runtime, clock.now, clock.monotonicNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconcileBy := base.Add(time.Minute)
+	if err := handler.ReportGrandfatheredNoncompliance(reconcileBy); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.ReportGrandfatheredNoncompliance(
+		reconcileBy.Add(time.Hour),
+	); !errors.Is(err, policy.ErrInvalidStatus) {
+		t.Fatalf("deadline replacement error = %v", err)
+	}
+	before := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "grandfathered-before-deadline",
+		Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+	})
+	if !before.OK || before.PolicyStatus.ExistingState == nil ||
+		before.PolicyStatus.ExistingState.State != policy.ExistingStateGrandfatheredNoncompliant ||
+		before.PolicyStatus.ExistingState.ReconcileBy != "2030-01-01T01:21:00Z" ||
+		before.PolicyStatus.ExistingState.IncidentAt != "" || handler.MutationAllowed() {
+		t.Fatalf("before deadline=%+v allowed=%t", before, handler.MutationAllowed())
+	}
+
+	clock.wall = reconcileBy
+	clock.monotonic += time.Minute
+	after := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "grandfathered-after-deadline",
+		Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+	})
+	if !after.OK || after.PolicyStatus.ExistingState == nil ||
+		after.PolicyStatus.ExistingState.IncidentAt != "2030-01-01T01:21:00Z" ||
+		store.calls != 0 || store.stageCalls != 0 || store.activateCalls != 0 ||
+		store.confirmCalls != 0 || store.abortCalls != 0 {
+		t.Fatalf("after deadline=%+v store=%+v", after, store)
+	}
+}
+
 func revalidatedActiveFixture(
 	identity ipc.PolicyTransactionIdentity,
 	domain policy.Domain,

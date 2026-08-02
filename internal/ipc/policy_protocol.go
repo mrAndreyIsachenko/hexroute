@@ -49,6 +49,7 @@ type AbortPolicyRequest struct {
 type PolicyStatusResult struct {
 	Status                  policy.Status                  `json:"status"`
 	AuthorizationSuspension policy.AuthorizationSuspension `json:"authorization_suspension"`
+	ExistingState           *policy.ExistingStateStatus    `json:"existing_state,omitempty"`
 }
 
 // PreparePolicyResult is the bounded receipt returned after independent local
@@ -105,6 +106,12 @@ func (identity PolicyTransactionIdentity) Validate() error {
 
 func (result PolicyStatusResult) Validate() error {
 	if result.Status.Validate() != nil || result.AuthorizationSuspension.Validate() != nil {
+		return ErrInvalidPolicyMessage
+	}
+	if result.ExistingState != nil &&
+		(result.ExistingState.Validate() != nil ||
+			result.ExistingState.Domain != result.Status.Domain ||
+			result.Status.State == policy.PolicyNone) {
 		return ErrInvalidPolicyMessage
 	}
 	return nil

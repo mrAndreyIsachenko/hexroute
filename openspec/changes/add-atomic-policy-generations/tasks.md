@@ -47,7 +47,7 @@
 - [x] 6.2 Verify suspension and invalid candidates preserve the last valid policy or enter observe-only `SAFE_MODE` without stopping AdGuard, Twilight, Pritunl, sing-box or established sessions.
 - [x] 6.3 Add UTC policy validity and clock-skew checks plus monotonic lease timing, boot-ID invalidation and sleep-counts-toward-TTL tests.
 - [x] 6.4 Add active-policy reboot revalidation and prove unfinished pre-reboot leases cannot resume.
-- [ ] 6.5 Add `grandfathered_noncompliant` and `reconcile_by` state reporting with tests proving no implicit disconnect or hidden stop action exists.
+- [x] 6.5 Add `grandfathered_noncompliant` and `reconcile_by` state reporting with tests proving no implicit disconnect or hidden stop action exists.
 
 ## 7. Action Leases And Transaction Plans
 
