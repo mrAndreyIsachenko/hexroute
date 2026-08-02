@@ -46,6 +46,89 @@ func TestCommitCandidatePersistsIntentPointerAndActiveResolutionIdempotently(t *
 	}
 }
 
+func TestStagedActivationDoesNotAdvanceBeforeBothDomainsCanCommit(t *testing.T) {
+	validAt := time.Date(2030, time.January, 1, 0, 30, 0, 0, time.UTC)
+	store, _ := newTestStore(t, policy.DomainUser)
+	defer store.Close()
+	fixture := newStartupFixture(t, policy.DomainUser, 1)
+	installCandidateArtifacts(t, store, fixture)
+	input := prepareCandidateInput(fixture)
+	if _, err := store.PrepareCandidate(
+		input, candidateCompatibility(fixture), fixture.publicKey, validAt,
+	); err != nil {
+		t.Fatal(err)
+	}
+	staged, err := store.StageCommitCandidate(input, validAt)
+	if err != nil || staged.Intent.TransactionID != input.TransactionID {
+		t.Fatalf("StageCommitCandidate() = %+v, %v", staged, err)
+	}
+	pending, err := store.RecoverPendingCommit()
+	if err != nil || pending != staged.Intent {
+		t.Fatalf("RecoverPendingCommit() = %+v, %v", pending, err)
+	}
+	if _, err := store.ReadActivePointer(); !errors.Is(err, ErrRecordNotFound) {
+		t.Fatalf("staging advanced active pointer: %v", err)
+	}
+	activated, err := store.ActivateCandidate(input, validAt)
+	if err != nil || activated.Pointer.ConfirmedAt != "" {
+		t.Fatalf("ActivateCandidate() = %+v, %v", activated, err)
+	}
+	if _, err := store.RecoverPendingCommit(); !errors.Is(err, ErrRecordNotFound) {
+		t.Fatalf("resolved commit remained pending: %v", err)
+	}
+	confirmedAt := validAt.Add(time.Minute)
+	confirmed, err := store.ConfirmCandidate(input, confirmedAt)
+	if err != nil || confirmed.Pointer.ConfirmedAt != confirmedAt.Format(time.RFC3339Nano) {
+		t.Fatalf("ConfirmCandidate() = %+v, %v", confirmed, err)
+	}
+	retried, err := store.ConfirmCandidate(input, confirmedAt.Add(time.Minute))
+	if err != nil || retried.Pointer != confirmed.Pointer {
+		t.Fatalf("idempotent ConfirmCandidate() = %+v, %v", retried, err)
+	}
+	recovered, err := store.RecoverActive(
+		candidateCompatibility(fixture), fixture.publicKey, confirmedAt,
+	)
+	if err != nil || recovered.ConfirmedAt != confirmed.Pointer.ConfirmedAt {
+		t.Fatalf("RecoverActive() = %+v, %v", recovered, err)
+	}
+}
+
+func TestRecoverActiveRepairsOnlyARevalidatedMissingResolution(t *testing.T) {
+	validAt := time.Date(2030, time.January, 1, 0, 30, 0, 0, time.UTC)
+	store, _ := newTestStore(t, policy.DomainRoot)
+	defer store.Close()
+	fixture := newStartupFixture(t, policy.DomainRoot, 1)
+	for _, kind := range []ArtifactKind{ArtifactManifest, ArtifactPayload, ArtifactReview, ArtifactApproval} {
+		if err := store.InstallArtifact(fixture.generation, kind, fixture.artifacts[kind]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.PersistPrepareReceipt(fixture.receipt); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PersistCommitIntent(fixture.intent); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PersistActivePointer(fixture.pointer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RevalidateActive(
+		fixture.installed, fixture.publicKey, validAt,
+	); !errors.Is(err, ErrActivePointerConsistency) {
+		t.Fatalf("strict revalidation before repair error = %v", err)
+	}
+	if _, err := store.RecoverActive(
+		candidateCompatibility(fixture), fixture.publicKey, validAt,
+	); err != nil {
+		t.Fatalf("RecoverActive() error: %v", err)
+	}
+	if _, err := store.RevalidateActive(
+		fixture.installed, fixture.publicKey, validAt,
+	); err != nil {
+		t.Fatalf("RevalidateActive() after repair error: %v", err)
+	}
+}
+
 func TestAbortCandidatePersistsRedactedResolutionAndRemovesCandidate(t *testing.T) {
 	validAt := time.Date(2030, time.January, 1, 0, 30, 0, 0, time.UTC)
 	store, _ := newTestStore(t, policy.DomainUser)

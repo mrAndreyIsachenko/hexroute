@@ -72,6 +72,7 @@ type ActivePointer struct {
 	CommitIntentSHA256 string                        `json:"commit_intent_sha256"`
 	Approval           policyapproval.SignedApproval `json:"approval"`
 	ActivatedAt        string                        `json:"activated_at"`
+	ConfirmedAt        string                        `json:"confirmed_at,omitempty"`
 }
 
 type recordOperation string
@@ -145,6 +146,15 @@ func (pointer ActivePointer) Validate() error {
 		!validDigest(pointer.ApprovalSHA256) || !validDigest(pointer.CommitIntentSHA256) ||
 		!validCanonicalUTC(pointer.ActivatedAt) || validateApprovalStructure(pointer.Approval) != nil {
 		return ErrInvalidRecord
+	}
+	if pointer.ConfirmedAt != "" {
+		activatedAt, activatedErr := time.Parse(time.RFC3339Nano, pointer.ActivatedAt)
+		confirmedAt, confirmedErr := time.Parse(time.RFC3339Nano, pointer.ConfirmedAt)
+		if activatedErr != nil || confirmedErr != nil ||
+			confirmedAt.UTC().Format(time.RFC3339Nano) != pointer.ConfirmedAt ||
+			confirmedAt.Before(activatedAt) {
+			return ErrInvalidRecord
+		}
 	}
 	statement := pointer.Approval.Statement
 	wantPayload := statement.RootSHA256
@@ -296,6 +306,10 @@ func (store *Store) PersistActivePointer(pointer ActivePointer) error {
 		if decodeErr != nil || current.Validate() != nil || current.Domain != store.domain {
 			return ErrInvalidRecord
 		}
+		if pointer.BundleGeneration == current.BundleGeneration &&
+			activePointerConfirmationAdvance(current, pointer) {
+			break
+		}
 		if pointer.BundleGeneration <= current.BundleGeneration {
 			return ErrStaleActivePointer
 		}
@@ -304,6 +318,14 @@ func (store *Store) PersistActivePointer(pointer ActivePointer) error {
 		return err
 	}
 	return store.persistRecordLocked(recordActive, activePointerFilename, encoded, true)
+}
+
+func activePointerConfirmationAdvance(current, next ActivePointer) bool {
+	currentConfirmed := current.ConfirmedAt
+	nextConfirmed := next.ConfirmedAt
+	current.ConfirmedAt = ""
+	next.ConfirmedAt = ""
+	return current == next && currentConfirmed == "" && nextConfirmed != ""
 }
 
 func (store *Store) ReadActivePointer() (ActivePointer, error) {

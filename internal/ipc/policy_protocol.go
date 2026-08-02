@@ -29,8 +29,17 @@ type PreparePolicyRequest struct {
 	Transaction PolicyTransactionIdentity `json:"transaction"`
 }
 
+type CommitPolicyPhase string
+
+const (
+	CommitPolicyStage    CommitPolicyPhase = "stage"
+	CommitPolicyActivate CommitPolicyPhase = "activate"
+	CommitPolicyConfirm  CommitPolicyPhase = "confirm"
+)
+
 type CommitPolicyRequest struct {
 	Transaction PolicyTransactionIdentity `json:"transaction"`
+	Phase       CommitPolicyPhase         `json:"phase"`
 }
 
 type AbortPolicyRequest struct {
@@ -54,8 +63,9 @@ type PreparePolicyResult struct {
 }
 
 type CommitPolicyResult struct {
-	TransactionID metadata.UUID `json:"transaction_id"`
-	Status        policy.Status `json:"status"`
+	TransactionID metadata.UUID     `json:"transaction_id"`
+	Phase         CommitPolicyPhase `json:"phase"`
+	Status        policy.Status     `json:"status"`
 }
 
 type AbortPolicyResult struct {
@@ -68,7 +78,10 @@ func (request PreparePolicyRequest) Validate() error {
 }
 
 func (request CommitPolicyRequest) Validate() error {
-	return request.Transaction.Validate()
+	if request.Transaction.Validate() != nil || !request.Phase.Valid() {
+		return ErrInvalidPolicyMessage
+	}
+	return nil
 }
 
 func (request AbortPolicyRequest) Validate() error {
@@ -110,10 +123,20 @@ func (result PreparePolicyResult) Validate() error {
 }
 
 func (result CommitPolicyResult) Validate() error {
-	if !validTransactionID(result.TransactionID) || result.Status.Validate() != nil {
+	if !validTransactionID(result.TransactionID) || !result.Phase.Valid() ||
+		result.Status.Validate() != nil {
 		return ErrInvalidPolicyMessage
 	}
 	return nil
+}
+
+func (phase CommitPolicyPhase) Valid() bool {
+	switch phase {
+	case CommitPolicyStage, CommitPolicyActivate, CommitPolicyConfirm:
+		return true
+	default:
+		return false
+	}
 }
 
 func (result AbortPolicyResult) Validate() error {

@@ -186,7 +186,8 @@ metadata is bounded to 90 days.
 The operator copies the root payload through a fixed, guarded privileged
 installation step; the user payload remains in the user domain. IPC adds
 versioned `PreparePolicy`, `CommitPolicy` and `AbortPolicy` requests containing
-only generation, digest and bounded transaction identity. The daemon derives
+only generation, digest, bounded transaction identity and an allowlisted
+`stage`, `activate` or `confirm` commit phase. The daemon derives
 the fixed local path and independently validates ownership, mode, regular-file
 type, schema, canonical hash, signature, validity window, static digest and
 domain semantics. There is no file watcher, `SIGHUP`, arbitrary path or payload
@@ -199,14 +200,21 @@ Activation follows an explicit transaction:
 1. Install immutable candidate files into each domain's staging location.
 2. Prepare root and user independently and persist their validated receipts.
 3. Verify both receipts refer to the same signed bundle and domain hashes.
-4. Commit the signed activation intent to each daemon.
-5. Atomically replace each active pointer and publish the resulting status.
+4. Stage the signed activation intent durably in both daemons without replacing
+   either pointer.
+5. Atomically replace each active pointer; an unconfirmed pointer publishes
+   `domain_mismatch` and blocks mutation dispatch.
+6. Confirm both pointers only after the coordinator receives matching activate
+   responses from both domains.
 
 If either prepare fails, both candidates are aborted and the last valid policy
 continues. If one daemon commits and the other crashes, the active daemon enters
 visible `domain_mismatch`, both domains block new mutations, and existing data
 plane traffic remains untouched. On restart the lagging daemon revalidates the
-same signed commit and converges forward. It does not automatically roll the
+same signed commit and converges forward. Startup derives dynamic generation
+state only from fully revalidated signed evidence and repairs a missing active
+resolution after a crash immediately following pointer replacement. It does
+not automatically roll the
 already active daemon back. Reversing the decision requires a new signed
 generation.
 

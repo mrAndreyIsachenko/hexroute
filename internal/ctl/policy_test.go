@@ -61,11 +61,19 @@ func TestPolicyCommitAndRollbackRequireBothMatchingReceiptsBeforeCommit(t *testi
 				case ipc.ActionPreparePolicy:
 					return policyPrepareResponse(request, identity, domain), nil
 				case ipc.ActionCommitPolicy:
+					status := activePolicyStatus(identity, domain)
+					if request.CommitPolicy.Phase == ipc.CommitPolicyStage {
+						status.State = policy.PolicyPrepared
+						status.ActivatedAt = ""
+					} else if request.CommitPolicy.Phase == ipc.CommitPolicyActivate {
+						status.State = policy.PolicyDomainMismatch
+						status.Reason = policy.ReasonDomainMismatch
+					}
 					return ipc.Response{
 						Version: ipc.ProtocolVersion, RequestID: request.RequestID, OK: true,
 						CommitPolicy: &ipc.CommitPolicyResult{
 							TransactionID: identity.TransactionID,
-							Status:        activePolicyStatus(identity, domain),
+							Phase:         request.CommitPolicy.Phase, Status: status,
 						},
 					}, nil
 				default:
@@ -80,6 +88,10 @@ func TestPolicyCommitAndRollbackRequireBothMatchingReceiptsBeforeCommit(t *testi
 			want := strings.Join([]string{
 				"/safe/root.sock:prepare_policy",
 				"/safe/user.sock:prepare_policy",
+				"/safe/root.sock:commit_policy",
+				"/safe/user.sock:commit_policy",
+				"/safe/root.sock:commit_policy",
+				"/safe/user.sock:commit_policy",
 				"/safe/root.sock:commit_policy",
 				"/safe/user.sock:commit_policy",
 			}, ",")
@@ -130,6 +142,72 @@ func TestPolicyReceiptMismatchAbortsWithoutCommit(t *testing.T) {
 		if calls[index] != want[index] {
 			t.Fatalf("calls = %#v", calls)
 		}
+	}
+}
+
+func TestPolicyActivationFailureLeavesForwardRecoveryWithoutAbort(t *testing.T) {
+	identity := syntheticPolicyIdentity()
+	failUserActivation := true
+	var calls []string
+	config := testConfig(func(
+		_ context.Context,
+		path string,
+		request ipc.Request,
+	) (ipc.Response, error) {
+		domain := policy.DomainRoot
+		if path == "/safe/user.sock" {
+			domain = policy.DomainUser
+		}
+		phase := ""
+		if request.CommitPolicy != nil {
+			phase = ":" + string(request.CommitPolicy.Phase)
+		}
+		calls = append(calls, path+":"+string(request.Action)+phase)
+		if request.Action == ipc.ActionPreparePolicy {
+			return policyPrepareResponse(request, identity, domain), nil
+		}
+		if request.CommitPolicy.Phase == ipc.CommitPolicyActivate &&
+			domain == policy.DomainUser && failUserActivation {
+			return ipc.Response{
+				Version: ipc.ProtocolVersion, RequestID: request.RequestID,
+				Error: ipc.ErrorInternal,
+			}, nil
+		}
+		status := activePolicyStatus(identity, domain)
+		if request.CommitPolicy.Phase == ipc.CommitPolicyStage {
+			status.State = policy.PolicyPrepared
+			status.ActivatedAt = ""
+		} else if request.CommitPolicy.Phase == ipc.CommitPolicyActivate {
+			status.State = policy.PolicyDomainMismatch
+			status.Reason = policy.ReasonDomainMismatch
+		}
+		return ipc.Response{
+			Version: ipc.ProtocolVersion, RequestID: request.RequestID, OK: true,
+			CommitPolicy: &ipc.CommitPolicyResult{
+				TransactionID: identity.TransactionID,
+				Phase:         request.CommitPolicy.Phase, Status: status,
+			},
+		}, nil
+	})
+	var stdout, stderr bytes.Buffer
+	if code := Run(policyArgs("commit", identity), &stdout, &stderr, config); code != 1 {
+		t.Fatalf("first Run() code=%d", code)
+	}
+	for _, call := range calls {
+		if strings.Contains(call, "abort_policy") || strings.Contains(call, ":confirm") {
+			t.Fatalf("post-activation failure triggered rollback/finalize: %#v", calls)
+		}
+	}
+
+	failUserActivation = false
+	calls = nil
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run(policyArgs("commit", identity), &stdout, &stderr, config); code != 0 {
+		t.Fatalf("retry Run() code=%d stderr=%q", code, stderr.String())
+	}
+	if len(calls) != 8 || !strings.HasSuffix(calls[len(calls)-1], ":confirm") {
+		t.Fatalf("recovery calls = %#v", calls)
 	}
 }
 

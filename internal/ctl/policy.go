@@ -78,21 +78,42 @@ func runPolicyCommit(
 		abortBoth(identity, config)
 		return writePolicyOutput("policy "+command, prepared, true, stdout, stderr)
 	}
+	staged, ok := commitPhaseBoth(identity, ipc.CommitPolicyStage, config)
+	if !ok {
+		abortBoth(identity, config)
+		return writePolicyOutput("policy "+command, staged, true, stdout, stderr)
+	}
+	activated, ok := commitPhaseBoth(identity, ipc.CommitPolicyActivate, config)
+	if !ok {
+		return writePolicyOutput("policy "+command, activated, true, stdout, stderr)
+	}
+	confirmed, ok := commitPhaseBoth(identity, ipc.CommitPolicyConfirm, config)
+	return writePolicyOutput("policy "+command, confirmed, !ok, stdout, stderr)
+}
+
+func commitPhaseBoth(
+	identity ipc.PolicyTransactionIdentity,
+	phase ipc.CommitPolicyPhase,
+	config Config,
+) ([]resultOutput, bool) {
 	results := make([]resultOutput, 0, 2)
-	failed := false
+	ok := true
 	for _, role := range []ipc.DaemonRole{ipc.RoleRoot, ipc.RoleUser} {
 		result, accepted := roundTripRequest(role, ipc.Request{
-			Action:       ipc.ActionCommitPolicy,
-			CommitPolicy: &ipc.CommitPolicyRequest{Transaction: identity},
+			Action: ipc.ActionCommitPolicy,
+			CommitPolicy: &ipc.CommitPolicyRequest{
+				Transaction: identity, Phase: phase,
+			},
 		}, config)
 		if accepted && (result.CommitPolicy == nil ||
-			result.CommitPolicy.TransactionID != identity.TransactionID) {
+			result.CommitPolicy.TransactionID != identity.TransactionID ||
+			result.CommitPolicy.Phase != phase) {
 			accepted = false
 		}
 		results = append(results, result)
-		failed = failed || !accepted
+		ok = ok && accepted
 	}
-	return writePolicyOutput("policy "+command, results, failed, stdout, stderr)
+	return results, ok
 }
 
 func runPolicyAbort(

@@ -112,8 +112,10 @@ continue to bind both domain digests.
 A successful call returns a typed `RevalidatedActive` containing the verified
 manifest and local payload. A failed call returns bounded sentinel errors and
 does not rewrite the pointer, run retention, activate a fallback or mutate any
-network/process state. Startup use of this active revalidation and resulting
-safe-mode or authorization-suspension behavior remain later explicit tasks.
+network/process state. Startup recovery may derive dynamic current-generation
+fields only after this complete revalidation. If a crash left a valid active
+pointer after atomic replacement but before its resolution record, recovery
+durably completes that resolution; it never repairs invalid evidence.
 
 ## Domain-Local Prepare
 
@@ -129,8 +131,15 @@ dedicated policy IPC handler. The handler is separate from the existing
 operator mutation broker. Private static startup configuration pins the daemon
 domain, supported schema, static digest, compiler identities and signer public
 key. If that configuration is absent, policy status reports `none` and prepare
-fails closed. `CommitPolicy` and `AbortPolicy` remain unavailable until their
-later activation tasks are implemented.
+fails closed.
+
+`hexroutectl policy` coordinates a bounded three-phase commit. Both domains
+first persist `stage` intents while leaving their pointers unchanged. Only
+after both stage responses match may `activate` replace either pointer. An
+unconfirmed pointer reports `domain_mismatch` and the dispatcher rejects new
+mutations without stopping existing processes or connections. `confirm` is
+sent only after both activate responses match. Repeating the same transaction
+after a crash is idempotent and converges the lagging domain forward.
 
 ## Monotonic Rollback Candidates
 
@@ -163,11 +172,11 @@ The generated candidate still has no activation authority. It must pass the
 normal semantic diff, deterministic replay, compatibility, user-presence
 signature, installation, prepare and commit gates. The old signature, approval,
 lease and active pointer are never reused. Selecting a target from retained
-active store history and coordinating activation remain later typed-IPC tasks;
-this compiler path performs no daemon, store or network mutation.
+active store history remains a later operator workflow; this compiler path
+performs no daemon, store or network mutation.
 
-This storage package is not a live installation or cutover. Candidate prepare
-verification and durable receipts are wired to the root and user daemon IPC
-handlers, but no commit, abort, action enforcement, process, route, credential
-or network mutation is enabled. Twilight remains the production owner
-throughout these changes.
+This storage package is not a live installation or cutover. Candidate prepare,
+commit, abort and crash convergence are wired to the root and user daemon IPC
+handlers. They mutate only Hexroute's private policy stores. No process, route,
+credential or network mutation is enabled, and Twilight remains the production
+owner throughout these changes.

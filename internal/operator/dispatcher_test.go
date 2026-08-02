@@ -21,8 +21,11 @@ type countingMutationHandler struct {
 }
 
 type countingPolicyHandler struct {
-	calls int
+	calls   int
+	allowed bool
 }
+
+func (handler *countingPolicyHandler) MutationAllowed() bool { return handler.allowed }
 
 func (handler *countingMutationHandler) HandleIPC(
 	context.Context,
@@ -49,7 +52,7 @@ func (handler *countingPolicyHandler) HandleIPC(
 func TestDispatcherSeparatesReadOnlyAndMutatingRequests(t *testing.T) {
 	readOnly := &countingReadHandler{}
 	mutating := &countingMutationHandler{}
-	policyHandler := &countingPolicyHandler{}
+	policyHandler := &countingPolicyHandler{allowed: true}
 	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler)
 	if err != nil {
 		t.Fatalf("NewDispatcher() error: %v", err)
@@ -92,5 +95,22 @@ func TestDispatcherSeparatesReadOnlyAndMutatingRequests(t *testing.T) {
 			mutating.calls,
 			policyHandler.calls,
 		)
+	}
+}
+
+func TestDispatcherBlocksMutationsDuringPolicyMismatch(t *testing.T) {
+	readOnly := &countingReadHandler{}
+	mutating := &countingMutationHandler{}
+	policyHandler := &countingPolicyHandler{allowed: false}
+	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := dispatcher.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "blocked-mutation",
+		Action: ipc.ActionResumeTarget,
+	})
+	if response.Error != ipc.ErrorPrecondition || mutating.calls != 0 {
+		t.Fatalf("response=%+v mutation calls=%d", response, mutating.calls)
 	}
 }

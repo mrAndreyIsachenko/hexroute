@@ -38,7 +38,7 @@
 - [x] 5.2 Add peer-UID, transaction-ID, generation and digest validation tests for root and user sockets, including arbitrary-path and unknown-operation rejection.
 - [x] 5.3 Integrate independent prepare verification and durable receipts into `hexrouted` and `hexroute-userd` without granting process, route or credential authority.
 - [x] 5.4 Implement the `hexroutectl policy status|prepare|commit|abort|rollback` coordinator and require matching receipts before commit.
-- [ ] 5.5 Implement crash recovery that detects a one-domain commit, reports `domain_mismatch`, blocks mutations and converges the lagging domain forward after full revalidation.
+- [x] 5.5 Implement crash recovery that detects a one-domain commit, reports `domain_mismatch`, blocks mutations and converges the lagging domain forward after full revalidation.
 - [ ] 5.6 Add deterministic fault-injection tests for root failure, user failure and process termination before prepare, between prepares, between commits and after active-pointer replacement.
 
 ## 6. Suspension, Time And Existing-State Safety

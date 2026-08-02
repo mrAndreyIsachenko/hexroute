@@ -21,11 +21,25 @@ type CandidateStore interface {
 		ed25519.PublicKey,
 		time.Time,
 	) (policystore.PrepareReceipt, error)
-	CommitCandidate(
+	StageCommitCandidate(
+		policystore.PrepareCandidateInput,
+		time.Time,
+	) (policystore.StagedCandidate, error)
+	ActivateCandidate(
+		policystore.PrepareCandidateInput,
+		time.Time,
+	) (policystore.CommitCandidateResult, error)
+	ConfirmCandidate(
 		policystore.PrepareCandidateInput,
 		time.Time,
 	) (policystore.CommitCandidateResult, error)
 	AbortCandidate(policystore.PrepareCandidateInput, time.Time) error
+	RecoverActive(
+		policy.InstalledCompatibility,
+		ed25519.PublicKey,
+		time.Time,
+	) (policystore.RevalidatedActive, error)
+	RecoverPendingCommit() (policystore.CommitIntent, error)
 }
 
 type Handler struct {
@@ -39,6 +53,9 @@ type Handler struct {
 	preparedIdentity ipc.PolicyTransactionIdentity
 	previousStatus   policy.Status
 	hasPrepared      bool
+	activeIdentity   ipc.PolicyTransactionIdentity
+	activeReceipt    policystore.PrepareReceipt
+	hasActive        bool
 }
 
 func NewHandler(
@@ -55,10 +72,29 @@ func NewHandler(
 		[]string(nil),
 		config.Installed.TrustedCompilerSHA256...,
 	)
-	return &Handler{
+	handler := &Handler{
 		domain: store.Domain(), store: store, config: config, now: now,
 		status: noPolicyStatus(store.Domain()),
-	}, nil
+	}
+	active, err := store.RecoverActive(config.Installed, config.PinnedPublicKey, now())
+	if errors.Is(err, policystore.ErrRecordNotFound) {
+		pending, pendingErr := store.RecoverPendingCommit()
+		if errors.Is(pendingErr, policystore.ErrRecordNotFound) {
+			return handler, nil
+		}
+		if pendingErr != nil {
+			return nil, pendingErr
+		}
+		if err := handler.restorePending(pending); err != nil {
+			return nil, err
+		}
+		return handler, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	handler.restoreActive(active)
+	return handler, nil
 }
 
 func NewUnavailableHandler(domain policy.Domain) (*Handler, error) {
@@ -115,6 +151,12 @@ func (handler *Handler) prepare(
 		response.Error = ipc.ErrorPrecondition
 		return response
 	}
+	if handler.hasActive && handler.activeIdentity == identity {
+		response.OK = true
+		result := prepareResult(handler.activeReceipt)
+		response.PreparePolicy = &result
+		return response
+	}
 	receipt, err := handler.store.PrepareCandidate(
 		candidateInput(identity),
 		handler.config.Installed,
@@ -136,14 +178,8 @@ func (handler *Handler) prepare(
 		ManifestSHA256:   receipt.ManifestSHA256, Reason: policy.ReasonNone,
 	}
 	response.OK = true
-	response.PreparePolicy = &ipc.PreparePolicyResult{
-		TransactionID: receipt.TransactionID, Domain: receipt.Domain,
-		BundleGeneration: receipt.BundleGeneration,
-		PolicyGeneration: receipt.PolicyGeneration,
-		ManifestSHA256:   receipt.ManifestSHA256,
-		PayloadSHA256:    receipt.PayloadSHA256,
-		ApprovalSHA256:   receipt.ApprovalSHA256,
-	}
+	result := prepareResult(receipt)
+	response.PreparePolicy = &result
 	return response
 }
 
@@ -156,32 +192,91 @@ func (handler *Handler) commit(
 		return response
 	}
 	identity := request.CommitPolicy.Transaction
-	if handler.store == nil || !handler.hasPrepared || handler.preparedIdentity != identity {
+	if handler.store == nil ||
+		(!handler.hasPrepared || handler.preparedIdentity != identity) &&
+			(!handler.hasActive || handler.activeIdentity != identity) {
 		response.Error = ipc.ErrorPrecondition
 		return response
 	}
+	switch request.CommitPolicy.Phase {
+	case ipc.CommitPolicyStage:
+		return handler.stage(identity, response)
+	case ipc.CommitPolicyActivate:
+		return handler.activate(identity, response)
+	case ipc.CommitPolicyConfirm:
+		return handler.confirm(identity, response)
+	default:
+		response.Error = ipc.ErrorInvalidRequest
+		return response
+	}
+}
+
+func (handler *Handler) stage(
+	identity ipc.PolicyTransactionIdentity,
+	response ipc.Response,
+) ipc.Response {
 	now := handler.now()
-	receipt, err := handler.store.PrepareCandidate(
-		candidateInput(identity),
-		handler.config.Installed,
-		handler.config.PinnedPublicKey,
-		now,
-	)
-	if err != nil || !receiptMatchesIdentity(receipt, identity, handler.domain) {
-		if err == nil {
-			err = policystore.ErrRecordConflict
-		}
+	if err := handler.revalidate(identity, now); err != nil {
 		return handler.lifecycleFailure(err, response)
 	}
-	committed, err := handler.store.CommitCandidate(candidateInput(identity), now)
+	_, err := handler.store.StageCommitCandidate(candidateInput(identity), now)
+	if err != nil {
+		return handler.lifecycleFailure(err, response)
+	}
+	if !handler.hasActive || handler.activeIdentity != identity {
+		handler.status = stagedMismatchStatus(identity, handler.domain)
+	}
+	response.OK = true
+	response.CommitPolicy = &ipc.CommitPolicyResult{
+		TransactionID: identity.TransactionID, Phase: ipc.CommitPolicyStage,
+		Status: handler.status,
+	}
+	return response
+}
+
+func (handler *Handler) activate(
+	identity ipc.PolicyTransactionIdentity,
+	response ipc.Response,
+) ipc.Response {
+	now := handler.now()
+	if err := handler.revalidate(identity, now); err != nil {
+		return handler.lifecycleFailure(err, response)
+	}
+	committed, err := handler.store.ActivateCandidate(candidateInput(identity), now)
 	if err != nil {
 		return handler.lifecycleFailure(err, response)
 	}
 	pointer := committed.Pointer
-	handler.config.Installed.CurrentPolicySchema = committed.PolicySchema
-	handler.config.Installed.CurrentBundleGeneration = pointer.BundleGeneration
-	handler.config.Installed.CurrentPolicyGeneration = pointer.PolicyGeneration
-	handler.config.Installed.CurrentPayloadSHA256 = pointer.PayloadSHA256
+	handler.setInstalled(pointer, committed.PolicySchema)
+	handler.status = statusFromPointer(pointer)
+	handler.hasPrepared = false
+	handler.setActiveIdentity(identity, pointer)
+	response.OK = true
+	response.CommitPolicy = &ipc.CommitPolicyResult{
+		TransactionID: identity.TransactionID, Phase: ipc.CommitPolicyActivate,
+		Status: handler.status,
+	}
+	return response
+}
+
+func (handler *Handler) confirm(
+	identity ipc.PolicyTransactionIdentity,
+	response ipc.Response,
+) ipc.Response {
+	if !handler.hasActive || handler.activeIdentity != identity {
+		response.Error = ipc.ErrorPrecondition
+		return response
+	}
+	now := handler.now()
+	if err := handler.revalidate(identity, now); err != nil {
+		return handler.lifecycleFailure(err, response)
+	}
+	committed, err := handler.store.ConfirmCandidate(candidateInput(identity), now)
+	if err != nil {
+		return handler.lifecycleFailure(err, response)
+	}
+	pointer := committed.Pointer
+	handler.setInstalled(pointer, committed.PolicySchema)
 	handler.status = policy.Status{
 		Schema: policy.PolicyStatusSchema, Domain: pointer.Domain,
 		State: policy.PolicyActive, BundleGeneration: pointer.BundleGeneration,
@@ -189,11 +284,11 @@ func (handler *Handler) commit(
 		ManifestSHA256:   pointer.ManifestSHA256,
 		ActivatedAt:      pointer.ActivatedAt, Reason: policy.ReasonNone,
 	}
-	handler.hasPrepared = false
+	handler.setActiveIdentity(identity, pointer)
 	response.OK = true
 	response.CommitPolicy = &ipc.CommitPolicyResult{
-		TransactionID: identity.TransactionID,
-		Status:        handler.status,
+		TransactionID: identity.TransactionID, Phase: ipc.CommitPolicyConfirm,
+		Status: handler.status,
 	}
 	return response
 }
@@ -245,6 +340,181 @@ func (handler *Handler) lifecycleFailure(cause error, response ipc.Response) ipc
 		response.Error = ipc.ErrorInternal
 	}
 	return response
+}
+
+func (handler *Handler) MutationAllowed() bool {
+	if handler == nil {
+		return false
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	return handler.status.State != policy.PolicyDomainMismatch &&
+		handler.status.State != policy.PolicyAuthorizationSuspended
+}
+
+func (handler *Handler) revalidate(
+	identity ipc.PolicyTransactionIdentity,
+	now time.Time,
+) error {
+	if handler.hasActive && handler.activeIdentity == identity {
+		active, err := handler.store.RecoverActive(
+			handler.config.Installed,
+			handler.config.PinnedPublicKey,
+			now,
+		)
+		if err != nil {
+			return err
+		}
+		if identityFromIntent(active.Intent) != identity {
+			return policystore.ErrRecordConflict
+		}
+		return nil
+	}
+	receipt, err := handler.store.PrepareCandidate(
+		candidateInput(identity),
+		handler.config.Installed,
+		handler.config.PinnedPublicKey,
+		now,
+	)
+	if err != nil {
+		return err
+	}
+	if !receiptMatchesIdentity(receipt, identity, handler.domain) {
+		return policystore.ErrRecordConflict
+	}
+	return nil
+}
+
+func (handler *Handler) restoreActive(active policystore.RevalidatedActive) {
+	identity := identityFromIntent(active.Intent)
+	pointer := policystore.ActivePointer{
+		TransactionID: identity.TransactionID, Domain: active.Domain,
+		BundleGeneration: active.Generation.Bundle,
+		PolicyGeneration: active.Generation.Policy,
+		ManifestSHA256:   active.ManifestSHA256,
+		PayloadSHA256:    active.PayloadSHA256,
+		ApprovalSHA256:   identity.ApprovalSHA256,
+		ActivatedAt:      active.ActivatedAt, ConfirmedAt: active.ConfirmedAt,
+	}
+	handler.setInstalled(pointer, active.Manifest.PolicySchema)
+	handler.setActiveIdentity(identity, pointer)
+	state := policy.PolicyDomainMismatch
+	reason := policy.ReasonDomainMismatch
+	if active.ConfirmedAt != "" {
+		state = policy.PolicyActive
+		reason = policy.ReasonNone
+	}
+	handler.status = policy.Status{
+		Schema: policy.PolicyStatusSchema, Domain: active.Domain, State: state,
+		BundleGeneration: active.Generation.Bundle,
+		PolicyGeneration: active.Generation.Policy,
+		ManifestSHA256:   active.ManifestSHA256,
+		ActivatedAt:      active.ActivatedAt, Reason: reason,
+	}
+}
+
+func (handler *Handler) restorePending(intent policystore.CommitIntent) error {
+	identity := identityFromIntent(intent)
+	receipt, err := handler.store.PrepareCandidate(
+		candidateInput(identity),
+		handler.config.Installed,
+		handler.config.PinnedPublicKey,
+		handler.now(),
+	)
+	if err != nil {
+		return err
+	}
+	if !receiptMatchesIdentity(receipt, identity, handler.domain) {
+		return policystore.ErrRecordConflict
+	}
+	handler.previousStatus = handler.status
+	handler.preparedIdentity = identity
+	handler.hasPrepared = true
+	handler.status = stagedMismatchStatus(identity, handler.domain)
+	return nil
+}
+
+func (handler *Handler) setInstalled(pointer policystore.ActivePointer, policySchema uint16) {
+	handler.config.Installed.CurrentPolicySchema = policySchema
+	handler.config.Installed.CurrentBundleGeneration = pointer.BundleGeneration
+	handler.config.Installed.CurrentPolicyGeneration = pointer.PolicyGeneration
+	handler.config.Installed.CurrentPayloadSHA256 = pointer.PayloadSHA256
+}
+
+func statusFromPointer(pointer policystore.ActivePointer) policy.Status {
+	state := policy.PolicyDomainMismatch
+	reason := policy.ReasonDomainMismatch
+	if pointer.ConfirmedAt != "" {
+		state = policy.PolicyActive
+		reason = policy.ReasonNone
+	}
+	return policy.Status{
+		Schema: policy.PolicyStatusSchema, Domain: pointer.Domain, State: state,
+		BundleGeneration: pointer.BundleGeneration,
+		PolicyGeneration: pointer.PolicyGeneration,
+		ManifestSHA256:   pointer.ManifestSHA256,
+		ActivatedAt:      pointer.ActivatedAt, Reason: reason,
+	}
+}
+
+func stagedMismatchStatus(
+	identity ipc.PolicyTransactionIdentity,
+	domain policy.Domain,
+) policy.Status {
+	policyGeneration := identity.RootPolicyGeneration
+	if domain == policy.DomainUser {
+		policyGeneration = identity.UserPolicyGeneration
+	}
+	return policy.Status{
+		Schema: policy.PolicyStatusSchema, Domain: domain,
+		State:            policy.PolicyDomainMismatch,
+		BundleGeneration: identity.BundleGeneration,
+		PolicyGeneration: policyGeneration,
+		ManifestSHA256:   identity.ManifestSHA256,
+		Reason:           policy.ReasonDomainMismatch,
+	}
+}
+
+func (handler *Handler) setActiveIdentity(
+	identity ipc.PolicyTransactionIdentity,
+	pointer policystore.ActivePointer,
+) {
+	handler.activeIdentity = identity
+	handler.activeReceipt = policystore.PrepareReceipt{
+		Schema:        policystore.PrepareReceiptSchema,
+		TransactionID: identity.TransactionID, Domain: pointer.Domain,
+		BundleGeneration: pointer.BundleGeneration,
+		PolicyGeneration: pointer.PolicyGeneration,
+		ManifestSHA256:   pointer.ManifestSHA256,
+		PayloadSHA256:    pointer.PayloadSHA256,
+		ApprovalSHA256:   pointer.ApprovalSHA256,
+		PreparedAt:       pointer.ActivatedAt,
+	}
+	handler.hasActive = true
+}
+
+func identityFromIntent(intent policystore.CommitIntent) ipc.PolicyTransactionIdentity {
+	return ipc.PolicyTransactionIdentity{
+		TransactionID:        intent.TransactionID,
+		BundleGeneration:     intent.BundleGeneration,
+		RootPolicyGeneration: intent.RootPolicyGeneration,
+		UserPolicyGeneration: intent.UserPolicyGeneration,
+		ManifestSHA256:       intent.ManifestSHA256,
+		RootPayloadSHA256:    intent.RootPayloadSHA256,
+		UserPayloadSHA256:    intent.UserPayloadSHA256,
+		ApprovalSHA256:       intent.ApprovalSHA256,
+	}
+}
+
+func prepareResult(receipt policystore.PrepareReceipt) ipc.PreparePolicyResult {
+	return ipc.PreparePolicyResult{
+		TransactionID: receipt.TransactionID, Domain: receipt.Domain,
+		BundleGeneration: receipt.BundleGeneration,
+		PolicyGeneration: receipt.PolicyGeneration,
+		ManifestSHA256:   receipt.ManifestSHA256,
+		PayloadSHA256:    receipt.PayloadSHA256,
+		ApprovalSHA256:   receipt.ApprovalSHA256,
+	}
 }
 
 func candidateInput(identity ipc.PolicyTransactionIdentity) policystore.PrepareCandidateInput {

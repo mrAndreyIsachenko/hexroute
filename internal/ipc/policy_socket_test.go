@@ -313,7 +313,7 @@ func policyRequestForAction(
 	case ActionPreparePolicy:
 		request.PreparePolicy = &PreparePolicyRequest{Transaction: identity}
 	case ActionCommitPolicy:
-		request.CommitPolicy = &CommitPolicyRequest{Transaction: identity}
+		request.CommitPolicy = &CommitPolicyRequest{Transaction: identity, Phase: CommitPolicyStage}
 	case ActionAbortPolicy:
 		request.AbortPolicy = &AbortPolicyRequest{Transaction: identity}
 	}

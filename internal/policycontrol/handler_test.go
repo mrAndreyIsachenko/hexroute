@@ -16,19 +16,26 @@ import (
 )
 
 type recordingCandidateStore struct {
-	domain       policy.Domain
-	input        policystore.PrepareCandidateInput
-	installed    policy.InstalledCompatibility
-	publicKey    ed25519.PublicKey
-	preparedAt   time.Time
-	receipt      policystore.PrepareReceipt
-	err          error
-	calls        int
-	commitResult policystore.CommitCandidateResult
-	commitErr    error
-	commitCalls  int
-	abortErr     error
-	abortCalls   int
+	domain        policy.Domain
+	input         policystore.PrepareCandidateInput
+	installed     policy.InstalledCompatibility
+	publicKey     ed25519.PublicKey
+	preparedAt    time.Time
+	receipt       policystore.PrepareReceipt
+	err           error
+	calls         int
+	commitResult  policystore.CommitCandidateResult
+	commitErr     error
+	stageCalls    int
+	activateCalls int
+	confirmCalls  int
+	abortErr      error
+	abortCalls    int
+	recoverResult policystore.RevalidatedActive
+	recoverErr    error
+	recoverCalls  int
+	pendingIntent policystore.CommitIntent
+	pendingErr    error
 }
 
 func (store *recordingCandidateStore) Domain() policy.Domain { return store.domain }
@@ -47,11 +54,31 @@ func (store *recordingCandidateStore) PrepareCandidate(
 	return store.receipt, store.err
 }
 
-func (store *recordingCandidateStore) CommitCandidate(
+func (store *recordingCandidateStore) StageCommitCandidate(
+	input policystore.PrepareCandidateInput,
+	committedAt time.Time,
+) (policystore.StagedCandidate, error) {
+	store.stageCalls++
+	store.input = input
+	store.preparedAt = committedAt
+	return policystore.StagedCandidate{PolicySchema: store.commitResult.PolicySchema}, store.commitErr
+}
+
+func (store *recordingCandidateStore) ActivateCandidate(
 	input policystore.PrepareCandidateInput,
 	committedAt time.Time,
 ) (policystore.CommitCandidateResult, error) {
-	store.commitCalls++
+	store.activateCalls++
+	store.input = input
+	store.preparedAt = committedAt
+	return store.commitResult, store.commitErr
+}
+
+func (store *recordingCandidateStore) ConfirmCandidate(
+	input policystore.PrepareCandidateInput,
+	committedAt time.Time,
+) (policystore.CommitCandidateResult, error) {
+	store.confirmCalls++
 	store.input = input
 	store.preparedAt = committedAt
 	return store.commitResult, store.commitErr
@@ -65,6 +92,54 @@ func (store *recordingCandidateStore) AbortCandidate(
 	store.input = input
 	store.preparedAt = abortedAt
 	return store.abortErr
+}
+
+func (store *recordingCandidateStore) RecoverActive(
+	policy.InstalledCompatibility,
+	ed25519.PublicKey,
+	time.Time,
+) (policystore.RevalidatedActive, error) {
+	store.recoverCalls++
+	if store.recoverErr != nil {
+		return policystore.RevalidatedActive{}, store.recoverErr
+	}
+	if store.recoverResult.Generation.Bundle == 0 {
+		if store.activateCalls == 0 {
+			return policystore.RevalidatedActive{}, policystore.ErrRecordNotFound
+		}
+		pointer := store.commitResult.Pointer
+		return policystore.RevalidatedActive{
+			Domain: pointer.Domain,
+			Generation: policystore.Generation{
+				Bundle: pointer.BundleGeneration, Policy: pointer.PolicyGeneration,
+			},
+			ManifestSHA256: pointer.ManifestSHA256,
+			PayloadSHA256:  pointer.PayloadSHA256,
+			ActivatedAt:    pointer.ActivatedAt,
+			Manifest:       policy.Manifest{PolicySchema: store.commitResult.PolicySchema},
+			Intent: policystore.CommitIntent{
+				TransactionID:        store.input.TransactionID,
+				BundleGeneration:     store.input.BundleGeneration,
+				RootPolicyGeneration: store.input.RootPolicyGeneration,
+				UserPolicyGeneration: store.input.UserPolicyGeneration,
+				ManifestSHA256:       store.input.ManifestSHA256,
+				RootPayloadSHA256:    store.input.RootPayloadSHA256,
+				UserPayloadSHA256:    store.input.UserPayloadSHA256,
+				ApprovalSHA256:       store.input.ApprovalSHA256,
+			},
+		}, nil
+	}
+	return store.recoverResult, nil
+}
+
+func (store *recordingCandidateStore) RecoverPendingCommit() (policystore.CommitIntent, error) {
+	if store.pendingErr != nil {
+		return policystore.CommitIntent{}, store.pendingErr
+	}
+	if store.pendingIntent.TransactionID == "" {
+		return policystore.CommitIntent{}, policystore.ErrRecordNotFound
+	}
+	return store.pendingIntent, nil
 }
 
 func TestHandlerPublishesStatusAndMapsPrepareToDomainStore(t *testing.T) {
@@ -150,7 +225,9 @@ func TestHandlerRejectsUnavailableAndUnauthorizedLifecycleOperations(t *testing.
 	for _, action := range []ipc.Action{ipc.ActionCommitPolicy, ipc.ActionAbortPolicy} {
 		request := ipc.Request{Version: ipc.ProtocolVersion, RequestID: "not-yet-authorized", Action: action}
 		if action == ipc.ActionCommitPolicy {
-			request.CommitPolicy = &ipc.CommitPolicyRequest{Transaction: identity}
+			request.CommitPolicy = &ipc.CommitPolicyRequest{
+				Transaction: identity, Phase: ipc.CommitPolicyStage,
+			}
 		} else {
 			request.AbortPolicy = &ipc.AbortPolicyRequest{Transaction: identity}
 		}
@@ -206,15 +283,39 @@ func TestHandlerRevalidatesBeforeCommitAndRestoresStatusOnAbort(t *testing.T) {
 	if response := handler.HandleIPC(context.Background(), prepareRequest); !response.OK {
 		t.Fatalf("prepare response = %+v", response)
 	}
-	commit := handler.HandleIPC(context.Background(), ipc.Request{
-		Version: ipc.ProtocolVersion, RequestID: "commit-lifecycle",
-		Action:       ipc.ActionCommitPolicy,
-		CommitPolicy: &ipc.CommitPolicyRequest{Transaction: identity},
+	stage := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "stage-lifecycle",
+		Action: ipc.ActionCommitPolicy,
+		CommitPolicy: &ipc.CommitPolicyRequest{
+			Transaction: identity, Phase: ipc.CommitPolicyStage,
+		},
 	})
-	if !commit.OK || commit.CommitPolicy == nil || store.calls != 2 || store.commitCalls != 1 ||
-		commit.CommitPolicy.Status.State != policy.PolicyActive ||
-		commit.CommitPolicy.Status.ActivatedAt != activeAt {
-		t.Fatalf("commit response=%+v store=%+v", commit, store)
+	if !stage.OK || stage.CommitPolicy == nil || store.stageCalls != 1 || handler.MutationAllowed() {
+		t.Fatalf("stage response=%+v store=%+v", stage, store)
+	}
+	activate := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "activate-lifecycle",
+		Action: ipc.ActionCommitPolicy,
+		CommitPolicy: &ipc.CommitPolicyRequest{
+			Transaction: identity, Phase: ipc.CommitPolicyActivate,
+		},
+	})
+	if !activate.OK || activate.CommitPolicy == nil || store.calls != 3 ||
+		store.activateCalls != 1 ||
+		activate.CommitPolicy.Status.State != policy.PolicyDomainMismatch ||
+		activate.CommitPolicy.Status.ActivatedAt != activeAt || handler.MutationAllowed() {
+		t.Fatalf("activate response=%+v store=%+v", activate, store)
+	}
+	confirm := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "confirm-lifecycle",
+		Action: ipc.ActionCommitPolicy,
+		CommitPolicy: &ipc.CommitPolicyRequest{
+			Transaction: identity, Phase: ipc.CommitPolicyConfirm,
+		},
+	})
+	if !confirm.OK || confirm.CommitPolicy == nil || store.confirmCalls != 1 ||
+		confirm.CommitPolicy.Status.State != policy.PolicyActive || !handler.MutationAllowed() {
+		t.Fatalf("confirm response=%+v store=%+v", confirm, store)
 	}
 
 	abortStore := &recordingCandidateStore{domain: policy.DomainRoot, receipt: receipt}
@@ -301,6 +402,128 @@ func TestHandlerRejectsASecondPreparedTransaction(t *testing.T) {
 	})
 	if second.Error != ipc.ErrorPrecondition || store.calls != 1 {
 		t.Fatalf("second prepare=%+v calls=%d", second, store.calls)
+	}
+}
+
+func TestHandlerRestoresConfirmedAndUnconfirmedActiveStatusAtStartup(t *testing.T) {
+	publicKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{5}, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainUser, publicKey).Runtime(policy.DomainUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := syntheticIPCIdentity()
+	for _, test := range []struct {
+		name        string
+		confirmedAt string
+		state       policy.PolicyState
+		allowed     bool
+	}{
+		{name: "unconfirmed", state: policy.PolicyDomainMismatch},
+		{name: "confirmed", confirmedAt: "2030-01-01T00:31:00Z", state: policy.PolicyActive, allowed: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := &recordingCandidateStore{
+				domain: policy.DomainUser,
+				recoverResult: policystore.RevalidatedActive{
+					Domain: policy.DomainUser,
+					Generation: policystore.Generation{
+						Bundle: identity.BundleGeneration, Policy: identity.UserPolicyGeneration,
+					},
+					ManifestSHA256: identity.ManifestSHA256,
+					PayloadSHA256:  identity.UserPayloadSHA256,
+					ActivatedAt:    "2030-01-01T00:30:00Z", ConfirmedAt: test.confirmedAt,
+					Manifest: policy.Manifest{PolicySchema: runtime.Installed.CurrentPolicySchema},
+					Intent: policystore.CommitIntent{
+						TransactionID:        identity.TransactionID,
+						BundleGeneration:     identity.BundleGeneration,
+						RootPolicyGeneration: identity.RootPolicyGeneration,
+						UserPolicyGeneration: identity.UserPolicyGeneration,
+						ManifestSHA256:       identity.ManifestSHA256,
+						RootPayloadSHA256:    identity.RootPayloadSHA256,
+						UserPayloadSHA256:    identity.UserPayloadSHA256,
+						ApprovalSHA256:       identity.ApprovalSHA256,
+					},
+				},
+			}
+			handler, err := NewHandler(store, runtime, func() time.Time {
+				return time.Date(2030, time.January, 1, 0, 32, 0, 0, time.UTC)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := handler.HandleIPC(context.Background(), ipc.Request{
+				Version: ipc.ProtocolVersion, RequestID: "recovered-status",
+				Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+			})
+			if !response.OK || response.PolicyStatus.Status.State != test.state ||
+				handler.MutationAllowed() != test.allowed {
+				t.Fatalf("status=%+v allowed=%t", response, handler.MutationAllowed())
+			}
+			if test.confirmedAt != "" {
+				prepare := handler.HandleIPC(context.Background(), ipc.Request{
+					Version: ipc.ProtocolVersion, RequestID: "retry-prepare",
+					Action:        ipc.ActionPreparePolicy,
+					PreparePolicy: &ipc.PreparePolicyRequest{Transaction: identity},
+				})
+				stage := handler.HandleIPC(context.Background(), ipc.Request{
+					Version: ipc.ProtocolVersion, RequestID: "retry-stage",
+					Action: ipc.ActionCommitPolicy,
+					CommitPolicy: &ipc.CommitPolicyRequest{
+						Transaction: identity, Phase: ipc.CommitPolicyStage,
+					},
+				})
+				if !prepare.OK || !stage.OK || stage.CommitPolicy.Status.State != policy.PolicyActive ||
+					!handler.MutationAllowed() {
+					t.Fatalf("confirmed retry prepare=%+v stage=%+v", prepare, stage)
+				}
+			}
+		})
+	}
+}
+
+func TestHandlerRestoresPendingCommitAsMismatchAtStartup(t *testing.T) {
+	publicKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{4}, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainRoot, publicKey).Runtime(policy.DomainRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := syntheticIPCIdentity()
+	receipt := policystore.PrepareReceipt{
+		Schema:        policystore.PrepareReceiptSchema,
+		TransactionID: identity.TransactionID, Domain: policy.DomainRoot,
+		BundleGeneration: identity.BundleGeneration,
+		PolicyGeneration: identity.RootPolicyGeneration,
+		ManifestSHA256:   identity.ManifestSHA256,
+		PayloadSHA256:    identity.RootPayloadSHA256,
+		ApprovalSHA256:   identity.ApprovalSHA256,
+		PreparedAt:       "2030-01-01T00:30:00Z",
+	}
+	store := &recordingCandidateStore{
+		domain: policy.DomainRoot, receipt: receipt,
+		pendingIntent: policystore.CommitIntent{
+			TransactionID:        identity.TransactionID,
+			BundleGeneration:     identity.BundleGeneration,
+			RootPolicyGeneration: identity.RootPolicyGeneration,
+			UserPolicyGeneration: identity.UserPolicyGeneration,
+			ManifestSHA256:       identity.ManifestSHA256,
+			RootPayloadSHA256:    identity.RootPayloadSHA256,
+			UserPayloadSHA256:    identity.UserPayloadSHA256,
+			ApprovalSHA256:       identity.ApprovalSHA256,
+		},
+	}
+	handler, err := NewHandler(store, runtime, func() time.Time {
+		return time.Date(2030, time.January, 1, 0, 31, 0, 0, time.UTC)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "pending-status",
+		Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+	})
+	if !response.OK || response.PolicyStatus.Status.State != policy.PolicyDomainMismatch ||
+		handler.MutationAllowed() {
+		t.Fatalf("pending status=%+v allowed=%t", response, handler.MutationAllowed())
 	}
 }
 

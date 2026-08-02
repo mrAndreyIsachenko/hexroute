@@ -22,6 +22,7 @@ type MutationHandler interface {
 
 type PolicyHandler interface {
 	HandleIPC(context.Context, ipc.Request) ipc.Response
+	MutationAllowed() bool
 }
 
 func NewDispatcher(
@@ -50,6 +51,12 @@ func (dispatcher *Dispatcher) HandleIPC(
 	case ipc.ActionStatus, ipc.ActionExportDiagnostics:
 		return dispatcher.readOnly.Handle(request)
 	case ipc.ActionResumeTarget, ipc.ActionRescuePritunlService:
+		if !dispatcher.policy.MutationAllowed() {
+			return ipc.Response{
+				Version: ipc.ProtocolVersion, RequestID: request.RequestID,
+				Error: ipc.ErrorPrecondition,
+			}
+		}
 		return dispatcher.mutating.HandleIPC(ctx, request)
 	case ipc.ActionPolicyStatus,
 		ipc.ActionPreparePolicy,

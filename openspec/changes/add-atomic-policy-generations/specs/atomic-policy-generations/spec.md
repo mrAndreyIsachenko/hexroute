@@ -202,15 +202,22 @@ rejected payloads, and bound retained audit metadata to 90 days.
 
 Policy activation SHALL use versioned `PreparePolicy`, `CommitPolicy` and
 `AbortPolicy` IPC requests containing only bounded transaction identity,
-generation and digest fields. Each daemon SHALL derive fixed local paths and
-independently validate ownership, mode, schema, signature, hashes, validity,
-static binding and domain semantics before persisting a prepare receipt.
+generation, digest and commit-phase fields. Each daemon SHALL derive fixed
+local paths and independently validate ownership, mode, schema, signature,
+hashes, validity, static binding and domain semantics before persisting a
+prepare receipt.
 
 #### Scenario: Both domains prepare and commit the same bundle
 
 - **WHEN** root and user daemons persist valid prepare receipts for the same signed bundle and domain hashes
 - **THEN** commit atomically replaces each domain's signed active pointer
 - **AND** both daemons publish the same active bundle generation
+
+#### Scenario: Commit intents are not durable in both domains
+
+- **WHEN** either daemon fails the bounded `stage` commit phase
+- **THEN** neither domain advances its active pointer
+- **AND** the coordinator aborts the candidate in both domains
 
 #### Scenario: One domain rejects prepare
 
@@ -231,6 +238,10 @@ commits and the other is unavailable, the system SHALL expose `domain_mismatch`,
 block new mutations and converge the lagging daemon forward to the same signed
 bundle after restart and complete revalidation. It SHALL NOT automatically roll
 the committed daemon back.
+
+The coordinator SHALL stage the intent in both domains before `activate`, SHALL
+publish `domain_mismatch` for an unconfirmed active pointer, and SHALL issue
+`confirm` only after both activation responses match the signed transaction.
 
 #### Scenario: User daemon crashes between domain commits
 

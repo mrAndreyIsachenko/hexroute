@@ -15,8 +15,10 @@ type RevalidatedActive struct {
 	ManifestSHA256 string
 	PayloadSHA256  string
 	ActivatedAt    string
+	ConfirmedAt    string
 	Manifest       policy.Manifest
 	Payload        policy.DomainPayload
+	Intent         CommitIntent
 }
 
 var ErrActivePointerConsistency = errors.New("active policy evidence is inconsistent")
@@ -25,6 +27,26 @@ func (store *Store) RevalidateActive(
 	installed policy.InstalledCompatibility,
 	pinnedPublicKey ed25519.PublicKey,
 	now time.Time,
+) (RevalidatedActive, error) {
+	return store.revalidateActive(installed, pinnedPublicKey, now, false)
+}
+
+// RecoverActive derives only the dynamic current-generation fields from fully
+// revalidated active evidence. Static bounds, compiler trust and the signer key
+// remain pinned by installed configuration.
+func (store *Store) RecoverActive(
+	installed policy.InstalledCompatibility,
+	pinnedPublicKey ed25519.PublicKey,
+	now time.Time,
+) (RevalidatedActive, error) {
+	return store.revalidateActive(installed, pinnedPublicKey, now, true)
+}
+
+func (store *Store) revalidateActive(
+	installed policy.InstalledCompatibility,
+	pinnedPublicKey ed25519.PublicKey,
+	now time.Time,
+	recoverDynamic bool,
 ) (RevalidatedActive, error) {
 	if installed.Validate() != nil || installed.Domain != storeDomain(store) ||
 		len(pinnedPublicKey) != ed25519.PublicKeySize || now.IsZero() {
@@ -40,8 +62,12 @@ func (store *Store) RevalidateActive(
 	if err != nil {
 		return RevalidatedActive{}, err
 	}
-	if err := store.validateStartupRecordsLocked(pointer); err != nil {
+	intent, resolutionMissing, err := store.validateStartupRecordsLocked(pointer)
+	if err != nil {
 		return RevalidatedActive{}, err
+	}
+	if resolutionMissing && !recoverDynamic {
+		return RevalidatedActive{}, ErrActivePointerConsistency
 	}
 
 	generation := Generation{Bundle: pointer.BundleGeneration, Policy: pointer.PolicyGeneration}
@@ -95,13 +121,42 @@ func (store *Store) RevalidateActive(
 	); err != nil {
 		return RevalidatedActive{}, err
 	}
-	if err := policy.CheckActiveCompatibility(manifest, payload, installed); err != nil {
+	activeCompatibility := installed
+	if recoverDynamic {
+		activeCompatibility.CurrentPolicySchema = manifest.PolicySchema
+		activeCompatibility.CurrentBundleGeneration = manifest.BundleGeneration
+		activeCompatibility.CurrentPolicyGeneration = payload.PolicyGeneration
+		activeCompatibility.CurrentPayloadSHA256 = payloadDigest
+	}
+	if err := policy.CheckActiveCompatibility(manifest, payload, activeCompatibility); err != nil {
 		return RevalidatedActive{}, err
+	}
+	if resolutionMissing {
+		resolution := ResolutionRecord{
+			Schema: ResolutionSchema, TransactionID: pointer.TransactionID,
+			Domain: pointer.Domain, State: policy.PolicyActive,
+			BundleGeneration: pointer.BundleGeneration,
+			PolicyGeneration: pointer.PolicyGeneration,
+			ManifestSHA256:   pointer.ManifestSHA256,
+			PayloadSHA256:    pointer.PayloadSHA256,
+			ResolvedAt:       pointer.ActivatedAt, Reason: policy.ReasonNone,
+		}
+		encoded, marshalErr := marshalRecord(resolution)
+		name, nameErr := transactionRecordFilename(recordResolution, pointer.TransactionID)
+		if marshalErr != nil || nameErr != nil ||
+			store.validateResolutionTransitionLocked(resolution) != nil ||
+			store.persistImmutableRecordLocked(recordResolution, name, encoded) != nil {
+			return RevalidatedActive{}, ErrActivePointerConsistency
+		}
+		if _, err := store.applyRetentionLocked(now.UTC()); err != nil {
+			return RevalidatedActive{}, err
+		}
 	}
 	return RevalidatedActive{
 		Domain: store.domain, Generation: generation,
 		ManifestSHA256: manifestDigest, PayloadSHA256: payloadDigest,
-		ActivatedAt: pointer.ActivatedAt, Manifest: manifest, Payload: payload,
+		ActivatedAt: pointer.ActivatedAt, ConfirmedAt: pointer.ConfirmedAt,
+		Manifest: manifest, Payload: payload, Intent: intent,
 	}, nil
 }
 
@@ -113,7 +168,12 @@ func activePointerTimeConsistent(
 	activatedAt, activatedErr := time.Parse(time.RFC3339Nano, pointer.ActivatedAt)
 	notBefore, notBeforeErr := time.Parse(time.RFC3339Nano, manifest.NotBefore)
 	expiresAt, expiresErr := time.Parse(time.RFC3339Nano, manifest.ExpiresAt)
-	return activatedErr == nil && notBeforeErr == nil && expiresErr == nil &&
+	confirmedOK := true
+	if pointer.ConfirmedAt != "" {
+		confirmedAt, confirmedErr := time.Parse(time.RFC3339Nano, pointer.ConfirmedAt)
+		confirmedOK = confirmedErr == nil && !confirmedAt.After(now)
+	}
+	return activatedErr == nil && notBeforeErr == nil && expiresErr == nil && confirmedOK &&
 		!activatedAt.Before(notBefore) && activatedAt.Before(expiresAt) && !activatedAt.After(now)
 }
 
@@ -129,39 +189,44 @@ func (store *Store) readStartupPointerLocked() (ActivePointer, error) {
 	return pointer, nil
 }
 
-func (store *Store) validateStartupRecordsLocked(pointer ActivePointer) error {
+func (store *Store) validateStartupRecordsLocked(
+	pointer ActivePointer,
+) (CommitIntent, bool, error) {
 	receiptName, _ := transactionRecordFilename(recordPrepare, pointer.TransactionID)
 	receiptEncoded, err := store.readRecordLocked(receiptName)
 	if err != nil {
-		return ErrActivePointerConsistency
+		return CommitIntent{}, false, ErrActivePointerConsistency
 	}
 	receipt, err := decodeRecord[PrepareReceipt](receiptEncoded)
 	if err != nil || receipt.Validate() != nil || !receiptMatchesPointer(receipt, pointer) {
-		return ErrActivePointerConsistency
+		return CommitIntent{}, false, ErrActivePointerConsistency
 	}
 
 	intentName, _ := transactionRecordFilename(recordCommit, pointer.TransactionID)
 	intentEncoded, err := store.readRecordLocked(intentName)
 	if err != nil {
-		return ErrActivePointerConsistency
+		return CommitIntent{}, false, ErrActivePointerConsistency
 	}
 	intent, err := decodeRecord[CommitIntent](intentEncoded)
 	if err != nil || intent.Validate() != nil || !pointerMatchesIntent(pointer, intent) ||
 		intent.Approval != pointer.Approval {
-		return ErrActivePointerConsistency
+		return CommitIntent{}, false, ErrActivePointerConsistency
 	}
 
 	resolutionName, _ := transactionRecordFilename(recordResolution, pointer.TransactionID)
 	resolutionEncoded, err := store.readRecordLocked(resolutionName)
+	if errors.Is(err, ErrRecordNotFound) {
+		return intent, true, nil
+	}
 	if err != nil {
-		return ErrActivePointerConsistency
+		return CommitIntent{}, false, ErrActivePointerConsistency
 	}
 	resolution, err := decodeRecord[ResolutionRecord](resolutionEncoded)
 	if err != nil || resolution.Validate() != nil || resolution.State != policy.PolicyActive ||
 		!resolutionMatchesPointer(resolution, pointer) {
-		return ErrActivePointerConsistency
+		return CommitIntent{}, false, ErrActivePointerConsistency
 	}
-	return nil
+	return intent, false, nil
 }
 
 func receiptMatchesPointer(receipt PrepareReceipt, pointer ActivePointer) bool {

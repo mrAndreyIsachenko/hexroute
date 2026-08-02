@@ -27,7 +27,7 @@ func TestPolicyRequestFrameRoundTrip(t *testing.T) {
 		},
 		{
 			Version: ProtocolVersion, RequestID: "policy-commit-01", Action: ActionCommitPolicy,
-			CommitPolicy: &CommitPolicyRequest{Transaction: transaction},
+			CommitPolicy: &CommitPolicyRequest{Transaction: transaction, Phase: CommitPolicyStage},
 		},
 		{
 			Version: ProtocolVersion, RequestID: "policy-abort-01", Action: ActionAbortPolicy,
@@ -71,7 +71,7 @@ func TestPolicyResponseFrameRoundTrip(t *testing.T) {
 		},
 		{
 			Version: ProtocolVersion, RequestID: "policy-commit-01", OK: true,
-			CommitPolicy: &CommitPolicyResult{TransactionID: policyTransactionID, Status: status},
+			CommitPolicy: &CommitPolicyResult{TransactionID: policyTransactionID, Phase: CommitPolicyConfirm, Status: status},
 		},
 		{
 			Version: ProtocolVersion, RequestID: "policy-abort-01", OK: true,
@@ -104,17 +104,21 @@ func TestPolicyRequestUnionRejectsMismatchedOrUnboundedMessages(t *testing.T) {
 		},
 		{
 			Version: ProtocolVersion, RequestID: "wrong-body", Action: ActionPreparePolicy,
-			CommitPolicy: &CommitPolicyRequest{Transaction: transaction},
+			CommitPolicy: &CommitPolicyRequest{Transaction: transaction, Phase: CommitPolicyStage},
 		},
 		{
 			Version: ProtocolVersion, RequestID: "multiple-bodies", Action: ActionCommitPolicy,
 			PreparePolicy: &PreparePolicyRequest{Transaction: transaction},
-			CommitPolicy:  &CommitPolicyRequest{Transaction: transaction},
+			CommitPolicy:  &CommitPolicyRequest{Transaction: transaction, Phase: CommitPolicyStage},
 		},
 		{
 			Version: ProtocolVersion, RequestID: "legacy-field", Action: ActionAbortPolicy,
 			ExpectedGeneration: 4,
 			AbortPolicy:        &AbortPolicyRequest{Transaction: transaction},
+		},
+		{
+			Version: ProtocolVersion, RequestID: "missing-commit-phase", Action: ActionCommitPolicy,
+			CommitPolicy: &CommitPolicyRequest{Transaction: transaction},
 		},
 	}
 	for _, request := range tests {
@@ -137,7 +141,7 @@ func TestPolicyRequestUnionRejectsMismatchedOrUnboundedMessages(t *testing.T) {
 func TestPolicyMessagesExposeOnlyBoundedIdentityFields(t *testing.T) {
 	requests := []any{
 		PreparePolicyRequest{Transaction: syntheticPolicyTransaction()},
-		CommitPolicyRequest{Transaction: syntheticPolicyTransaction()},
+		CommitPolicyRequest{Transaction: syntheticPolicyTransaction(), Phase: CommitPolicyStage},
 		AbortPolicyRequest{Transaction: syntheticPolicyTransaction()},
 	}
 	for _, request := range requests {
