@@ -19,7 +19,7 @@ func TestPolicyAuthorizationPackagesHaveNoDataPlaneMutationDependencies(t *testi
 		"/internal/routeplan",
 		"/internal/userobserve",
 	}
-	for _, directory := range []string{".", "../policystore", "../policy"} {
+	for _, directory := range []string{".", "../actionlease", "../policystore", "../policy"} {
 		entries, err := os.ReadDir(directory)
 		if err != nil {
 			t.Fatal(err)

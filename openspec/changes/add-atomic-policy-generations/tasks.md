@@ -51,7 +51,7 @@
 
 ## 7. Action Leases And Transaction Plans
 
-- [ ] 7.1 Implement durable one-time action leases bound to bundle, domain-policy and control-state generations, exact target, plan digest, boot ID and nonce.
+- [x] 7.1 Implement durable one-time action leases bound to bundle, domain-policy and control-state generations, exact target, plan digest, boot ID and nonce.
 - [ ] 7.2 Reject replayed, expired, stale and boot-mismatched leases immediately before every step and commit, with durable committed/aborted/expired outcomes.
 - [ ] 7.3 Add immutable ordered plan, verification and inverse-plan primitives that roll back only transaction-owned state and never foreign or ambiguous state.
 - [ ] 7.4 Add failure tests proving stale mid-plan actions stop, verified owned steps roll back, and rollback failure moves only the target to `SAFE_MODE` with a critical incident.

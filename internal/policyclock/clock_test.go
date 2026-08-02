@@ -56,32 +56,31 @@ func TestGuardAcceptsContinuousTimeAcrossSleep(t *testing.T) {
 
 func TestPendingLeaseUsesMonotonicExpiryAndBootIdentity(t *testing.T) {
 	lease := syntheticLease()
-	if err := ValidatePendingLease(lease, LeaseSample{MonotonicNS: 15, BootID: bootOne}); err != nil {
+	if err := ValidatePendingLease(lease, LeaseSample{MonotonicNS: int64(15 * time.Second), BootID: bootOne}); err != nil {
 		t.Fatalf("valid lease: %v", err)
 	}
-	if err := ValidatePendingLease(lease, LeaseSample{MonotonicNS: 20, BootID: bootOne}); !errors.Is(err, ErrLeaseExpired) {
+	if err := ValidatePendingLease(lease, LeaseSample{MonotonicNS: int64(20 * time.Second), BootID: bootOne}); !errors.Is(err, ErrLeaseExpired) {
 		t.Fatalf("sleep-counted expiry error = %v", err)
 	}
-	if err := ValidatePendingLease(lease, LeaseSample{MonotonicNS: 15, BootID: bootTwo}); !errors.Is(err, ErrLeaseBootMismatch) {
+	if err := ValidatePendingLease(lease, LeaseSample{MonotonicNS: int64(15 * time.Second), BootID: bootTwo}); !errors.Is(err, ErrLeaseBootMismatch) {
 		t.Fatalf("boot mismatch error = %v", err)
 	}
-	if err := ValidatePendingLease(lease, LeaseSample{MonotonicNS: 9, BootID: bootOne}); !errors.Is(err, ErrClockAnomaly) {
+	if err := ValidatePendingLease(lease, LeaseSample{MonotonicNS: int64(9 * time.Second), BootID: bootOne}); !errors.Is(err, ErrClockAnomaly) {
 		t.Fatalf("monotonic rollback error = %v", err)
 	}
 }
 
 func TestUnfinishedPreRebootLeaseCannotResume(t *testing.T) {
 	lease := syntheticLease()
-	lease.ExpiresAt = "2030-01-01T01:00:00Z"
 	if err := ValidatePendingLease(
 		lease,
-		LeaseSample{MonotonicNS: 15, BootID: bootOne},
+		LeaseSample{MonotonicNS: int64(15 * time.Second), BootID: bootOne},
 	); err != nil {
 		t.Fatalf("lease before reboot: %v", err)
 	}
 	if err := ValidatePendingLease(
 		lease,
-		LeaseSample{MonotonicNS: 1, BootID: bootTwo},
+		LeaseSample{MonotonicNS: int64(time.Second), BootID: bootTwo},
 	); !errors.Is(err, ErrLeaseBootMismatch) {
 		t.Fatalf("pre-reboot lease error = %v", err)
 	}
@@ -96,7 +95,7 @@ func syntheticLease() policy.ActionLease {
 		ControlStateGeneration: 8, Target: "pritunl",
 		PlanSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		IssuedAt:   "2030-01-01T00:00:00Z", ExpiresAt: "2030-01-01T00:00:10Z",
-		IssuedMonotonicNS: 10, ExpiresMonotonicNS: 20,
+		IssuedMonotonicNS: int64(10 * time.Second), ExpiresMonotonicNS: int64(20 * time.Second),
 		BootID: bootOne, Nonce: bootTwo, Status: policy.LeasePending,
 	}
 }

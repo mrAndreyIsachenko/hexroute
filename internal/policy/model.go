@@ -1,6 +1,10 @@
 package policy
 
-import "github.com/mrAndreyIsachenko/hexroute/internal/metadata"
+import (
+	"time"
+
+	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
+)
 
 const (
 	ManifestSchema                = "hexroute.policy-manifest.v1"
@@ -16,6 +20,7 @@ const (
 	MaxIdentifierBytes            = 64
 	MaxTargetBytes                = 64
 	MaxCompilerVersion            = 32
+	MaxActionLeaseTTL             = 5 * time.Minute
 )
 
 type Domain string

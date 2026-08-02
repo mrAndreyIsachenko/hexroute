@@ -328,6 +328,8 @@ type retentionState struct {
 	receipts       map[metadata.UUID]PrepareReceipt
 	commits        map[metadata.UUID]CommitIntent
 	resolutions    map[metadata.UUID]ResolutionRecord
+	actionLeases   map[metadata.UUID]policy.ActionLease
+	actionNonces   map[metadata.UUID]actionNonceClaim
 	transientNames []string
 }
 
@@ -337,9 +339,11 @@ func (store *Store) scanRetentionStateLocked() (retentionState, error) {
 		return retentionState{}, err
 	}
 	state := retentionState{
-		receipts:    make(map[metadata.UUID]PrepareReceipt),
-		commits:     make(map[metadata.UUID]CommitIntent),
-		resolutions: make(map[metadata.UUID]ResolutionRecord),
+		receipts:     make(map[metadata.UUID]PrepareReceipt),
+		commits:      make(map[metadata.UUID]CommitIntent),
+		resolutions:  make(map[metadata.UUID]ResolutionRecord),
+		actionLeases: make(map[metadata.UUID]policy.ActionLease),
+		actionNonces: make(map[metadata.UUID]actionNonceClaim),
 	}
 	for _, name := range names {
 		switch {
@@ -378,8 +382,29 @@ func (store *Store) scanRetentionStateLocked() (retentionState, error) {
 				return retentionState{}, ErrInvalidRecord
 			}
 			state.resolutions[transactionID] = resolution
+		case recordActionLease:
+			lease, decodeErr := decodeRecord[policy.ActionLease](encoded)
+			if decodeErr != nil || lease.Validate() != nil || lease.Status != policy.LeasePending ||
+				lease.Domain != store.domain || lease.ActionID != transactionID {
+				return retentionState{}, ErrInvalidRecord
+			}
+			state.actionLeases[transactionID] = lease
+		case recordActionNonce:
+			claim, decodeErr := decodeRecord[actionNonceClaim](encoded)
+			if decodeErr != nil || claim.Validate() != nil || claim.Domain != store.domain ||
+				claim.Nonce != transactionID {
+				return retentionState{}, ErrInvalidRecord
+			}
+			state.actionNonces[transactionID] = claim
 		default:
 			return retentionState{}, ErrInvalidRecord
+		}
+	}
+	for _, lease := range state.actionLeases {
+		claim, exists := state.actionNonces[lease.Nonce]
+		if !exists || claim.ActionID != lease.ActionID || claim.Domain != lease.Domain ||
+			claim.ClaimedAt != lease.IssuedAt {
+			return retentionState{}, ErrRecordConflict
 		}
 	}
 	return state, nil
@@ -617,7 +642,9 @@ func directoryEntryNames(directoryFD int) ([]string, error) {
 }
 
 func parseTransactionRecordFilename(name string) (recordOperation, metadata.UUID, bool) {
-	for _, operation := range []recordOperation{recordPrepare, recordCommit, recordResolution} {
+	for _, operation := range []recordOperation{
+		recordPrepare, recordCommit, recordResolution, recordActionLease, recordActionNonce,
+	} {
 		prefix := string(operation) + "-"
 		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".json") {
 			continue

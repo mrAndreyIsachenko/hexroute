@@ -78,11 +78,13 @@ type ActivePointer struct {
 type recordOperation string
 
 const (
-	recordPrepare    recordOperation = "prepare"
-	recordCommit     recordOperation = "commit"
-	recordActive     recordOperation = "active"
-	recordResolution recordOperation = "resolution"
-	recordAudit      recordOperation = "audit"
+	recordPrepare     recordOperation = "prepare"
+	recordCommit      recordOperation = "commit"
+	recordActive      recordOperation = "active"
+	recordResolution  recordOperation = "resolution"
+	recordAudit       recordOperation = "audit"
+	recordActionLease recordOperation = "action-lease"
+	recordActionNonce recordOperation = "action-nonce"
 )
 
 type persistenceBoundary string
@@ -502,7 +504,7 @@ func transactionRecordFilename(operation recordOperation, transactionID metadata
 		return "", ErrInvalidRecord
 	}
 	switch operation {
-	case recordPrepare, recordCommit, recordResolution:
+	case recordPrepare, recordCommit, recordResolution, recordActionLease, recordActionNonce:
 		return string(operation) + "-" + string(transactionID) + ".json", nil
 	default:
 		return "", ErrInvalidRecord

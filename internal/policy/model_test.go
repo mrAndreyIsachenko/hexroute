@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -142,9 +143,9 @@ func TestActionLeaseValidate(t *testing.T) {
 		Target:                 "pritunl",
 		PlanSHA256:             testDigest,
 		IssuedAt:               testTime,
-		ExpiresAt:              testExpiry,
-		IssuedMonotonicNS:      10,
-		ExpiresMonotonicNS:     20,
+		ExpiresAt:              "2026-08-02T09:00:30Z",
+		IssuedMonotonicNS:      int64(10 * time.Second),
+		ExpiresMonotonicNS:     int64(40 * time.Second),
 		BootID:                 testUUID,
 		Nonce:                  "123e4567-e89b-42d3-a456-426614174001",
 		Status:                 LeasePending,
@@ -156,6 +157,22 @@ func TestActionLeaseValidate(t *testing.T) {
 	lease.ExpiresMonotonicNS = lease.IssuedMonotonicNS
 	if !errors.Is(lease.Validate(), ErrInvalidActionLease) {
 		t.Fatal("non-increasing monotonic lease should be rejected")
+	}
+	lease.ExpiresMonotonicNS = int64(40 * time.Second)
+	lease.ExpiresAt = "2026-08-02T09:00:31Z"
+	if !errors.Is(lease.Validate(), ErrInvalidActionLease) {
+		t.Fatal("different wall and monotonic TTLs should be rejected")
+	}
+	lease.ExpiresAt = "2026-08-02T09:06:00Z"
+	lease.ExpiresMonotonicNS = lease.IssuedMonotonicNS + int64(6*time.Minute)
+	if !errors.Is(lease.Validate(), ErrInvalidActionLease) {
+		t.Fatal("lease TTL above the hard limit should be rejected")
+	}
+	lease.ExpiresAt = "2026-08-02T09:00:30Z"
+	lease.ExpiresMonotonicNS = int64(40 * time.Second)
+	lease.Nonce = lease.ActionID
+	if !errors.Is(lease.Validate(), ErrInvalidActionLease) {
+		t.Fatal("action ID reused as nonce should be rejected")
 	}
 }
 

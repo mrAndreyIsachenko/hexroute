@@ -318,6 +318,10 @@ an action ID, bundle generation, owning domain generation, control-state
 generation, exact target and plan digest, issue and expiry times, boot ID and
 nonce. The executor SHALL reject replay, expiry, boot mismatch or any policy or
 state-generation change and SHALL persist `committed`, `aborted` or `expired`.
+Lease issuance SHALL default to 30 seconds, SHALL reject TTLs above five
+minutes, and SHALL persist an immutable nonce claim before the immutable pending
+lease. The domain store SHALL accept issuance only against a confirmed active
+pointer with matching bundle and owning-domain policy generations.
 
 #### Scenario: Control state changes before execution
 

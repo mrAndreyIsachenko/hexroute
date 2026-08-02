@@ -253,6 +253,14 @@ times, boot ID and a nonce. It is short-lived, one-time and durably recorded as
 committed, aborted or expired. Replay, expiry, boot mismatch or any generation
 change rejects execution.
 
+Issuance defaults to a 30-second TTL and rejects any TTL above five minutes.
+The domain-local protected policy store accepts a pending lease only against a
+confirmed active pointer with matching bundle and domain generations. It claims
+the nonce durably before writing the immutable lease, so an interrupted write
+may conservatively burn a nonce but can never leave an unclaimed executable
+lease. Durable outcomes and their bounded retention are added in the following
+lease-consumption task.
+
 The executor rechecks policy and control-state generations immediately before
 each mutation step and before commit. A multi-step action has an ordered plan,
 per-step verification and an inverse plan. On staleness or failure it rolls

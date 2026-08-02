@@ -189,6 +189,11 @@ func (lease AuthorizationLease) Validate() error {
 func (lease ActionLease) Validate() error {
 	issuedAt, issuedOK := parseCanonicalUTC(lease.IssuedAt)
 	expiresAt, expiresOK := parseCanonicalUTC(lease.ExpiresAt)
+	wallTTL := expiresAt.Sub(issuedAt)
+	var monotonicTTL time.Duration
+	if lease.IssuedMonotonicNS >= 0 && lease.ExpiresMonotonicNS > lease.IssuedMonotonicNS {
+		monotonicTTL = time.Duration(lease.ExpiresMonotonicNS - lease.IssuedMonotonicNS)
+	}
 	if lease.Schema != ActionLeaseSchema ||
 		!validUUID(lease.ActionID) ||
 		!lease.Domain.Valid() ||
@@ -201,10 +206,14 @@ func (lease ActionLease) Validate() error {
 		!issuedOK ||
 		!expiresOK ||
 		!expiresAt.After(issuedAt) ||
+		wallTTL > MaxActionLeaseTTL ||
 		lease.IssuedMonotonicNS < 0 ||
 		lease.ExpiresMonotonicNS <= lease.IssuedMonotonicNS ||
+		monotonicTTL > MaxActionLeaseTTL ||
+		wallTTL != monotonicTTL ||
 		!validUUID(lease.BootID) ||
 		!validUUID(lease.Nonce) ||
+		lease.Nonce == lease.ActionID ||
 		!lease.Status.Valid() {
 		return ErrInvalidActionLease
 	}
