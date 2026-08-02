@@ -25,6 +25,7 @@ const (
 	MaxRecordSize        = 64 * 1024
 
 	activePointerFilename = "active.json"
+	auditIndexFilename    = "audit.json"
 )
 
 type PrepareReceipt struct {
@@ -76,9 +77,11 @@ type ActivePointer struct {
 type recordOperation string
 
 const (
-	recordPrepare recordOperation = "prepare"
-	recordCommit  recordOperation = "commit"
-	recordActive  recordOperation = "active"
+	recordPrepare    recordOperation = "prepare"
+	recordCommit     recordOperation = "commit"
+	recordActive     recordOperation = "active"
+	recordResolution recordOperation = "resolution"
+	recordAudit      recordOperation = "audit"
 )
 
 type persistenceBoundary string
@@ -477,7 +480,7 @@ func transactionRecordFilename(operation recordOperation, transactionID metadata
 		return "", ErrInvalidRecord
 	}
 	switch operation {
-	case recordPrepare, recordCommit:
+	case recordPrepare, recordCommit, recordResolution:
 		return string(operation) + "-" + string(transactionID) + ".json", nil
 	default:
 		return "", ErrInvalidRecord

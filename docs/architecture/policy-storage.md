@@ -33,12 +33,15 @@ accepted only when they are single-link regular files owned by the exact store
 UID/GID. The API never accepts a caller-supplied artifact path and never
 replaces an existing generation file.
 
-The `state` directory contains only names derived from typed transaction IDs:
+The `state` directory contains typed transaction records plus two fixed index
+names:
 
 ```text
 prepare-11111111-1111-4111-8111-111111111111.json
 commit-11111111-1111-4111-8111-111111111111.json
+resolution-11111111-1111-4111-8111-111111111111.json
 active.json
+audit.json
 ```
 
 Prepare receipts bind the local domain, bundle and policy generations,
@@ -65,9 +68,33 @@ only by a higher bundle generation. A crash at any side of every file-sync,
 rename or directory-sync boundary leaves either the old complete record or the
 new complete record; retry converges without overwriting immutable evidence.
 
+Immutable terminal resolution records drive each retention transaction. An
+active resolution must exactly match the current active pointer and its durable
+prepare receipt and commit intent, and remains with the retained generation. A
+non-active resolution must not match the current pointer; after its redacted
+audit entry is durable, the resolution and candidate transaction records are
+removed. Unknown state filenames, malformed records, duplicate generation
+ownership and incomplete active evidence fail closed before retention removes
+anything.
+
+Retention is generation-based rather than file-count-based. Each domain keeps:
+
+- the newest 16 active resolved generations and their transaction evidence;
+- every prepare receipt that has no terminal resolution and its generation;
+- the generation referenced by the current active pointer;
+- a canonical redacted audit index covering at most 90 days and 128 entries.
+
+Audit entries contain only domain, terminal state, bundle and policy generation,
+manifest and payload digests, timestamp and a bounded reason. They deliberately
+exclude transaction IDs, approval signatures, selectors, endpoints, paths and
+candidate bodies. For rejected and restart-required candidates, the updated
+audit index is atomically persisted and directory-synchronized before full
+generation artifacts and transaction records are removed. Retention also
+cleans only recognized crash-temporary state files; it never accepts arbitrary
+deletion paths.
+
 This storage package is not a live installation or cutover. Signed active
-pointers, prepare receipts, commit intents and crash-point persistence are now
-implemented, but are not wired to either daemon. Retention and rejected-payload
-cleanup belong to task 4.3, and full signature/digest/startup revalidation
-belongs to task 4.4. Twilight remains the production owner throughout those
-changes.
+pointers, prepare receipts, commit intents, terminal resolutions, bounded
+retention and crash-point persistence are implemented, but are not wired to
+either daemon. Full signature, digest and startup revalidation belongs to task
+4.4. Twilight remains the production owner throughout those changes.
