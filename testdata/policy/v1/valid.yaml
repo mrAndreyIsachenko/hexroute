@@ -1,0 +1,38 @@
+schema: hexroute.operator-policy.v1
+policy_schema: 1
+bundle_generation: 2
+parent_bundle_generation: 1
+static_sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+issued_at: "2026-08-02T09:00:00Z"
+not_before: "2026-08-02T09:00:00Z"
+expires_at: "2026-08-02T10:00:00Z"
+root:
+  policy_generation: 1
+  rules:
+    - id: root.deny-resume
+      effect: deny
+      selector:
+        id: root.resume-routes
+        kind: action
+        action:
+          capability: operator_resume
+          target: routes
+user:
+  policy_generation: 2
+  rules:
+    - id: user.allow-resume
+      effect: allow
+      selector:
+        id: user.resume-pritunl
+        kind: action
+        action:
+          capability: operator_resume
+          target: pritunl
+  authorization_leases:
+    - id: user.synthetic-night-recovery
+      domain: user
+      capability: operator_resume
+      selector_ids:
+        - user.resume-pritunl
+      issued_at: "2026-08-02T09:00:00Z"
+      expires_at: "2026-08-02T10:00:00Z"

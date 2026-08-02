@@ -1,0 +1,15 @@
+schema: hexroute.operator-policy.v1
+policy_schema: 1
+bundle_generation: 1
+parent_bundle_generation: 0
+static_sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+issued_at: "2026-08-02T09:00:00Z"
+not_before: "2026-08-02T09:00:00Z"
+expires_at: "2026-08-02T10:00:00Z"
+root:
+  policy_generation: 1
+  rules: []
+  unexpected: true
+user:
+  policy_generation: 1
+  rules: []

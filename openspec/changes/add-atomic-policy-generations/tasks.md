@@ -1,10 +1,10 @@
 ## 1. Policy Model And Canonical Format
 
-- [ ] 1.1 Add typed manifest, root/user payload, selector, authorization-lease, action-lease and policy-status models with strict bounds and enum validation.
-- [ ] 1.2 Add strict operator YAML decoding that rejects duplicate keys, anchors, aliases and unknown fields, with malformed-source regression fixtures.
-- [ ] 1.3 Add RFC 8785 canonical JSON and SHA-256 digest support with published conformance vectors and deterministic ordering tests.
-- [ ] 1.4 Define the compiled safety envelope, protected static fields and disjoint root/user namespaces, and test that dynamic sources cannot expand them.
-- [ ] 1.5 Add schema-version, compiler-identity, static-digest and downgrade compatibility validation for both daemon domains.
+- [x] 1.1 Add typed manifest, root/user payload, selector, authorization-lease, action-lease and policy-status models with strict bounds and enum validation.
+- [x] 1.2 Add strict operator YAML decoding that rejects duplicate keys, anchors, aliases and unknown fields, with malformed-source regression fixtures.
+- [x] 1.3 Add RFC 8785 canonical JSON and SHA-256 digest support with published conformance vectors and deterministic ordering tests.
+- [x] 1.4 Define the compiled safety envelope, protected static fields and disjoint root/user namespaces, and test that dynamic sources cannot expand them.
+- [x] 1.5 Add schema-version, compiler-identity, static-digest and downgrade compatibility validation for both daemon domains.
 
 ## 2. Composition And Conflict Validation
 
