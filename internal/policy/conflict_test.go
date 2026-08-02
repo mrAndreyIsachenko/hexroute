@@ -94,8 +94,8 @@ func conflictSnapshot(rootRules, userRules []Rule) EffectiveSnapshot {
 		Schema: EffectiveSnapshotSchema, PolicySchema: 1,
 		BundleGeneration: 2, ParentBundleGeneration: 1,
 		StaticSHA256: testDigest, IssuedAt: testTime, NotBefore: testTime, ExpiresAt: testExpiry,
-		Root: DomainPayload{Schema: DomainPayloadSchema, Domain: DomainRoot, BundleGeneration: 2, PolicyGeneration: 1, Rules: rootRules},
-		User: DomainPayload{Schema: DomainPayloadSchema, Domain: DomainUser, BundleGeneration: 2, PolicyGeneration: 1, Rules: userRules},
+		Root: DomainPayload{Schema: DomainPayloadSchema, Domain: DomainRoot, PolicyGeneration: 1, Rules: rootRules},
+		User: DomainPayload{Schema: DomainPayloadSchema, Domain: DomainUser, PolicyGeneration: 1, Rules: userRules},
 	}
 }
 

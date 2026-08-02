@@ -53,7 +53,6 @@ func (reference DomainReference) valid() bool {
 func (payload DomainPayload) Validate() error {
 	if payload.Schema != DomainPayloadSchema ||
 		!payload.Domain.Valid() ||
-		payload.BundleGeneration == 0 ||
 		payload.PolicyGeneration == 0 ||
 		len(payload.Rules) > MaxRules ||
 		len(payload.Leases) > MaxAuthorizationLeases {

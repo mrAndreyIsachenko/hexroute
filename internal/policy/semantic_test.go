@@ -10,8 +10,6 @@ func TestSemanticNoOpIgnoresGenerationsAndIdentifiers(t *testing.T) {
 	candidate := composedTestSnapshot(t)
 	candidate.BundleGeneration = 3
 	candidate.ParentBundleGeneration = 2
-	candidate.Root.BundleGeneration = 3
-	candidate.User.BundleGeneration = 3
 	candidate.Root.PolicyGeneration++
 	candidate.User.PolicyGeneration++
 	candidate.Root.Rules[0].ID = "root.renamed-rule"
@@ -40,8 +38,6 @@ func TestSemanticMetadataAndDomainGenerationAdvance(t *testing.T) {
 	candidate := composedTestSnapshot(t)
 	candidate.BundleGeneration = 3
 	candidate.ParentBundleGeneration = 2
-	candidate.Root.BundleGeneration = 3
-	candidate.User.BundleGeneration = 3
 	candidate.ExpiresAt = "2026-08-02T11:00:00Z"
 
 	noOp, err := IsSemanticNoOp(current, candidate)
@@ -63,8 +59,6 @@ func TestChangedDomainRequiresGenerationAdvance(t *testing.T) {
 	candidate := composedTestSnapshot(t)
 	candidate.BundleGeneration = 3
 	candidate.ParentBundleGeneration = 2
-	candidate.Root.BundleGeneration = 3
-	candidate.User.BundleGeneration = 3
 	candidate.User.Rules[0].Effect = EffectDeny
 
 	if !errors.Is(ValidateSemanticAdvance(current, candidate), ErrInvalidGenerationSemantic) {

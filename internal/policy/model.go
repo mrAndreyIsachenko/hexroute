@@ -212,7 +212,6 @@ type Manifest struct {
 type DomainPayload struct {
 	Schema           string               `json:"schema" yaml:"schema"`
 	Domain           Domain               `json:"domain" yaml:"domain"`
-	BundleGeneration uint64               `json:"bundle_generation" yaml:"bundle_generation"`
 	PolicyGeneration uint64               `json:"policy_generation" yaml:"policy_generation"`
 	Rules            []Rule               `json:"rules" yaml:"rules"`
 	Leases           []AuthorizationLease `json:"authorization_leases,omitempty" yaml:"authorization_leases,omitempty"`

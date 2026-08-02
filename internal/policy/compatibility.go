@@ -5,15 +5,15 @@ import "errors"
 const MaxTrustedCompilers = 16
 
 type InstalledCompatibility struct {
-	Domain                  Domain
-	MinimumPolicySchema     uint16
-	MaximumPolicySchema     uint16
-	CurrentPolicySchema     uint16
-	CurrentBundleGeneration uint64
-	CurrentPolicyGeneration uint64
-	CurrentPayloadSHA256    string
-	StaticSHA256            string
-	TrustedCompilerSHA256   []string
+	Domain                  Domain   `json:"domain"`
+	MinimumPolicySchema     uint16   `json:"minimum_policy_schema"`
+	MaximumPolicySchema     uint16   `json:"maximum_policy_schema"`
+	CurrentPolicySchema     uint16   `json:"current_policy_schema"`
+	CurrentBundleGeneration uint64   `json:"current_bundle_generation"`
+	CurrentPolicyGeneration uint64   `json:"current_policy_generation"`
+	CurrentPayloadSHA256    string   `json:"current_payload_sha256,omitempty"`
+	StaticSHA256            string   `json:"static_sha256"`
+	TrustedCompilerSHA256   []string `json:"trusted_compiler_sha256"`
 }
 
 var (
@@ -81,7 +81,6 @@ func CheckCandidateCompatibility(
 	}
 	if manifest.ParentBundleGeneration != installed.CurrentBundleGeneration ||
 		manifest.BundleGeneration <= installed.CurrentBundleGeneration ||
-		payload.BundleGeneration != manifest.BundleGeneration ||
 		payload.PolicyGeneration < installed.CurrentPolicyGeneration {
 		return ErrPolicyDowngrade
 	}

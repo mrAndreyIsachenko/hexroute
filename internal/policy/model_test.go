@@ -219,7 +219,7 @@ func validManifest() Manifest {
 func validPayload() DomainPayload {
 	return DomainPayload{
 		Schema: DomainPayloadSchema, Domain: DomainUser,
-		BundleGeneration: 2, PolicyGeneration: 2,
+		PolicyGeneration: 2,
 		Rules: []Rule{{
 			ID: "user.allow-resume", Effect: EffectAllow,
 			Selector: Selector{

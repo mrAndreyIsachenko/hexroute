@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user check container-build container-test fmt ingress-observer-release-test postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test vet
+.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy check container-build container-test fmt ingress-observer-release-test postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test vet
 
 build:
 	go build ./cmd/...
@@ -18,6 +18,10 @@ build-observe-user:
 build-ctl:
 	mkdir -p bin
 	go build -o bin/hexroutectl ./cmd/hexroutectl
+
+build-policy:
+	mkdir -p bin
+	go build -o bin/hexroute-policy ./cmd/hexroute-policy
 
 build-ingress-probe:
 	mkdir -p bin
@@ -68,6 +72,7 @@ shell-test: build-observe-root build-observe-user
 	tests/observe_root_launchd_test.sh
 	tests/observe_user_launchd_test.sh
 	tests/provider_b_documentation_test.sh
+	tests/policy_cli_boundary_test.sh
 	tests/ingress_observer_release_test.sh
 	tests/terraform_contract_test.sh
 	tests/terraform_state_policy_test.sh

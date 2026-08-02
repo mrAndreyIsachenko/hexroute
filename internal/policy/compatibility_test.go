@@ -108,9 +108,7 @@ func TestCheckCandidateCompatibilityRejectsUnsafeChanges(t *testing.T) {
 		candidate := manifest
 		candidate.BundleGeneration = 1
 		candidate.ParentBundleGeneration = 0
-		payload := user
-		payload.BundleGeneration = 1
-		if !errors.Is(CheckCandidateCompatibility(candidate, payload, installed), ErrPolicyDowngrade) {
+		if !errors.Is(CheckCandidateCompatibility(candidate, user, installed), ErrPolicyDowngrade) {
 			t.Fatal("generation downgrade should be rejected")
 		}
 	})

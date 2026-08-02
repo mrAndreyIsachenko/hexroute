@@ -107,7 +107,6 @@ func (source OperatorSource) DomainPayload(domain Domain) (DomainPayload, error)
 	return DomainPayload{
 		Schema:           DomainPayloadSchema,
 		Domain:           domain,
-		BundleGeneration: source.BundleGeneration,
 		PolicyGeneration: input.PolicyGeneration,
 		Rules:            append([]Rule(nil), input.Rules...),
 		Leases:           append([]AuthorizationLease(nil), input.Leases...),

@@ -36,9 +36,7 @@ func (snapshot EffectiveSnapshot) Validate() error {
 		notBefore.Before(issuedAt) || !expiresAt.After(notBefore) ||
 		expiresAt.Sub(notBefore) > maxPolicyValidity ||
 		snapshot.Root.Validate() != nil || snapshot.Root.Domain != DomainRoot ||
-		snapshot.User.Validate() != nil || snapshot.User.Domain != DomainUser ||
-		snapshot.Root.BundleGeneration != snapshot.BundleGeneration ||
-		snapshot.User.BundleGeneration != snapshot.BundleGeneration {
+		snapshot.User.Validate() != nil || snapshot.User.Domain != DomainUser {
 		return ErrInvalidEffectiveSnapshot
 	}
 	return nil
@@ -134,7 +132,9 @@ func composeDomain(source DomainPayload, envelope DomainEnvelope) (DomainPayload
 	}
 	retainedIDs := make(map[string]struct{}, len(retained))
 	for _, rule := range retained {
-		retainedIDs[rule.Selector.ID] = struct{}{}
+		if rule.Effect == EffectAllow {
+			retainedIDs[rule.Selector.ID] = struct{}{}
+		}
 	}
 	leases, err = normalizeLeases(source.Leases, selectorRemap, retainedIDs)
 	if err != nil {
@@ -144,7 +144,6 @@ func composeDomain(source DomainPayload, envelope DomainEnvelope) (DomainPayload
 	result := DomainPayload{
 		Schema:           DomainPayloadSchema,
 		Domain:           source.Domain,
-		BundleGeneration: source.BundleGeneration,
 		PolicyGeneration: source.PolicyGeneration,
 		Rules:            retained,
 		Leases:           leases,
