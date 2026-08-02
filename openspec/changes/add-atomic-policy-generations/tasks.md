@@ -8,11 +8,11 @@
 
 ## 2. Composition And Conflict Validation
 
-- [ ] 2.1 Implement complete effective-snapshot composition with compiled-deny precedence, authorization-lease intersection and semantic duplicate elimination.
-- [ ] 2.2 Implement host, port and path overlap detection without specificity precedence and add wildcard/concrete conflict fixtures.
-- [ ] 2.3 Implement route/CIDR overlap, action-target and credential-reference conflict detection with cross-domain ownership tests.
-- [ ] 2.4 Reject the complete candidate on any conflict and emit only bounded conflict codes that contain no selector, endpoint, path or credential data.
-- [ ] 2.5 Add semantic no-op detection so equivalent effective content cannot advance bundle or domain generations.
+- [x] 2.1 Implement complete effective-snapshot composition with compiled-deny precedence, authorization-lease intersection and semantic duplicate elimination.
+- [x] 2.2 Implement host, port and path overlap detection without specificity precedence and add wildcard/concrete conflict fixtures.
+- [x] 2.3 Implement route/CIDR overlap, action-target and credential-reference conflict detection with cross-domain ownership tests.
+- [x] 2.4 Reject the complete candidate on any conflict and emit only bounded conflict codes that contain no selector, endpoint, path or credential data.
+- [x] 2.5 Add semantic no-op detection so equivalent effective content cannot advance bundle or domain generations.
 
 ## 3. Compiler, Diff, Replay And Signing
 

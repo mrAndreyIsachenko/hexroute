@@ -2,6 +2,7 @@ package policy
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -36,6 +37,7 @@ type DomainEnvelope struct {
 	AllowedCapabilities  []Capability   `json:"allowed_capabilities"`
 	AllowedSelectorKinds []SelectorKind `json:"allowed_selector_kinds"`
 	AllowedTargets       []string       `json:"allowed_targets"`
+	DeniedSelectors      []Selector     `json:"denied_selectors,omitempty"`
 }
 
 var (
@@ -128,6 +130,30 @@ func (envelope DomainEnvelope) valid() bool {
 			return false
 		}
 	}
+	if len(envelope.DeniedSelectors) > MaxRules {
+		return false
+	}
+	denyIDs := make(map[string]struct{}, len(envelope.DeniedSelectors))
+	denySemantics := make(map[string]struct{}, len(envelope.DeniedSelectors))
+	for _, selector := range envelope.DeniedSelectors {
+		if selector.Validate() != nil ||
+			!strings.HasPrefix(selector.ID, compiledDenyPrefix(envelope.Domain)) ||
+			!selectorWithinEnvelope(selector, envelope) {
+			return false
+		}
+		if _, exists := denyIDs[selector.ID]; exists {
+			return false
+		}
+		denyIDs[selector.ID] = struct{}{}
+		semantic, err := selectorSemanticKey(selector)
+		if err != nil {
+			return false
+		}
+		if _, exists := denySemantics[semantic]; exists {
+			return false
+		}
+		denySemantics[semantic] = struct{}{}
+	}
 	return true
 }
 
@@ -166,16 +192,8 @@ func payloadWithinEnvelope(payload DomainPayload, boundary DomainEnvelope) bool 
 			!containsSelectorKind(boundary.AllowedSelectorKinds, rule.Selector.Kind) {
 			return false
 		}
-		switch rule.Selector.Kind {
-		case SelectorAction:
-			if !containsCapability(boundary.AllowedCapabilities, rule.Selector.Action.Capability) ||
-				!containsString(boundary.AllowedTargets, rule.Selector.Action.Target) {
-				return false
-			}
-		case SelectorCredential:
-			if rule.Selector.Credential.Owner != payload.Domain {
-				return false
-			}
+		if !selectorWithinEnvelope(rule.Selector, boundary) {
+			return false
 		}
 	}
 	for _, lease := range payload.Leases {
@@ -191,6 +209,25 @@ func payloadWithinEnvelope(payload DomainPayload, boundary DomainEnvelope) bool 
 		}
 	}
 	return true
+}
+
+func selectorWithinEnvelope(selector Selector, boundary DomainEnvelope) bool {
+	if !containsSelectorKind(boundary.AllowedSelectorKinds, selector.Kind) {
+		return false
+	}
+	switch selector.Kind {
+	case SelectorAction:
+		return containsCapability(boundary.AllowedCapabilities, selector.Action.Capability) &&
+			containsString(boundary.AllowedTargets, selector.Action.Target)
+	case SelectorCredential:
+		return selector.Credential.Owner == boundary.Domain
+	default:
+		return true
+	}
+}
+
+func compiledDenyPrefix(domain Domain) string {
+	return fmt.Sprintf("compiled.%s.", domain)
 }
 
 func validNamespacePrefix(value string) bool {

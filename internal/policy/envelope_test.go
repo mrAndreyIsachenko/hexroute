@@ -22,6 +22,24 @@ func TestDefaultSafetyEnvelope(t *testing.T) {
 	}
 }
 
+func TestSafetyEnvelopeCompiledDenyValidation(t *testing.T) {
+	envelope := DefaultSafetyEnvelope()
+	envelope.User.DeniedSelectors = []Selector{{
+		ID: "compiled.user.resume-pritunl", Kind: SelectorAction,
+		Action: &ActionSelector{Capability: CapabilityOperatorResume, Target: "pritunl"},
+	}}
+	if err := envelope.Validate(); err != nil {
+		t.Fatalf("valid compiled deny: %v", err)
+	}
+
+	invalid := envelope
+	invalid.User.DeniedSelectors = append([]Selector(nil), envelope.User.DeniedSelectors...)
+	invalid.User.DeniedSelectors[0].ID = "user.dynamic-deny"
+	if !errors.Is(invalid.Validate(), ErrInvalidSafetyEnvelope) {
+		t.Fatal("dynamic namespace must not define a compiled deny")
+	}
+}
+
 func TestValidateAgainstEnvelope(t *testing.T) {
 	envelope := DefaultSafetyEnvelope()
 	source := validEnvelopeSource(t, envelope)
