@@ -372,6 +372,9 @@ func (handler *Handler) MutationAllowed() bool {
 	if handler.authorizationSuspension.Suspended {
 		return false
 	}
+	if handler.store != nil && !handler.hasActive {
+		return false
+	}
 	return handler.status.State != policy.PolicyDomainMismatch &&
 		handler.status.State != policy.PolicyAuthorizationSuspended
 }
@@ -688,18 +691,8 @@ func (handler *Handler) prepareFailure(
 	cause error,
 	response ipc.Response,
 ) ipc.Response {
-	state, reason, report := classifyPrepareFailure(cause)
+	_, _, report := classifyPrepareFailure(cause)
 	if report {
-		policyGeneration := identity.RootPolicyGeneration
-		if handler.domain == policy.DomainUser {
-			policyGeneration = identity.UserPolicyGeneration
-		}
-		handler.status = policy.Status{
-			Schema: policy.PolicyStatusSchema, Domain: handler.domain,
-			State: state, BundleGeneration: identity.BundleGeneration,
-			PolicyGeneration: policyGeneration,
-			ManifestSHA256:   identity.ManifestSHA256, Reason: reason,
-		}
 		response.Error = ipc.ErrorPrecondition
 		return response
 	}

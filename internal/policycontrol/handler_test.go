@@ -610,6 +610,127 @@ func TestHandlerClearsSuspensionOnlyAfterActiveRevalidation(t *testing.T) {
 	}
 }
 
+func TestInvalidCandidatePreservesLastValidActivePolicy(t *testing.T) {
+	publicKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{1}, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainRoot, publicKey).Runtime(policy.DomainRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := syntheticIPCIdentity()
+	for _, cause := range []error{
+		policyapproval.ErrApprovalSignature,
+		policyapproval.ErrApprovalExpired,
+		policy.ErrUnsupportedPolicy,
+		policy.ErrInvalidCandidateBundle,
+	} {
+		store := &recordingCandidateStore{
+			domain: policy.DomainRoot,
+			recoverResult: revalidatedActiveFixture(
+				identity, policy.DomainRoot, runtime, true,
+			),
+		}
+		handler, err := NewHandler(store, runtime, func() time.Time {
+			return time.Date(2030, time.January, 1, 0, 55, 0, 0, time.UTC)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidate := identity
+		candidate.TransactionID = "223e4567-e89b-42d3-a456-426614174000"
+		candidate.BundleGeneration++
+		candidate.RootPolicyGeneration++
+		candidate.UserPolicyGeneration++
+		store.err = cause
+		response := handler.HandleIPC(context.Background(), ipc.Request{
+			Version: ipc.ProtocolVersion, RequestID: "invalid-candidate",
+			Action:        ipc.ActionPreparePolicy,
+			PreparePolicy: &ipc.PreparePolicyRequest{Transaction: candidate},
+		})
+		status := handler.HandleIPC(context.Background(), ipc.Request{
+			Version: ipc.ProtocolVersion, RequestID: "active-after-rejection",
+			Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+		})
+		if response.Error != ipc.ErrorPrecondition || !status.OK ||
+			status.PolicyStatus.Status.State != policy.PolicyActive ||
+			status.PolicyStatus.Status.BundleGeneration != identity.BundleGeneration ||
+			status.PolicyStatus.Status.ManifestSHA256 != identity.ManifestSHA256 ||
+			status.PolicyStatus.AuthorizationSuspension.Suspended ||
+			!handler.MutationAllowed() || store.stageCalls != 0 ||
+			store.activateCalls != 0 || store.confirmCalls != 0 || store.abortCalls != 0 {
+			t.Fatalf("cause=%v response=%+v status=%+v store=%+v", cause, response, status, store)
+		}
+	}
+}
+
+func TestInvalidCandidateWithoutActivePolicyRemainsObserveOnlySafeMode(t *testing.T) {
+	publicKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{11}, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainUser, publicKey).Runtime(policy.DomainUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &recordingCandidateStore{domain: policy.DomainUser}
+	handler, err := NewHandler(store, runtime, func() time.Time {
+		return time.Date(2030, time.January, 1, 1, 0, 0, 0, time.UTC)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.err = policyapproval.ErrApprovalSignature
+	response := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "invalid-without-active",
+		Action:        ipc.ActionPreparePolicy,
+		PreparePolicy: &ipc.PreparePolicyRequest{Transaction: syntheticIPCIdentity()},
+	})
+	status := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "safe-mode-status",
+		Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+	})
+	if response.Error != ipc.ErrorPrecondition || !status.OK ||
+		status.PolicyStatus.Status.State != policy.PolicyNone ||
+		status.PolicyStatus.Status.Reason != policy.ReasonNoValidGeneration ||
+		handler.MutationAllowed() || store.stageCalls != 0 || store.activateCalls != 0 ||
+		store.confirmCalls != 0 || store.abortCalls != 0 {
+		t.Fatalf("response=%+v status=%+v store=%+v", response, status, store)
+	}
+}
+
+func TestSuspensionPreservesActiveGenerationAndDoesNotEnterActivationPaths(t *testing.T) {
+	publicKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{12}, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainUser, publicKey).Runtime(policy.DomainUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := syntheticIPCIdentity()
+	store := &recordingCandidateStore{
+		domain: policy.DomainUser,
+		recoverResult: revalidatedActiveFixture(
+			identity, policy.DomainUser, runtime, true,
+		),
+	}
+	handler, err := NewHandler(store, runtime, func() time.Time {
+		return time.Date(2030, time.January, 1, 1, 5, 0, 0, time.UTC)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.recoverErr = policystore.ErrInvalidArtifact
+	if handler.MutationAllowed() {
+		t.Fatal("mutation allowed after active evidence corruption")
+	}
+	status := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "preserved-active",
+		Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+	})
+	if !status.OK || status.PolicyStatus.Status.State != policy.PolicyActive ||
+		status.PolicyStatus.Status.BundleGeneration != identity.BundleGeneration ||
+		!status.PolicyStatus.AuthorizationSuspension.Suspended ||
+		status.PolicyStatus.AuthorizationSuspension.Reason != policy.ReasonCorruption ||
+		store.stageCalls != 0 || store.activateCalls != 0 ||
+		store.confirmCalls != 0 || store.abortCalls != 0 {
+		t.Fatalf("status=%+v store=%+v", status, store)
+	}
+}
+
 func revalidatedActiveFixture(
 	identity ipc.PolicyTransactionIdentity,
 	domain policy.Domain,

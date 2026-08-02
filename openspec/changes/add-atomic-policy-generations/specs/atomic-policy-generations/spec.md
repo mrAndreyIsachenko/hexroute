@@ -271,6 +271,7 @@ AdGuard, Twilight, Pritunl, sing-box or established connectivity.
 
 - **WHEN** no installed generation passes signature, digest and compatibility validation
 - **THEN** the daemon runs observe-only in `SAFE_MODE`
+- **AND** it reports lifecycle state `none` with reason `no_valid_generation`
 - **AND** it grants no local mutation authority
 
 ### Requirement: Local authorization suspension

@@ -223,6 +223,9 @@ generation.
 An invalid candidate is rejected atomically and never partially activates. If
 a valid generation exists, it remains active. If no valid generation exists,
 the daemon enters observe-only `SAFE_MODE` and cannot authorize mutations.
+For a daemon with an installed policy store this state is represented as
+`none` with `no_valid_generation`. Omitting policy control entirely remains the
+explicit pre-enforcement shadow bypass and is not treated as a failed policy.
 
 Each daemon also owns a non-generational `authorization_suspended` overlay. It
 may be asserted for active-bundle corruption, signature or digest mismatch,
