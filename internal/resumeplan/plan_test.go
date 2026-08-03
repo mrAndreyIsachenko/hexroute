@@ -25,8 +25,15 @@ func TestBuildOnlyClearsTargetBudgetIntoDegraded(t *testing.T) {
 	wantApplied.NextActionAt = 100
 	wantApplied.LastTick = 100
 	wantApplied.SafeUntil = 0
+	wantCompensated := before
+	wantCompensated.Generation = wantApplied.Generation + 1
+	wantCompensated.LastTick = 100
 	if plan.Before() != before || !reflect.DeepEqual(plan.Applied(), wantApplied) {
 		t.Fatalf("before=%+v applied=%+v", plan.Before(), plan.Applied())
+	}
+	if !reflect.DeepEqual(plan.Compensated(), wantCompensated) ||
+		plan.Compensated().Generation <= plan.Applied().Generation {
+		t.Fatalf("compensated=%+v", plan.Compensated())
 	}
 
 	action := plan.ActionPlan()
@@ -44,8 +51,14 @@ func TestBuildOnlyClearsTargetBudgetIntoDegraded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	compensatedDigest, _, err := policy.CanonicalSHA256(wantCompensated)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if step.BeforeSHA256 != beforeDigest || step.AppliedSHA256 != appliedDigest ||
-		step.Inverse.InputSHA256 != beforeDigest || plan.Digest() != action.Digest() {
+		step.Inverse.InputSHA256 != compensatedDigest ||
+		step.Inverse.RestoredSHA256 != compensatedDigest ||
+		plan.Digest() != action.Digest() {
 		t.Fatalf("step digests = %+v plan=%q", step, plan.Digest())
 	}
 }

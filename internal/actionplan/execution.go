@@ -196,7 +196,7 @@ func (execution Execution) BuildRollback(
 			kind:                applied.step.Inverse.Kind,
 			inputSHA256:         applied.step.Inverse.InputSHA256,
 			expectedStateSHA256: applied.step.AppliedSHA256,
-			restoredStateSHA256: applied.step.BeforeSHA256,
+			restoredStateSHA256: applied.step.Inverse.RestoredSHA256,
 			actionID:            applied.actionID,
 			attemptID:           applied.attemptID,
 		})

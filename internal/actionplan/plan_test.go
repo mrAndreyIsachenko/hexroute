@@ -75,15 +75,17 @@ func TestPlanRejectsInvalidOrAmbiguousSteps(t *testing.T) {
 }
 
 func testStep(id string) StepSpec {
+	beforeSHA256 := policy.SHA256Hex([]byte("before-" + id))
 	return StepSpec{
 		ID:            id,
 		Kind:          StepOperatorResume,
 		InputSHA256:   policy.SHA256Hex([]byte("input-" + id)),
-		BeforeSHA256:  policy.SHA256Hex([]byte("before-" + id)),
+		BeforeSHA256:  beforeSHA256,
 		AppliedSHA256: policy.SHA256Hex([]byte("applied-" + id)),
 		Inverse: InverseSpec{
-			Kind:        InverseRestoreControlSnapshot,
-			InputSHA256: policy.SHA256Hex([]byte("inverse-" + id)),
+			Kind:           InverseRestoreControlSnapshot,
+			InputSHA256:    policy.SHA256Hex([]byte("inverse-" + id)),
+			RestoredSHA256: beforeSHA256,
 		},
 	}
 }

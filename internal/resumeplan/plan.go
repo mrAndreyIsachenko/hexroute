@@ -9,14 +9,15 @@ import (
 )
 
 type Plan struct {
-	action  actionplan.Plan
-	before  control.Snapshot
-	applied control.Snapshot
+	action      actionplan.Plan
+	before      control.Snapshot
+	applied     control.Snapshot
+	compensated control.Snapshot
 }
 
 func Build(target control.Component, before control.Snapshot, at control.Tick) (Plan, error) {
 	if target == "" || !validSnapshot(before) || before.State != control.StateSafeMode ||
-		before.Generation == math.MaxUint64 || at < before.LastTick {
+		before.Generation > math.MaxUint64-2 || at < before.LastTick {
 		return Plan{}, actionplan.ErrInvalidPlan
 	}
 	applied := before
@@ -27,12 +28,19 @@ func Build(target control.Component, before control.Snapshot, at control.Tick) (
 	applied.NextActionAt = at
 	applied.SafeUntil = 0
 	applied.LastTick = at
+	compensated := before
+	compensated.Generation = applied.Generation + 1
+	compensated.LastTick = at
 
 	beforeDigest, _, err := policy.CanonicalSHA256(before)
 	if err != nil {
 		return Plan{}, actionplan.ErrInvalidPlan
 	}
 	appliedDigest, _, err := policy.CanonicalSHA256(applied)
+	if err != nil {
+		return Plan{}, actionplan.ErrInvalidPlan
+	}
+	compensatedDigest, _, err := policy.CanonicalSHA256(compensated)
 	if err != nil {
 		return Plan{}, actionplan.ErrInvalidPlan
 	}
@@ -55,14 +63,17 @@ func Build(target control.Component, before control.Snapshot, at control.Tick) (
 		BeforeSHA256:  beforeDigest,
 		AppliedSHA256: appliedDigest,
 		Inverse: actionplan.InverseSpec{
-			Kind:        actionplan.InverseRestoreControlSnapshot,
-			InputSHA256: beforeDigest,
+			Kind:           actionplan.InverseRestoreControlSnapshot,
+			InputSHA256:    compensatedDigest,
+			RestoredSHA256: compensatedDigest,
 		},
 	}})
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{action: action, before: before, applied: applied}, nil
+	return Plan{
+		action: action, before: before, applied: applied, compensated: compensated,
+	}, nil
 }
 
 func (plan Plan) ActionPlan() actionplan.Plan {
@@ -79,6 +90,10 @@ func (plan Plan) Before() control.Snapshot {
 
 func (plan Plan) Applied() control.Snapshot {
 	return plan.applied
+}
+
+func (plan Plan) Compensated() control.Snapshot {
+	return plan.compensated
 }
 
 func validSnapshot(snapshot control.Snapshot) bool {

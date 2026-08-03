@@ -29,8 +29,9 @@ func (kind InverseKind) Valid() bool {
 }
 
 type InverseSpec struct {
-	Kind        InverseKind `json:"kind"`
-	InputSHA256 string      `json:"input_sha256"`
+	Kind           InverseKind `json:"kind"`
+	InputSHA256    string      `json:"input_sha256"`
+	RestoredSHA256 string      `json:"restored_sha256"`
 }
 
 type StepSpec struct {
@@ -137,7 +138,8 @@ func validateStep(step StepSpec) error {
 	if !stepIDPattern.MatchString(step.ID) || !step.Kind.Valid() ||
 		!validDigest(step.InputSHA256) || !validDigest(step.BeforeSHA256) ||
 		!validDigest(step.AppliedSHA256) || step.BeforeSHA256 == step.AppliedSHA256 ||
-		!step.Inverse.Kind.Valid() || !validDigest(step.Inverse.InputSHA256) {
+		!step.Inverse.Kind.Valid() || !validDigest(step.Inverse.InputSHA256) ||
+		!validDigest(step.Inverse.RestoredSHA256) {
 		return ErrInvalidPlan
 	}
 	return nil

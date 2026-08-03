@@ -279,7 +279,9 @@ target in `SAFE_MODE`, blocks further actions and emits a critical incident.
 
 The ordered plan is a private immutable value built from bounded typed steps.
 Its canonical digest binds target, sequence, operation kind, input digest,
-before/applied state digests and inverse kind/input digest. Execution records
+before/applied state digests and inverse kind/input/restored-state digests. An
+inverse may restore the prior semantic state under a newer generation instead
+of decrementing a monotonic control-state counter. Execution records
 are value-style append-only ledgers bound to the lease action ID and execution
 attempt ID. Rollback selection walks only the applied prefix in reverse order
 and emits an inverse operation only when a fresh observation proves the exact
