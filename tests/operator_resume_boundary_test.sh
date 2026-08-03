@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-imports="$(go list -f '{{join .Imports "\n"}}' ./internal/resumeplan)"
+imports="$(go list -f '{{join .Imports "\n"}}' ./internal/resumeplan ./internal/resumeexecutor)"
 for forbidden in \
   github.com/mrAndreyIsachenko/hexroute/internal/command \
   github.com/mrAndreyIsachenko/hexroute/internal/credentials \
@@ -19,9 +19,9 @@ for forbidden in \
   os/exec \
   syscall; do
   if printf '%s\n' "$imports" | rg -x --fixed-strings "$forbidden" >/dev/null; then
-    printf 'error: resumeplan imports forbidden execution path: %s\n' "$forbidden" >&2
+    printf 'error: operator resume imports forbidden execution path: %s\n' "$forbidden" >&2
     exit 1
   fi
 done
 
-printf 'ok: operator resume plan is isolated from data-plane execution paths\n'
+printf 'ok: operator resume plan and executor are isolated from data-plane execution paths\n'

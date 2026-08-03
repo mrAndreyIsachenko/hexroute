@@ -449,20 +449,13 @@ func (handler *Handler) EvaluateOperatorResume(
 	if err != nil {
 		return policy.ActionAuthorizationDecision{Reason: policy.ActionAuthorizationSuspended}
 	}
-	return policy.EvaluateActionAuthorization(
-		policy.ActionAuthorizationState{
-			Status: handler.status, Suspension: handler.authorizationSuspension,
-			Payload: handler.activePayload, ControlStateGeneration: controlStateGeneration,
-		},
-		policy.ActionAuthorizationRequest{
-			Domain: domain, Capability: policy.CapabilityOperatorResume,
-			BundleGeneration:       handler.status.BundleGeneration,
-			DomainPolicyGeneration: handler.status.PolicyGeneration,
-			ControlStateGeneration: controlStateGeneration,
-			Target:                 target, PlanSHA256: planSHA256,
-		},
-		now,
-	)
+	return handler.evaluateActionLocked(policy.ActionAuthorizationRequest{
+		Domain: domain, Capability: policy.CapabilityOperatorResume,
+		BundleGeneration:       handler.status.BundleGeneration,
+		DomainPolicyGeneration: handler.status.PolicyGeneration,
+		ControlStateGeneration: controlStateGeneration,
+		Target:                 target, PlanSHA256: planSHA256,
+	}, now)
 }
 
 // ReportGrandfatheredNoncompliance records that established data-plane state

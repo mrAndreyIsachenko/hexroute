@@ -277,6 +277,16 @@ rolls back only the Hexroute-owned subset that this transaction applied;
 foreign or ambiguous state is never changed. Failed rollback places that
 target in `SAFE_MODE`, blocks further actions and emits a critical incident.
 
+For `operator_resume`, the policy handler issues the durable action lease only
+after revalidating the confirmed active payload and matching the exact domain,
+target, plan digest and original control-state generation. Its authorization
+source repeats active-policy validation before every step and commit. The
+source retains the original control-state generation as the authorization
+origin while fresh runtime observations prove the executor's own expected state
+transition; a changed bundle or domain generation therefore invalidates the
+lease without mistaking the executor's own monotonic state advance for foreign
+staleness.
+
 The ordered plan is a private immutable value built from bounded typed steps.
 Its canonical digest binds target, sequence, operation kind, input digest,
 before/applied state digests and inverse kind/input/restored-state digests. An
@@ -309,6 +319,14 @@ does not restart, reconnect or change network state. Generation changes cancel
 queued actions and close temporary helpers or credential leases, but they do
 not disconnect established Pritunl or sing-box sessions. A later intentional
 drain requires an explicit transition plan in a separate change.
+
+The active executor is an isolated state-only package. It can call only the
+target snapshot's resume, semantic compensation and safe-mode operations. If a
+post-apply authorization or commit check fails, compensation restores
+`SAFE_MODE` semantics under a generation newer than the applied generation;
+the control generation never moves backward. Import-boundary tests reject
+command, route, Pritunl, sing-box, credential, process and network dependencies
+from both the resume plan and executor.
 
 ### Wall-clock validity and monotonic execution serve different purposes
 
@@ -363,6 +381,14 @@ After the gate, policy enforcement is enabled only for `operator_resume`.
 Pritunl reconnect, route mutation, sing-box process control, credentials and
 ingress changes each require a later grill, OpenSpec change, mutation tests and
 transactional cutover. Twilight continues to own the production data plane.
+
+The enforcement API accepts a typed qualification gate whose completion bit is
+private and can be produced only by validating all required evidence fields; a
+zero or incomplete gate fails closed. The current daemon wiring does not call
+the enforcement API, so runtime behavior remains shadow-only until the durable
+qualification recorder in task 10.3 produces and validates real evidence. This
+prevents implementation of the bounded executor from being mistaken for a live
+activation or from being enabled by a configuration boolean.
 
 ## Risks / Trade-offs
 

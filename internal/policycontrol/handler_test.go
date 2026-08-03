@@ -10,10 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
+	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyapproval"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
+	"github.com/mrAndreyIsachenko/hexroute/internal/resumeplan"
 )
 
 type recordingCandidateStore struct {
@@ -37,6 +40,9 @@ type recordingCandidateStore struct {
 	recoverCalls  int
 	pendingIntent policystore.CommitIntent
 	pendingErr    error
+	actionLease   policy.ActionLease
+	execution     *policy.ActionLeaseExecutionClaim
+	outcome       *policy.ActionLeaseOutcome
 }
 
 type deterministicPolicyClock struct {
@@ -50,6 +56,58 @@ func (clock *deterministicPolicyClock) monotonicNow() time.Duration {
 }
 
 func (store *recordingCandidateStore) Domain() policy.Domain { return store.domain }
+
+func (store *recordingCandidateStore) PersistActionLease(lease policy.ActionLease) error {
+	if store.actionLease.ActionID != "" {
+		return policystore.ErrRecordConflict
+	}
+	store.actionLease = lease
+	return nil
+}
+
+func (store *recordingCandidateStore) ReadActionLeaseState(
+	actionID metadata.UUID,
+) (policy.ActionLease, *policy.ActionLeaseOutcome, error) {
+	if store.actionLease.ActionID != actionID {
+		return policy.ActionLease{}, nil, policystore.ErrRecordNotFound
+	}
+	if store.outcome == nil {
+		return store.actionLease, nil, nil
+	}
+	outcome := *store.outcome
+	return store.actionLease, &outcome, nil
+}
+
+func (store *recordingCandidateStore) ReadActionLeaseExecutionClaim(
+	actionID metadata.UUID,
+) (policy.ActionLeaseExecutionClaim, error) {
+	if store.execution == nil || store.execution.ActionID != actionID {
+		return policy.ActionLeaseExecutionClaim{}, policystore.ErrRecordNotFound
+	}
+	return *store.execution, nil
+}
+
+func (store *recordingCandidateStore) PersistActionLeaseExecutionClaim(
+	claim policy.ActionLeaseExecutionClaim,
+) error {
+	if store.execution != nil && *store.execution != claim {
+		return policystore.ErrRecordConflict
+	}
+	copy := claim
+	store.execution = &copy
+	return nil
+}
+
+func (store *recordingCandidateStore) PersistActionLeaseOutcome(
+	outcome policy.ActionLeaseOutcome,
+) error {
+	if store.outcome != nil {
+		return policystore.ErrActionLeaseResolved
+	}
+	copy := outcome
+	store.outcome = &copy
+	return nil
+}
 
 func (store *recordingCandidateStore) PrepareCandidate(
 	input policystore.PrepareCandidateInput,
@@ -896,6 +954,86 @@ func TestHandlerEvaluatesOperatorResumeAgainstRevalidatedActivePayload(t *testin
 	)
 	if denied.Allowed || denied.Reason != policy.ActionDomainMismatch {
 		t.Fatalf("wrong-domain decision = %+v", denied)
+	}
+}
+
+func TestHandlerIssuesExactDurableOperatorResumeAuthorization(t *testing.T) {
+	publicKey := ed25519.NewKeyFromSeed(
+		bytes.Repeat([]byte{20}, ed25519.SeedSize),
+	).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainUser, publicKey).Runtime(policy.DomainUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := syntheticIPCIdentity()
+	active := revalidatedActiveFixture(identity, policy.DomainUser, runtime, true)
+	active.Payload = policy.DomainPayload{
+		Schema: policy.DomainPayloadSchema, Domain: policy.DomainUser,
+		PolicyGeneration: identity.UserPolicyGeneration,
+		Rules: []policy.Rule{{
+			ID: "user.resume-pritunl", Effect: policy.EffectAllow,
+			Selector: policy.Selector{
+				ID: "user.resume-pritunl-selector", Kind: policy.SelectorAction,
+				Action: &policy.ActionSelector{
+					Capability: policy.CapabilityOperatorResume, Target: "pritunl",
+				},
+			},
+		}},
+		Leases: []policy.AuthorizationLease{{
+			ID: "user.resume-pritunl-lease", Domain: policy.DomainUser,
+			Capability:  policy.CapabilityOperatorResume,
+			SelectorIDs: []string{"user.resume-pritunl-selector"},
+			IssuedAt:    "2030-01-01T00:00:00Z", ExpiresAt: "2030-01-01T01:00:00Z",
+		}},
+	}
+	store := &recordingCandidateStore{
+		domain: policy.DomainUser, recoverResult: active,
+		pendingErr: policystore.ErrRecordNotFound,
+	}
+	clock := &deterministicPolicyClock{
+		wall:      time.Date(2030, time.January, 1, 0, 40, 0, 0, time.UTC),
+		monotonic: time.Minute,
+	}
+	handler, err := newHandlerWithClock(store, runtime, clock.now, clock.monotonicNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := control.NewSnapshot(control.StateSafeMode)
+	before.Generation = 7
+	before.LastTick = 90
+	before.SafeUntil = 700
+	plan, err := resumeplan.Build(control.ComponentPritunl, before, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bootID := metadata.UUID("123e4567-e89b-42d3-a456-426614174099")
+	guard, source, err := handler.AuthorizeOperatorResume(plan, bootID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if guard.ActionID() == "" || store.actionLease.ActionID != guard.ActionID() ||
+		store.actionLease.BundleGeneration != identity.BundleGeneration ||
+		store.actionLease.DomainPolicyGeneration != identity.UserPolicyGeneration ||
+		store.actionLease.ControlStateGeneration != before.Generation ||
+		store.actionLease.Target != "pritunl" ||
+		store.actionLease.PlanSHA256 != plan.Digest() ||
+		store.actionLease.BootID != bootID {
+		t.Fatalf("issued lease=%+v action_id=%q", store.actionLease, guard.ActionID())
+	}
+	current, err := source.Current(context.Background())
+	if err != nil || current.BundleGeneration != identity.BundleGeneration ||
+		current.DomainPolicyGeneration != identity.UserPolicyGeneration ||
+		current.ControlStateGeneration != before.Generation || current.BootID != bootID {
+		t.Fatalf("current=%+v error=%v", current, err)
+	}
+
+	clock.wall = time.Date(2030, time.January, 1, 1, 1, 0, 0, time.UTC)
+	clock.monotonic += 21 * time.Minute
+	if _, err := source.Current(context.Background()); !errors.Is(
+		err,
+		ErrOperatorResumeUnauthorized,
+	) {
+		t.Fatalf("expired authorization source error=%v", err)
 	}
 }
 

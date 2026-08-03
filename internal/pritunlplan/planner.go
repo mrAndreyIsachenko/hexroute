@@ -296,6 +296,68 @@ func (planner *Planner) Resume(
 	return after, nil
 }
 
+func (planner *Planner) CompensateOperatorResume(
+	expectedGeneration uint64,
+	compensation control.Snapshot,
+	persist SnapshotPersister,
+) (control.Snapshot, error) {
+	if planner == nil || planner.machine == nil || persist == nil {
+		return control.Snapshot{}, ErrInvalidInput
+	}
+	current := planner.machine.Snapshot()
+	if current.Generation != expectedGeneration {
+		return control.Snapshot{}, control.ErrStaleGeneration
+	}
+	if current.State != control.StateDegraded ||
+		compensation.State != control.StateSafeMode ||
+		compensation.Generation != current.Generation+1 ||
+		compensation.LastTick < current.LastTick {
+		return control.Snapshot{}, ErrInvalidInput
+	}
+	return planner.replaceSnapshot(compensation, persist)
+}
+
+func (planner *Planner) EnterSafeMode(
+	expectedGeneration uint64,
+	at control.Tick,
+	persist SnapshotPersister,
+) (control.Snapshot, error) {
+	if planner == nil || planner.machine == nil || persist == nil || at < 0 {
+		return control.Snapshot{}, ErrInvalidInput
+	}
+	current := planner.machine.Snapshot()
+	if current.Generation != expectedGeneration {
+		return control.Snapshot{}, control.ErrStaleGeneration
+	}
+	if at < current.LastTick {
+		return control.Snapshot{}, control.ErrNonMonotonicTick
+	}
+	safe := current
+	safe.Generation++
+	safe.State = control.StateSafeMode
+	safe.Attempts = planner.policy.Recovery.ActionBudget
+	safe.RecoveringSince = 0
+	safe.NextActionAt = 0
+	safe.SafeUntil = at + planner.policy.Recovery.Cooldown
+	safe.LastTick = at
+	return planner.replaceSnapshot(safe, persist)
+}
+
+func (planner *Planner) replaceSnapshot(
+	snapshot control.Snapshot,
+	persist SnapshotPersister,
+) (control.Snapshot, error) {
+	candidate, err := control.NewMachine(planner.policy.Recovery, snapshot)
+	if err != nil {
+		return control.Snapshot{}, err
+	}
+	if err := persist(snapshot); err != nil {
+		return control.Snapshot{}, err
+	}
+	planner.machine = candidate
+	return snapshot, nil
+}
+
 func (state OptionalInnerState) valid() bool {
 	switch state {
 	case OptionalInnerUnspecified, OptionalInnerUnknown, OptionalInnerReady, OptionalInnerFailed:

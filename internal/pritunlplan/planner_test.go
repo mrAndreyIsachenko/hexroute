@@ -200,6 +200,67 @@ func TestExplicitResumeRollsBackWhenPersistenceFails(t *testing.T) {
 	}
 }
 
+func TestOperatorResumeCompensationPersistsNewSafeModeGeneration(t *testing.T) {
+	policy := testPolicy()
+	before := control.NewSnapshot(control.StateSafeMode)
+	before.Generation = 7
+	before.Attempts = policy.Recovery.ActionBudget
+	before.LastTick = 90
+	before.SafeUntil = 700
+	planner, err := NewPlanner(policy, before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied, err := planner.Resume(7, 100, func(control.Snapshot) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	compensated := before
+	compensated.Generation = applied.Generation + 1
+	compensated.LastTick = applied.LastTick
+	persisted := control.Snapshot{}
+	after, err := planner.CompensateOperatorResume(
+		applied.Generation,
+		compensated,
+		func(snapshot control.Snapshot) error {
+			persisted = snapshot
+			return nil
+		},
+	)
+	if err != nil || after != compensated || persisted != compensated ||
+		planner.Snapshot() != compensated || after.Generation <= applied.Generation {
+		t.Fatalf(
+			"after=%+v persisted=%+v current=%+v error=%v",
+			after,
+			persisted,
+			planner.Snapshot(),
+			err,
+		)
+	}
+}
+
+func TestStateOnlySafetyPersistenceFailureLeavesSnapshotUnchanged(t *testing.T) {
+	policy := testPolicy()
+	degraded := control.NewSnapshot(control.StateDegraded)
+	degraded.Generation = 8
+	degraded.LastTick = 100
+	planner, err := NewPlanner(policy, degraded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistErr := errors.New("synthetic safe-mode persistence failure")
+	if _, err := planner.EnterSafeMode(
+		degraded.Generation,
+		101,
+		func(control.Snapshot) error { return persistErr },
+	); !errors.Is(err, persistErr) {
+		t.Fatalf("EnterSafeMode() error=%v", err)
+	}
+	if planner.Snapshot() != degraded {
+		t.Fatalf("failed persistence changed snapshot=%+v", planner.Snapshot())
+	}
+}
+
 func TestSleepDarkWakeAndSettleDoNotConsumeRecoveryBudget(t *testing.T) {
 	planner := newPlanner(t, testPolicy())
 	tests := []struct {

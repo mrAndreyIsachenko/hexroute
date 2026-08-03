@@ -6,10 +6,13 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policyqualification"
+	"github.com/mrAndreyIsachenko/hexroute/internal/resumeplan"
 )
 
 type recordingResumePolicyEvaluator struct {
@@ -19,6 +22,21 @@ type recordingResumePolicyEvaluator struct {
 	controlGeneration uint64
 	planSHA256        string
 	decision          policy.ActionAuthorizationDecision
+}
+
+type recordingResumePolicyExecutor struct {
+	calls int
+	plan  resumeplan.Plan
+	after control.Snapshot
+	err   error
+}
+
+func (executor *recordingResumePolicyExecutor) ExecuteOperatorResume(
+	plan resumeplan.Plan,
+) (control.Snapshot, error) {
+	executor.calls++
+	executor.plan = plan
+	return executor.after, executor.err
 }
 
 func (evaluator *recordingResumePolicyEvaluator) EvaluateOperatorResume(
@@ -313,6 +331,118 @@ func TestControllerPreservesGenerationGuardBeforeShadowEvaluation(t *testing.T) 
 	response := controller.Handle(resumeRequest(control.ComponentPritunl, snapshot.Generation-1))
 	if response.Error != ipc.ErrorStaleGeneration || evaluator.calls != 0 {
 		t.Fatalf("response=%+v shadow calls=%d", response, evaluator.calls)
+	}
+}
+
+func TestControllerEnforcesResumeOnlyBehindValidatedQualification(t *testing.T) {
+	snapshot := safeModeSnapshot()
+	evaluator := &recordingResumePolicyEvaluator{decision: policy.ActionAuthorizationDecision{
+		Allowed: true, Reason: policy.ActionAuthorized,
+	}}
+	executor := &recordingResumePolicyExecutor{}
+	legacyCalls := 0
+	controller, err := NewController(
+		ipc.RoleUser,
+		ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentPritunl},
+		snapshot,
+		control.ReasonRecoveryBudget,
+		func(uint64, control.Tick) (control.Snapshot, error) {
+			legacyCalls++
+			return control.Snapshot{}, errors.New("legacy resume must stay disabled")
+		},
+		func() control.Tick { return 100 },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.SetResumePolicyEvaluator(evaluator); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.EnableResumePolicyEnforcement(
+		executor,
+		policyqualification.Gate{},
+	); !errors.Is(err, ErrInvalidController) {
+		t.Fatalf("zero qualification error=%v", err)
+	}
+	gate, err := policyqualification.Validate(completeResumeEvidence())
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.after = snapshot
+	executor.after.State = control.StateDegraded
+	executor.after.Generation++
+	executor.after.Attempts = 0
+	executor.after.RecoveringSince = 0
+	executor.after.NextActionAt = 100
+	executor.after.SafeUntil = 0
+	executor.after.LastTick = 100
+	if err := controller.EnableResumePolicyEnforcement(executor, gate); err != nil {
+		t.Fatal(err)
+	}
+
+	response := controller.Handle(resumeRequest(control.ComponentPritunl, snapshot.Generation))
+	if !response.OK || response.Resume == nil || executor.calls != 1 || legacyCalls != 0 ||
+		executor.plan.Digest() == "" {
+		t.Fatalf(
+			"response=%+v executor_calls=%d legacy_calls=%d",
+			response,
+			executor.calls,
+			legacyCalls,
+		)
+	}
+}
+
+func TestControllerActiveResumeDenialCannotReachAnyMutation(t *testing.T) {
+	snapshot := safeModeSnapshot()
+	evaluator := &recordingResumePolicyEvaluator{decision: policy.ActionAuthorizationDecision{
+		Reason: policy.ActionSelectorMismatch,
+	}}
+	executor := &recordingResumePolicyExecutor{}
+	legacyCalls := 0
+	controller, err := NewController(
+		ipc.RoleUser,
+		ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentPritunl},
+		snapshot,
+		control.ReasonRecoveryBudget,
+		func(uint64, control.Tick) (control.Snapshot, error) {
+			legacyCalls++
+			return control.Snapshot{}, nil
+		},
+		func() control.Tick { return 100 },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.SetResumePolicyEvaluator(evaluator); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := policyqualification.Validate(completeResumeEvidence())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.EnableResumePolicyEnforcement(executor, gate); err != nil {
+		t.Fatal(err)
+	}
+
+	response := controller.Handle(resumeRequest(control.ComponentPritunl, snapshot.Generation))
+	if response.Error != ipc.ErrorPrecondition || executor.calls != 0 || legacyCalls != 0 {
+		t.Fatalf(
+			"response=%+v executor_calls=%d legacy_calls=%d",
+			response,
+			executor.calls,
+			legacyCalls,
+		)
+	}
+}
+
+func completeResumeEvidence() policyqualification.Evidence {
+	return policyqualification.Evidence{
+		EligibleDuration: 72 * time.Hour, SleepWakeCycles: 2,
+		RebootObserved: true, InvalidSignatureInjected: true,
+		SelectorConflictInjected: true, StaleGenerationInjected: true,
+		CrossDomainCrashInjected: true,
 	}
 }
 

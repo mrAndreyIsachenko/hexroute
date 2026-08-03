@@ -7,6 +7,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policyqualification"
 	"github.com/mrAndreyIsachenko/hexroute/internal/resumeplan"
 )
 
@@ -21,6 +22,10 @@ type ResumePolicyEvaluator interface {
 	) policy.ActionAuthorizationDecision
 }
 
+type ResumePolicyExecutor interface {
+	ExecuteOperatorResume(resumeplan.Plan) (control.Snapshot, error)
+}
+
 type Controller struct {
 	mu             sync.Mutex
 	role           ipc.DaemonRole
@@ -30,7 +35,26 @@ type Controller struct {
 	lastReason     control.Reason
 	resume         ResumeFunc
 	resumePolicy   ResumePolicyEvaluator
+	resumeExecutor ResumePolicyExecutor
+	enforceResume  bool
 	now            func() control.Tick
+}
+
+func (controller *Controller) EnableResumePolicyEnforcement(
+	executor ResumePolicyExecutor,
+	qualification policyqualification.Gate,
+) error {
+	if controller == nil || executor == nil || !qualification.Complete() {
+		return ErrInvalidController
+	}
+	controller.mu.Lock()
+	defer controller.mu.Unlock()
+	if controller.resumePolicy == nil {
+		return ErrInvalidController
+	}
+	controller.resumeExecutor = executor
+	controller.enforceResume = true
+	return nil
 }
 
 var ErrInvalidController = errors.New("invalid operator controller")
@@ -142,24 +166,39 @@ func (controller *Controller) handleResume(
 		response.Error = ipc.ErrorStaleGeneration
 		return response
 	}
-	if controller.snapshot.State != control.StateSafeMode || controller.resume == nil {
+	if controller.snapshot.State != control.StateSafeMode ||
+		(!controller.enforceResume && controller.resume == nil) {
 		response.Error = ipc.ErrorPrecondition
 		return response
 	}
 
 	before := controller.snapshot
 	at := controller.now()
+	var shadowDecision policy.ActionAuthorizationDecision
+	var resumePlan resumeplan.Plan
+	var planErr error
 	if controller.resumePolicy != nil {
-		if plan, planErr := resumeplan.Build(request.Target, before, at); planErr == nil {
-			controller.resumePolicy.EvaluateOperatorResume(
+		resumePlan, planErr = resumeplan.Build(request.Target, before, at)
+		if planErr == nil {
+			shadowDecision = controller.resumePolicy.EvaluateOperatorResume(
 				domainForRole(controller.role),
 				string(request.Target),
 				request.ExpectedGeneration,
-				plan.Digest(),
+				resumePlan.Digest(),
 			)
 		}
 	}
-	after, err := controller.resume(request.ExpectedGeneration, at)
+	var after control.Snapshot
+	var err error
+	if controller.enforceResume {
+		if planErr != nil || !shadowDecision.Allowed || controller.resumeExecutor == nil {
+			response.Error = ipc.ErrorPrecondition
+			return response
+		}
+		after, err = controller.resumeExecutor.ExecuteOperatorResume(resumePlan)
+	} else {
+		after, err = controller.resume(request.ExpectedGeneration, at)
+	}
 	switch {
 	case errors.Is(err, control.ErrStaleGeneration):
 		response.Error = ipc.ErrorStaleGeneration
