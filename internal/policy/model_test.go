@@ -176,6 +176,45 @@ func TestActionLeaseValidate(t *testing.T) {
 	}
 }
 
+func TestActionLeaseOutcomeValidate(t *testing.T) {
+	outcome := ActionLeaseOutcome{
+		Schema:   ActionLeaseOutcomeSchema,
+		ActionID: testUUID, Domain: DomainUser,
+		Nonce:  "123e4567-e89b-42d3-a456-426614174001",
+		Status: LeaseCommitted, Reason: LeaseOutcomeCompleted,
+		ResolvedAt: testTime,
+	}
+	if err := outcome.Validate(); err != nil {
+		t.Fatalf("valid committed outcome: %v", err)
+	}
+	outcome.Status = LeaseExpired
+	if !errors.Is(outcome.Validate(), ErrInvalidActionLease) {
+		t.Fatal("expired outcome with completed reason should be rejected")
+	}
+	outcome.Reason = LeaseOutcomeBootMismatch
+	if err := outcome.Validate(); err != nil {
+		t.Fatalf("valid boot-mismatch outcome: %v", err)
+	}
+}
+
+func TestActionLeaseExecutionClaimValidate(t *testing.T) {
+	claim := ActionLeaseExecutionClaim{
+		Schema:   ActionLeaseExecutionSchema,
+		ActionID: testUUID, Domain: DomainRoot,
+		Nonce:     "123e4567-e89b-42d3-a456-426614174001",
+		AttemptID: "123e4567-e89b-42d3-a456-426614174002",
+		BootID:    "123e4567-e89b-42d3-a456-426614174003",
+		ClaimedAt: testTime,
+	}
+	if err := claim.Validate(); err != nil {
+		t.Fatalf("valid execution claim: %v", err)
+	}
+	claim.AttemptID = claim.Nonce
+	if !errors.Is(claim.Validate(), ErrInvalidActionLease) {
+		t.Fatal("execution attempt reused as nonce should be rejected")
+	}
+}
+
 func TestStatusValidate(t *testing.T) {
 	active := Status{
 		Schema: PolicyStatusSchema, Domain: DomainRoot, State: PolicyActive,

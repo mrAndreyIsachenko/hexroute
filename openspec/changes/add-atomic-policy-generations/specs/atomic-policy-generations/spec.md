@@ -320,8 +320,12 @@ nonce. The executor SHALL reject replay, expiry, boot mismatch or any policy or
 state-generation change and SHALL persist `committed`, `aborted` or `expired`.
 Lease issuance SHALL default to 30 seconds, SHALL reject TTLs above five
 minutes, and SHALL persist an immutable nonce claim before the immutable pending
-lease. The domain store SHALL accept issuance only against a confirmed active
-pointer with matching bundle and owning-domain policy generations.
+lease. Before the first mutation step, the executor SHALL persist an immutable
+execution claim bound to the action ID, nonce, boot ID and a fresh attempt ID.
+The same attempt SHALL revalidate that claim immediately before every step and
+commit; a different process or attempt SHALL NOT resume the claimed lease. The
+domain store SHALL accept issuance and execution claims only against a confirmed
+active pointer with matching bundle and owning-domain policy generations.
 
 #### Scenario: Control state changes before execution
 
@@ -339,6 +343,12 @@ pointer with matching bundle and owning-domain policy generations.
 
 - **WHEN** the current boot ID differs from the lease boot ID
 - **THEN** the unfinished lease is invalid even if its wall-clock expiry has not passed
+
+#### Scenario: Executor crashes after claiming a lease
+
+- **WHEN** a process crashes after persisting its execution claim and before a durable outcome
+- **THEN** a new process with a different attempt ID cannot resume or repeat the action
+- **AND** the claimed transaction remains fail-closed for explicit verified recovery
 
 ### Requirement: Exact transactional action plans
 

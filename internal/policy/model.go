@@ -10,6 +10,8 @@ const (
 	ManifestSchema                = "hexroute.policy-manifest.v1"
 	DomainPayloadSchema           = "hexroute.policy-domain.v1"
 	ActionLeaseSchema             = "hexroute.action-lease.v1"
+	ActionLeaseExecutionSchema    = "hexroute.action-lease-execution.v1"
+	ActionLeaseOutcomeSchema      = "hexroute.action-lease-outcome.v1"
 	PolicyStatusSchema            = "hexroute.policy-status.v1"
 	AuthorizationSuspensionSchema = "hexroute.authorization-suspension.v1"
 	ExistingStateStatusSchema     = "hexroute.existing-state-status.v1"
@@ -129,6 +131,33 @@ const (
 func (status LeaseStatus) Valid() bool {
 	switch status {
 	case LeasePending, LeaseCommitted, LeaseAborted, LeaseExpired:
+		return true
+	default:
+		return false
+	}
+}
+
+type LeaseOutcomeReason string
+
+const (
+	LeaseOutcomeCompleted       LeaseOutcomeReason = "completed"
+	LeaseOutcomeCanceled        LeaseOutcomeReason = "canceled"
+	LeaseOutcomeTTLExpired      LeaseOutcomeReason = "ttl_expired"
+	LeaseOutcomeBootMismatch    LeaseOutcomeReason = "boot_mismatch"
+	LeaseOutcomeStaleGeneration LeaseOutcomeReason = "stale_generation"
+	LeaseOutcomeBindingMismatch LeaseOutcomeReason = "binding_mismatch"
+	LeaseOutcomeClockAnomaly    LeaseOutcomeReason = "clock_anomaly"
+)
+
+func (reason LeaseOutcomeReason) Valid() bool {
+	switch reason {
+	case LeaseOutcomeCompleted,
+		LeaseOutcomeCanceled,
+		LeaseOutcomeTTLExpired,
+		LeaseOutcomeBootMismatch,
+		LeaseOutcomeStaleGeneration,
+		LeaseOutcomeBindingMismatch,
+		LeaseOutcomeClockAnomaly:
 		return true
 	default:
 		return false
@@ -307,6 +336,26 @@ type ActionLease struct {
 	BootID                 metadata.UUID `json:"boot_id"`
 	Nonce                  metadata.UUID `json:"nonce"`
 	Status                 LeaseStatus   `json:"status"`
+}
+
+type ActionLeaseOutcome struct {
+	Schema     string             `json:"schema"`
+	ActionID   metadata.UUID      `json:"action_id"`
+	Domain     Domain             `json:"domain"`
+	Nonce      metadata.UUID      `json:"nonce"`
+	Status     LeaseStatus        `json:"status"`
+	Reason     LeaseOutcomeReason `json:"reason"`
+	ResolvedAt string             `json:"resolved_at"`
+}
+
+type ActionLeaseExecutionClaim struct {
+	Schema    string        `json:"schema"`
+	ActionID  metadata.UUID `json:"action_id"`
+	Domain    Domain        `json:"domain"`
+	Nonce     metadata.UUID `json:"nonce"`
+	AttemptID metadata.UUID `json:"attempt_id"`
+	BootID    metadata.UUID `json:"boot_id"`
+	ClaimedAt string        `json:"claimed_at"`
 }
 
 type Status struct {

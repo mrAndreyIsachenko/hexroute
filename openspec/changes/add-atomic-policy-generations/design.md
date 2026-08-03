@@ -258,11 +258,20 @@ The domain-local protected policy store accepts a pending lease only against a
 confirmed active pointer with matching bundle and domain generations. It claims
 the nonce durably before writing the immutable lease, so an interrupted write
 may conservatively burn a nonce but can never leave an unclaimed executable
-lease. Durable outcomes and their bounded retention are added in the following
-lease-consumption task.
+lease. A resolved lease, nonce claim, optional execution claim and durable
+outcome remain an immutable replay-evidence unit. Unresolved claimed leases
+remain fail-closed for explicit recovery.
 
-The executor rechecks policy and control-state generations immediately before
-each mutation step and before commit. A multi-step action has an ordered plan,
+Before the first mutation step, the executor durably claims the lease with a
+fresh execution-attempt ID bound to the action, nonce and boot ID. The same
+attempt must revalidate that immutable claim immediately before every mutation
+step and commit. A different process or post-crash executor cannot resume a
+claimed lease; it fails closed until the explicit verified recovery path
+resolves the transaction. This closes the crash window between a mutation and
+outcome persistence without treating an uncertain action as safe to repeat.
+
+The executor also rechecks policy and control-state generations immediately
+before each mutation step and before commit. A multi-step action has an ordered plan,
 per-step verification and an inverse plan. On staleness or failure it rolls
 back only the Hexroute-owned subset that this transaction applied; foreign or
 ambiguous state is never changed. Failed rollback places that target in

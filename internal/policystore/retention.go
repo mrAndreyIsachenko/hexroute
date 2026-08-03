@@ -325,12 +325,14 @@ func (store *Store) applyRetentionLocked(now time.Time) (RetentionResult, error)
 }
 
 type retentionState struct {
-	receipts       map[metadata.UUID]PrepareReceipt
-	commits        map[metadata.UUID]CommitIntent
-	resolutions    map[metadata.UUID]ResolutionRecord
-	actionLeases   map[metadata.UUID]policy.ActionLease
-	actionNonces   map[metadata.UUID]actionNonceClaim
-	transientNames []string
+	receipts         map[metadata.UUID]PrepareReceipt
+	commits          map[metadata.UUID]CommitIntent
+	resolutions      map[metadata.UUID]ResolutionRecord
+	actionLeases     map[metadata.UUID]policy.ActionLease
+	actionNonces     map[metadata.UUID]actionNonceClaim
+	actionExecutions map[metadata.UUID]policy.ActionLeaseExecutionClaim
+	actionOutcomes   map[metadata.UUID]policy.ActionLeaseOutcome
+	transientNames   []string
 }
 
 func (store *Store) scanRetentionStateLocked() (retentionState, error) {
@@ -339,11 +341,13 @@ func (store *Store) scanRetentionStateLocked() (retentionState, error) {
 		return retentionState{}, err
 	}
 	state := retentionState{
-		receipts:     make(map[metadata.UUID]PrepareReceipt),
-		commits:      make(map[metadata.UUID]CommitIntent),
-		resolutions:  make(map[metadata.UUID]ResolutionRecord),
-		actionLeases: make(map[metadata.UUID]policy.ActionLease),
-		actionNonces: make(map[metadata.UUID]actionNonceClaim),
+		receipts:         make(map[metadata.UUID]PrepareReceipt),
+		commits:          make(map[metadata.UUID]CommitIntent),
+		resolutions:      make(map[metadata.UUID]ResolutionRecord),
+		actionLeases:     make(map[metadata.UUID]policy.ActionLease),
+		actionNonces:     make(map[metadata.UUID]actionNonceClaim),
+		actionExecutions: make(map[metadata.UUID]policy.ActionLeaseExecutionClaim),
+		actionOutcomes:   make(map[metadata.UUID]policy.ActionLeaseOutcome),
 	}
 	for _, name := range names {
 		switch {
@@ -396,6 +400,20 @@ func (store *Store) scanRetentionStateLocked() (retentionState, error) {
 				return retentionState{}, ErrInvalidRecord
 			}
 			state.actionNonces[transactionID] = claim
+		case recordActionExecution:
+			claim, decodeErr := decodeRecord[policy.ActionLeaseExecutionClaim](encoded)
+			if decodeErr != nil || claim.Validate() != nil || claim.Domain != store.domain ||
+				claim.ActionID != transactionID {
+				return retentionState{}, ErrInvalidRecord
+			}
+			state.actionExecutions[transactionID] = claim
+		case recordActionOutcome:
+			outcome, decodeErr := decodeRecord[policy.ActionLeaseOutcome](encoded)
+			if decodeErr != nil || outcome.Validate() != nil || outcome.Domain != store.domain ||
+				outcome.ActionID != transactionID {
+				return retentionState{}, ErrInvalidRecord
+			}
+			state.actionOutcomes[transactionID] = outcome
 		default:
 			return retentionState{}, ErrInvalidRecord
 		}
@@ -404,6 +422,30 @@ func (store *Store) scanRetentionStateLocked() (retentionState, error) {
 		claim, exists := state.actionNonces[lease.Nonce]
 		if !exists || claim.ActionID != lease.ActionID || claim.Domain != lease.Domain ||
 			claim.ClaimedAt != lease.IssuedAt {
+			return retentionState{}, ErrRecordConflict
+		}
+		if outcome, exists := state.actionOutcomes[lease.ActionID]; exists &&
+			!outcomeMatchesLease(outcome, lease) {
+			return retentionState{}, ErrRecordConflict
+		}
+		if outcome, exists := state.actionOutcomes[lease.ActionID]; exists &&
+			outcome.Status == policy.LeaseCommitted {
+			if _, claimed := state.actionExecutions[lease.ActionID]; !claimed {
+				return retentionState{}, ErrRecordConflict
+			}
+		}
+		if execution, exists := state.actionExecutions[lease.ActionID]; exists &&
+			!executionMatchesLease(execution, lease) {
+			return retentionState{}, ErrRecordConflict
+		}
+	}
+	for actionID := range state.actionExecutions {
+		if _, exists := state.actionLeases[actionID]; !exists {
+			return retentionState{}, ErrRecordConflict
+		}
+	}
+	for actionID := range state.actionOutcomes {
+		if _, exists := state.actionLeases[actionID]; !exists {
 			return retentionState{}, ErrRecordConflict
 		}
 	}
@@ -644,6 +686,7 @@ func directoryEntryNames(directoryFD int) ([]string, error) {
 func parseTransactionRecordFilename(name string) (recordOperation, metadata.UUID, bool) {
 	for _, operation := range []recordOperation{
 		recordPrepare, recordCommit, recordResolution, recordActionLease, recordActionNonce,
+		recordActionExecution, recordActionOutcome,
 	} {
 		prefix := string(operation) + "-"
 		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".json") {

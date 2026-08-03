@@ -220,6 +220,49 @@ func (lease ActionLease) Validate() error {
 	return nil
 }
 
+func (outcome ActionLeaseOutcome) Validate() error {
+	if outcome.Schema != ActionLeaseOutcomeSchema || !validUUID(outcome.ActionID) ||
+		!outcome.Domain.Valid() || !validUUID(outcome.Nonce) ||
+		outcome.ActionID == outcome.Nonce || !outcome.Status.Valid() ||
+		!outcome.Reason.Valid() || !validOptionalUTC(outcome.ResolvedAt) ||
+		outcome.ResolvedAt == "" {
+		return ErrInvalidActionLease
+	}
+	switch outcome.Status {
+	case LeaseCommitted:
+		if outcome.Reason != LeaseOutcomeCompleted {
+			return ErrInvalidActionLease
+		}
+	case LeaseAborted:
+		switch outcome.Reason {
+		case LeaseOutcomeCanceled,
+			LeaseOutcomeStaleGeneration,
+			LeaseOutcomeBindingMismatch,
+			LeaseOutcomeClockAnomaly:
+		default:
+			return ErrInvalidActionLease
+		}
+	case LeaseExpired:
+		if outcome.Reason != LeaseOutcomeTTLExpired && outcome.Reason != LeaseOutcomeBootMismatch {
+			return ErrInvalidActionLease
+		}
+	default:
+		return ErrInvalidActionLease
+	}
+	return nil
+}
+
+func (claim ActionLeaseExecutionClaim) Validate() error {
+	if claim.Schema != ActionLeaseExecutionSchema || !validUUID(claim.ActionID) ||
+		!claim.Domain.Valid() || !validUUID(claim.Nonce) || !validUUID(claim.AttemptID) ||
+		!validUUID(claim.BootID) || claim.ActionID == claim.Nonce ||
+		claim.AttemptID == claim.ActionID || claim.AttemptID == claim.Nonce ||
+		claim.ClaimedAt == "" || !validOptionalUTC(claim.ClaimedAt) {
+		return ErrInvalidActionLease
+	}
+	return nil
+}
+
 func (status Status) Validate() error {
 	if status.Schema != PolicyStatusSchema || !status.Domain.Valid() ||
 		!status.State.Valid() || !status.Reason.Valid() {

@@ -11,10 +11,12 @@ import (
 )
 
 const (
-	actionOne metadata.UUID = "323e4567-e89b-42d3-a456-426614174000"
-	actionTwo metadata.UUID = "423e4567-e89b-42d3-a456-426614174000"
-	nonceOne  metadata.UUID = "523e4567-e89b-42d3-a456-426614174000"
-	nonceTwo  metadata.UUID = "623e4567-e89b-42d3-a456-426614174000"
+	actionOne  metadata.UUID = "323e4567-e89b-42d3-a456-426614174000"
+	actionTwo  metadata.UUID = "423e4567-e89b-42d3-a456-426614174000"
+	nonceOne   metadata.UUID = "523e4567-e89b-42d3-a456-426614174000"
+	nonceTwo   metadata.UUID = "623e4567-e89b-42d3-a456-426614174000"
+	attemptOne metadata.UUID = "723e4567-e89b-42d3-a456-426614174000"
+	attemptTwo metadata.UUID = "823e4567-e89b-42d3-a456-426614174000"
 )
 
 func TestActionLeaseIsDurableIdempotentAndDomainBound(t *testing.T) {
@@ -124,6 +126,100 @@ func TestInterruptedActionLeaseWriteLeavesNonceClaimFailClosed(t *testing.T) {
 	}
 }
 
+func TestActionLeaseOutcomeIsDurableAndOneTime(t *testing.T) {
+	store, path := newTestStore(t, policy.DomainUser)
+	lease := installActionLeaseActivePolicy(t, store, policy.DomainUser)
+	if err := store.PersistActionLease(lease); err != nil {
+		t.Fatal(err)
+	}
+	outcome := syntheticActionLeaseOutcome(lease, policy.LeaseCommitted, policy.LeaseOutcomeCompleted)
+	if err := store.PersistActionLeaseOutcome(outcome); !errors.Is(err, ErrRecordNotFound) {
+		t.Fatalf("commit without execution claim error = %v", err)
+	}
+	claim := syntheticActionLeaseExecutionClaim(lease)
+	if err := store.PersistActionLeaseExecutionClaim(claim); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PersistActionLeaseOutcome(outcome); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PersistActionLeaseOutcome(outcome); !errors.Is(err, ErrActionLeaseResolved) {
+		t.Fatalf("outcome replay error = %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := openStoreAt(path, policy.DomainUser, currentUID(), currentGID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	recoveredLease, recoveredOutcome, err := reopened.ReadActionLeaseState(lease.ActionID)
+	if err != nil || !reflect.DeepEqual(recoveredLease, lease) || recoveredOutcome == nil ||
+		!reflect.DeepEqual(*recoveredOutcome, outcome) {
+		t.Fatalf("lease=%+v outcome=%+v error=%v", recoveredLease, recoveredOutcome, err)
+	}
+	if _, err := reopened.ApplyRetention(time.Date(2030, time.January, 2, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("retention with outcome: %v", err)
+	}
+}
+
+func TestActionLeaseExecutionClaimIsDurableAndExclusive(t *testing.T) {
+	store, path := newTestStore(t, policy.DomainRoot)
+	lease := installActionLeaseActivePolicy(t, store, policy.DomainRoot)
+	if err := store.PersistActionLease(lease); err != nil {
+		t.Fatal(err)
+	}
+	claim := syntheticActionLeaseExecutionClaim(lease)
+	if err := store.PersistActionLeaseExecutionClaim(claim); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PersistActionLeaseExecutionClaim(claim); err != nil {
+		t.Fatalf("idempotent claim: %v", err)
+	}
+	conflicting := claim
+	conflicting.AttemptID = attemptTwo
+	if err := store.PersistActionLeaseExecutionClaim(conflicting); !errors.Is(err, ErrRecordConflict) {
+		t.Fatalf("conflicting attempt error = %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := openStoreAt(path, policy.DomainRoot, currentUID(), currentGID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	recovered, err := reopened.ReadActionLeaseExecutionClaim(lease.ActionID)
+	if err != nil || recovered != claim {
+		t.Fatalf("recovered=%+v error=%v", recovered, err)
+	}
+	if _, err := reopened.ApplyRetention(time.Date(2030, time.January, 2, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("retention with execution claim: %v", err)
+	}
+}
+
+func TestActionLeaseOutcomeRejectsWrongNonceAndAcceptsBoundedAbort(t *testing.T) {
+	store, _ := newTestStore(t, policy.DomainRoot)
+	defer store.Close()
+	lease := installActionLeaseActivePolicy(t, store, policy.DomainRoot)
+	if err := store.PersistActionLease(lease); err != nil {
+		t.Fatal(err)
+	}
+	wrongNonce := syntheticActionLeaseOutcome(lease, policy.LeaseAborted, policy.LeaseOutcomeCanceled)
+	wrongNonce.Nonce = nonceTwo
+	if err := store.PersistActionLeaseOutcome(wrongNonce); !errors.Is(err, ErrRecordConflict) {
+		t.Fatalf("wrong nonce error = %v", err)
+	}
+
+	aborted := syntheticActionLeaseOutcome(lease, policy.LeaseAborted, policy.LeaseOutcomeStaleGeneration)
+	if err := store.PersistActionLeaseOutcome(aborted); err != nil {
+		t.Fatalf("stale abort outcome: %v", err)
+	}
+}
+
 func syntheticStoredActionLease(domain policy.Domain) policy.ActionLease {
 	return policy.ActionLease{
 		Schema: policy.ActionLeaseSchema, ActionID: actionOne, Domain: domain,
@@ -150,4 +246,27 @@ func installActionLeaseActivePolicy(
 	lease.BundleGeneration = fixture.generation.Bundle
 	lease.DomainPolicyGeneration = fixture.generation.Policy
 	return lease
+}
+
+func syntheticActionLeaseOutcome(
+	lease policy.ActionLease,
+	status policy.LeaseStatus,
+	reason policy.LeaseOutcomeReason,
+) policy.ActionLeaseOutcome {
+	return policy.ActionLeaseOutcome{
+		Schema:   policy.ActionLeaseOutcomeSchema,
+		ActionID: lease.ActionID, Domain: lease.Domain, Nonce: lease.Nonce,
+		Status: status, Reason: reason, ResolvedAt: "2030-01-01T00:00:20Z",
+	}
+}
+
+func syntheticActionLeaseExecutionClaim(
+	lease policy.ActionLease,
+) policy.ActionLeaseExecutionClaim {
+	return policy.ActionLeaseExecutionClaim{
+		Schema:   policy.ActionLeaseExecutionSchema,
+		ActionID: lease.ActionID, Domain: lease.Domain, Nonce: lease.Nonce,
+		AttemptID: attemptOne, BootID: lease.BootID,
+		ClaimedAt: "2030-01-01T00:00:10Z",
+	}
 }
