@@ -61,6 +61,7 @@ type Handler struct {
 	hasPrepared        bool
 	activeIdentity     ipc.PolicyTransactionIdentity
 	activeReceipt      policystore.PrepareReceipt
+	activePayload      policy.DomainPayload
 	hasActive          bool
 }
 
@@ -430,6 +431,40 @@ func (handler *Handler) MutationAllowed() bool {
 		handler.status.State != policy.PolicyAuthorizationSuspended
 }
 
+// EvaluateOperatorResume performs side-effect-free shadow evaluation against
+// the fully revalidated active policy. Enforcement remains outside this method.
+func (handler *Handler) EvaluateOperatorResume(
+	domain policy.Domain,
+	target string,
+	controlStateGeneration uint64,
+	planSHA256 string,
+) policy.ActionAuthorizationDecision {
+	if handler == nil {
+		return policy.ActionAuthorizationDecision{Reason: policy.ActionInvalidRequest}
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	handler.refreshAuthorizationLocked()
+	now, err := handler.checkedNowLocked()
+	if err != nil {
+		return policy.ActionAuthorizationDecision{Reason: policy.ActionAuthorizationSuspended}
+	}
+	return policy.EvaluateActionAuthorization(
+		policy.ActionAuthorizationState{
+			Status: handler.status, Suspension: handler.authorizationSuspension,
+			Payload: handler.activePayload, ControlStateGeneration: controlStateGeneration,
+		},
+		policy.ActionAuthorizationRequest{
+			Domain: domain, Capability: policy.CapabilityOperatorResume,
+			BundleGeneration:       handler.status.BundleGeneration,
+			DomainPolicyGeneration: handler.status.PolicyGeneration,
+			ControlStateGeneration: controlStateGeneration,
+			Target:                 target, PlanSHA256: planSHA256,
+		},
+		now,
+	)
+}
+
 // ReportGrandfatheredNoncompliance records that established data-plane state
 // no longer conforms to the active policy. It has no execution or disconnect
 // path and only narrows mutation authority.
@@ -530,6 +565,7 @@ func (handler *Handler) restoreActive(
 	}
 	handler.setInstalled(pointer, active.Manifest.PolicySchema)
 	handler.setActiveIdentity(identity, pointer)
+	handler.activePayload = cloneDomainPayload(active.Payload)
 	state := policy.PolicyDomainMismatch
 	reason := policy.ReasonDomainMismatch
 	if active.ConfirmedAt != "" {
@@ -751,6 +787,9 @@ func (handler *Handler) setActiveIdentity(
 	identity ipc.PolicyTransactionIdentity,
 	pointer policystore.ActivePointer,
 ) {
+	if !handler.hasActive || handler.activeIdentity != identity {
+		handler.activePayload = policy.DomainPayload{}
+	}
 	handler.activeIdentity = identity
 	handler.activeReceipt = policystore.PrepareReceipt{
 		Schema:        policystore.PrepareReceiptSchema,
@@ -769,6 +808,40 @@ func (handler *Handler) setActiveIdentity(
 			handler.existingState.PolicyGeneration != pointer.PolicyGeneration) {
 		handler.existingState = nil
 	}
+}
+
+func cloneDomainPayload(source policy.DomainPayload) policy.DomainPayload {
+	cloned := source
+	cloned.Rules = append([]policy.Rule(nil), source.Rules...)
+	for index := range cloned.Rules {
+		selector := cloned.Rules[index].Selector
+		if selector.Endpoint != nil {
+			endpoint := *selector.Endpoint
+			endpoint.Ports = append([]policy.PortRange(nil), endpoint.Ports...)
+			selector.Endpoint = &endpoint
+		}
+		if selector.Route != nil {
+			route := *selector.Route
+			selector.Route = &route
+		}
+		if selector.Action != nil {
+			action := *selector.Action
+			selector.Action = &action
+		}
+		if selector.Credential != nil {
+			credential := *selector.Credential
+			selector.Credential = &credential
+		}
+		cloned.Rules[index].Selector = selector
+	}
+	cloned.Leases = append([]policy.AuthorizationLease(nil), source.Leases...)
+	for index := range cloned.Leases {
+		cloned.Leases[index].SelectorIDs = append(
+			[]string(nil),
+			source.Leases[index].SelectorIDs...,
+		)
+	}
+	return cloned
 }
 
 func cloneExistingState(source *policy.ExistingStateStatus) *policy.ExistingStateStatus {

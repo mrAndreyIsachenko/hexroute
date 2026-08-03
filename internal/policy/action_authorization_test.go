@@ -70,6 +70,17 @@ func TestEvaluateOperatorResumeRequiresExactPolicyBinding(t *testing.T) {
 			reason: policy.ActionDomainMismatch,
 		},
 		{
+			name: "no active policy",
+			mutate: func(state *policy.ActionAuthorizationState, _ *policy.ActionAuthorizationRequest) {
+				state.Status = policy.Status{
+					Schema: policy.PolicyStatusSchema, Domain: policy.DomainUser,
+					State: policy.PolicyNone, Reason: policy.ReasonNoValidGeneration,
+				}
+				state.Payload = policy.DomainPayload{}
+			},
+			reason: policy.ActionInactivePolicy,
+		},
+		{
 			name: "authorization lease expired",
 			mutate: func(state *policy.ActionAuthorizationState, _ *policy.ActionAuthorizationRequest) {
 				state.Payload.Leases[0].ExpiresAt = at.Format(time.RFC3339Nano)

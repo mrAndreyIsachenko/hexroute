@@ -229,6 +229,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if policyStore != nil {
 			defer policyStore.Close()
 		}
+		if err := controller.SetResumePolicyEvaluator(policyHandler); err != nil {
+			return 1
+		}
 		dispatcher, err := operator.NewDispatcher(controller, broker, policyHandler)
 		if err != nil {
 			return 1

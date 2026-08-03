@@ -9,7 +9,31 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 )
+
+type recordingResumePolicyEvaluator struct {
+	calls             int
+	domain            policy.Domain
+	target            string
+	controlGeneration uint64
+	planSHA256        string
+	decision          policy.ActionAuthorizationDecision
+}
+
+func (evaluator *recordingResumePolicyEvaluator) EvaluateOperatorResume(
+	domain policy.Domain,
+	target string,
+	controlGeneration uint64,
+	planSHA256 string,
+) policy.ActionAuthorizationDecision {
+	evaluator.calls++
+	evaluator.domain = domain
+	evaluator.target = target
+	evaluator.controlGeneration = controlGeneration
+	evaluator.planSHA256 = planSHA256
+	return evaluator.decision
+}
 
 func TestControllerReportsBoundedStatusAndDiagnostics(t *testing.T) {
 	snapshot := safeModeSnapshot()
@@ -216,6 +240,79 @@ func TestControllerRejectsStaleUpdatesAndResumeFailures(t *testing.T) {
 	response := controller.Handle(resumeRequest(control.ComponentPritunl, snapshot.Generation))
 	if response.Error != ipc.ErrorStaleGeneration {
 		t.Fatalf("resume error = %q, want %q", response.Error, ipc.ErrorStaleGeneration)
+	}
+}
+
+func TestControllerEvaluatesResumePolicyInShadowWithoutChangingLegacyOutcome(t *testing.T) {
+	snapshot := safeModeSnapshot()
+	evaluator := &recordingResumePolicyEvaluator{decision: policy.ActionAuthorizationDecision{
+		Reason: policy.ActionSelectorMismatch,
+	}}
+	resumeCalls := 0
+	controller, err := NewController(
+		ipc.RoleUser,
+		ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentPritunl},
+		snapshot,
+		control.ReasonRecoveryBudget,
+		func(expected uint64, at control.Tick) (control.Snapshot, error) {
+			resumeCalls++
+			updated := snapshot
+			updated.State = control.StateDegraded
+			updated.Generation++
+			updated.Attempts = 0
+			updated.RecoveringSince = 0
+			updated.NextActionAt = at
+			updated.LastTick = at
+			updated.SafeUntil = 0
+			return updated, nil
+		},
+		func() control.Tick { return 100 },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.SetResumePolicyEvaluator(evaluator); err != nil {
+		t.Fatal(err)
+	}
+
+	response := controller.Handle(resumeRequest(control.ComponentPritunl, snapshot.Generation))
+	if !response.OK || response.Resume == nil || resumeCalls != 1 {
+		t.Fatalf("shadow denial changed resume response=%+v calls=%d", response, resumeCalls)
+	}
+	if evaluator.calls != 1 || evaluator.domain != policy.DomainUser ||
+		evaluator.target != string(control.ComponentPritunl) ||
+		evaluator.controlGeneration != snapshot.Generation ||
+		len(evaluator.planSHA256) != 64 {
+		t.Fatalf("shadow evaluation = %+v", evaluator)
+	}
+}
+
+func TestControllerPreservesGenerationGuardBeforeShadowEvaluation(t *testing.T) {
+	snapshot := safeModeSnapshot()
+	evaluator := &recordingResumePolicyEvaluator{}
+	controller, err := NewController(
+		ipc.RoleUser,
+		ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentPritunl},
+		snapshot,
+		control.ReasonRecoveryBudget,
+		func(uint64, control.Tick) (control.Snapshot, error) {
+			t.Fatal("stale resume invoked mutation")
+			return control.Snapshot{}, nil
+		},
+		func() control.Tick { return 100 },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.SetResumePolicyEvaluator(evaluator); err != nil {
+		t.Fatal(err)
+	}
+
+	response := controller.Handle(resumeRequest(control.ComponentPritunl, snapshot.Generation-1))
+	if response.Error != ipc.ErrorStaleGeneration || evaluator.calls != 0 {
+		t.Fatalf("response=%+v shadow calls=%d", response, evaluator.calls)
 	}
 }
 

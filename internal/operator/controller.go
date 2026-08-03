@@ -6,9 +6,19 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 )
 
 type ResumeFunc func(uint64, control.Tick) (control.Snapshot, error)
+
+type ResumePolicyEvaluator interface {
+	EvaluateOperatorResume(
+		policy.Domain,
+		string,
+		uint64,
+		string,
+	) policy.ActionAuthorizationDecision
+}
 
 type Controller struct {
 	mu             sync.Mutex
@@ -18,6 +28,7 @@ type Controller struct {
 	snapshot       control.Snapshot
 	lastReason     control.Reason
 	resume         ResumeFunc
+	resumePolicy   ResumePolicyEvaluator
 	now            func() control.Tick
 }
 
@@ -56,6 +67,18 @@ func NewController(
 		resume:         resume,
 		now:            now,
 	}, nil
+}
+
+// SetResumePolicyEvaluator enables observational policy evaluation. The
+// decision cannot block or authorize the legacy resume path in shadow mode.
+func (controller *Controller) SetResumePolicyEvaluator(evaluator ResumePolicyEvaluator) error {
+	if controller == nil || evaluator == nil {
+		return ErrInvalidController
+	}
+	controller.mu.Lock()
+	defer controller.mu.Unlock()
+	controller.resumePolicy = evaluator
+	return nil
 }
 
 func (controller *Controller) Update(
@@ -124,7 +147,18 @@ func (controller *Controller) handleResume(
 	}
 
 	before := controller.snapshot
-	after, err := controller.resume(request.ExpectedGeneration, controller.now())
+	at := controller.now()
+	if controller.resumePolicy != nil {
+		if plan, planErr := buildOperatorResumePlan(request.Target, before, at); planErr == nil {
+			controller.resumePolicy.EvaluateOperatorResume(
+				domainForRole(controller.role),
+				string(request.Target),
+				request.ExpectedGeneration,
+				plan.Digest(),
+			)
+		}
+	}
+	after, err := controller.resume(request.ExpectedGeneration, at)
 	switch {
 	case errors.Is(err, control.ErrStaleGeneration):
 		response.Error = ipc.ErrorStaleGeneration
@@ -155,6 +189,13 @@ func (controller *Controller) handleResume(
 	response.OK = true
 	response.Resume = &result
 	return response
+}
+
+func domainForRole(role ipc.DaemonRole) policy.Domain {
+	if role == ipc.RoleRoot {
+		return policy.DomainRoot
+	}
+	return policy.DomainUser
 }
 
 func (controller *Controller) status() ipc.Status {

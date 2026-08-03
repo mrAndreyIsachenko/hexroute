@@ -840,6 +840,65 @@ func TestGrandfatheredNoncomplianceRaisesIncidentWithoutExecution(t *testing.T) 
 	}
 }
 
+func TestHandlerEvaluatesOperatorResumeAgainstRevalidatedActivePayload(t *testing.T) {
+	publicKey := ed25519.NewKeyFromSeed(
+		bytes.Repeat([]byte{19}, ed25519.SeedSize),
+	).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainUser, publicKey).Runtime(policy.DomainUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := syntheticIPCIdentity()
+	active := revalidatedActiveFixture(identity, policy.DomainUser, runtime, true)
+	active.Payload = policy.DomainPayload{
+		Schema: policy.DomainPayloadSchema, Domain: policy.DomainUser,
+		PolicyGeneration: identity.UserPolicyGeneration,
+		Rules: []policy.Rule{{
+			ID: "user.resume-pritunl", Effect: policy.EffectAllow,
+			Selector: policy.Selector{
+				ID: "user.resume-pritunl-selector", Kind: policy.SelectorAction,
+				Action: &policy.ActionSelector{
+					Capability: policy.CapabilityOperatorResume, Target: "pritunl",
+				},
+			},
+		}},
+		Leases: []policy.AuthorizationLease{{
+			ID: "user.resume-pritunl-lease", Domain: policy.DomainUser,
+			Capability:  policy.CapabilityOperatorResume,
+			SelectorIDs: []string{"user.resume-pritunl-selector"},
+			IssuedAt:    "2030-01-01T00:00:00Z", ExpiresAt: "2030-01-01T01:00:00Z",
+		}},
+	}
+	store := &recordingCandidateStore{
+		domain: policy.DomainUser, recoverResult: active,
+		pendingErr: policystore.ErrRecordNotFound,
+	}
+	now := time.Date(2030, time.January, 1, 0, 40, 0, 0, time.UTC)
+	handler, err := NewHandler(store, runtime, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	planSHA256 := policy.SHA256Hex([]byte("synthetic-resume-plan"))
+	decision := handler.EvaluateOperatorResume(
+		policy.DomainUser,
+		"pritunl",
+		7,
+		planSHA256,
+	)
+	if !decision.Allowed || decision.Reason != policy.ActionAuthorized {
+		t.Fatalf("decision = %+v", decision)
+	}
+	denied := handler.EvaluateOperatorResume(
+		policy.DomainRoot,
+		"pritunl",
+		7,
+		planSHA256,
+	)
+	if denied.Allowed || denied.Reason != policy.ActionDomainMismatch {
+		t.Fatalf("wrong-domain decision = %+v", denied)
+	}
+}
+
 func revalidatedActiveFixture(
 	identity ipc.PolicyTransactionIdentity,
 	domain policy.Domain,

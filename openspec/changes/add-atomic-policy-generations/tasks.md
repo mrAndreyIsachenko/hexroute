@@ -59,7 +59,7 @@
 ## 8. Operator Resume Enforcement
 
 - [x] 8.1 Add regression tests for policy-authorized `operator_resume`, including exact domain/target matching, generation mismatch, domain mismatch and one-time lease replay.
-- [ ] 8.2 Route the existing resume controller through shadow policy evaluation while preserving its current control-state generation guard and state-only behavior.
+- [x] 8.2 Route the existing resume controller through shadow policy evaluation while preserving its current control-state generation guard and state-only behavior.
 - [ ] 8.3 Prove the resume plan can only clear the target budget into `DEGRADED` and cannot invoke command, route, Pritunl, sing-box or credential code paths.
 - [ ] 8.4 Enable active policy enforcement only for `operator_resume` after the documented shadow gate; leave every data-plane mutation capability disabled.
 

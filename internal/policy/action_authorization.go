@@ -46,19 +46,21 @@ func EvaluateActionAuthorization(
 	at time.Time,
 ) ActionAuthorizationDecision {
 	if state.Status.Validate() != nil || state.Suspension.Validate() != nil ||
-		state.Payload.Validate() != nil || state.ControlStateGeneration == 0 ||
-		!validActionAuthorizationRequest(request) || !validAuthorizationTime(at) {
+		state.ControlStateGeneration == 0 || !validAuthorizationTime(at) {
 		return denyAction(ActionInvalidRequest)
 	}
 	if state.Status.State == PolicyDomainMismatch ||
 		state.Suspension.Reason == ReasonDomainMismatch {
 		return denyAction(ActionDomainMismatch)
 	}
-	if state.Suspension.Suspended {
+	if state.Suspension.Suspended || state.Status.State == PolicyAuthorizationSuspended {
 		return denyAction(ActionAuthorizationSuspended)
 	}
 	if state.Status.State != PolicyActive {
 		return denyAction(ActionInactivePolicy)
+	}
+	if state.Payload.Validate() != nil || !validActionAuthorizationRequest(request) {
+		return denyAction(ActionInvalidRequest)
 	}
 	if state.Status.Domain != request.Domain || state.Payload.Domain != request.Domain {
 		return denyAction(ActionDomainMismatch)
