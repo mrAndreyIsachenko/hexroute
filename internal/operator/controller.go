@@ -7,6 +7,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/resumeplan"
 )
 
 type ResumeFunc func(uint64, control.Tick) (control.Snapshot, error)
@@ -149,7 +150,7 @@ func (controller *Controller) handleResume(
 	before := controller.snapshot
 	at := controller.now()
 	if controller.resumePolicy != nil {
-		if plan, planErr := buildOperatorResumePlan(request.Target, before, at); planErr == nil {
+		if plan, planErr := resumeplan.Build(request.Target, before, at); planErr == nil {
 			controller.resumePolicy.EvaluateOperatorResume(
 				domainForRole(controller.role),
 				string(request.Target),

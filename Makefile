@@ -73,6 +73,7 @@ shell-test: build-observe-root build-observe-user
 	tests/observe_user_launchd_test.sh
 	tests/provider_b_documentation_test.sh
 	tests/policy_cli_boundary_test.sh
+	tests/operator_resume_boundary_test.sh
 	tests/policy_signer_profile_host_test.sh
 	tests/ingress_observer_release_test.sh
 	tests/terraform_contract_test.sh
