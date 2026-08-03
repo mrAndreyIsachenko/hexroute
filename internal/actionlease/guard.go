@@ -40,6 +40,7 @@ type Guard struct {
 	attemptID metadata.UUID
 	claimMu   sync.Mutex
 	claim     *policy.ActionLeaseExecutionClaim
+	started   bool
 }
 
 var (
@@ -67,6 +68,41 @@ func newGuard(store ExecutionStore, actionID metadata.UUID, random io.Reader) (*
 		return nil, ErrInvalidGuard
 	}
 	return &Guard{store: store, actionID: actionID, attemptID: attemptID}, nil
+}
+
+func (guard *Guard) ActionID() metadata.UUID {
+	if guard == nil {
+		return ""
+	}
+	return guard.actionID
+}
+
+func (guard *Guard) AttemptID() metadata.UUID {
+	if guard == nil {
+		return ""
+	}
+	return guard.attemptID
+}
+
+func (guard *Guard) Outcome() (*policy.ActionLeaseOutcome, error) {
+	if guard == nil || guard.store == nil {
+		return nil, ErrInvalidGuard
+	}
+	_, outcome, err := guard.store.ReadActionLeaseState(guard.actionID)
+	return outcome, err
+}
+
+func (guard *Guard) BeginExecution() error {
+	if guard == nil || guard.store == nil {
+		return ErrInvalidGuard
+	}
+	guard.claimMu.Lock()
+	defer guard.claimMu.Unlock()
+	if guard.started {
+		return ErrLeaseReplay
+	}
+	guard.started = true
+	return nil
 }
 
 // BeforeStep must be called immediately before each mutation step. It reloads

@@ -55,6 +55,7 @@ const (
 	RollbackSkipForeignOwner       RollbackSkipReason = "foreign_owner"
 	RollbackSkipAmbiguousOwner     RollbackSkipReason = "ambiguous_owner"
 	RollbackSkipStateChanged       RollbackSkipReason = "state_changed"
+	RollbackSkipBlockedByNewer     RollbackSkipReason = "blocked_by_newer_state"
 )
 
 type RollbackSkip struct {
@@ -155,10 +156,18 @@ func (execution Execution) BuildRollback(
 		return RollbackPlan{}, ErrInvalidExecution
 	}
 	result := RollbackPlan{}
+	blocked := false
 	for position := len(execution.applied) - 1; position >= 0; position-- {
 		applied := execution.applied[position]
 		if !applied.matches(execution, position) {
 			return RollbackPlan{}, ErrInvalidExecution
+		}
+		if blocked {
+			result.skipped = append(result.skipped, RollbackSkip{
+				StepID: applied.step.ID,
+				Reason: RollbackSkipBlockedByNewer,
+			})
+			continue
 		}
 		observation, exists := observations[applied.step.ID]
 		if !exists {
@@ -166,6 +175,7 @@ func (execution Execution) BuildRollback(
 				StepID: applied.step.ID,
 				Reason: RollbackSkipMissingObservation,
 			})
+			blocked = true
 			continue
 		}
 		if validateObservation(observation) != nil || observation.StepID != applied.step.ID {
@@ -177,6 +187,7 @@ func (execution Execution) BuildRollback(
 				StepID: applied.step.ID,
 				Reason: reason,
 			})
+			blocked = true
 			continue
 		}
 		result.operations = append(result.operations, RollbackOperation{

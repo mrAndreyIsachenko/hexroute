@@ -122,18 +122,15 @@ func TestRollbackContainsOnlyExactOwnedStateInReverseOrder(t *testing.T) {
 			Ownership: OwnershipForeign,
 		},
 		step2.ID: appliedObservation(step2, testActionID, testAttemptID),
-		step3.ID: {
-			StepID: step3.ID, StateSHA256: step3.AppliedSHA256,
-			Ownership: OwnershipAmbiguous,
-		},
+		step3.ID: appliedObservation(step3, testActionID, testAttemptID),
 	}
 	rollback, err := execution.BuildRollback(observations)
 	if err != nil {
 		t.Fatal(err)
 	}
 	operations := rollback.Operations()
-	if len(operations) != 2 || operations[0].StepID() != step2.ID ||
-		operations[1].StepID() != step0.ID {
+	if len(operations) != 2 || operations[0].StepID() != step3.ID ||
+		operations[1].StepID() != step2.ID {
 		t.Fatalf("rollback operations = %+v", operations)
 	}
 	for _, operation := range operations {
@@ -156,8 +153,8 @@ func TestRollbackContainsOnlyExactOwnedStateInReverseOrder(t *testing.T) {
 	}
 	skipped := rollback.Skipped()
 	if len(skipped) != 2 ||
-		skipped[0] != (RollbackSkip{StepID: step3.ID, Reason: RollbackSkipAmbiguousOwner}) ||
-		skipped[1] != (RollbackSkip{StepID: step1.ID, Reason: RollbackSkipForeignOwner}) {
+		skipped[0] != (RollbackSkip{StepID: step1.ID, Reason: RollbackSkipForeignOwner}) ||
+		skipped[1] != (RollbackSkip{StepID: step0.ID, Reason: RollbackSkipBlockedByNewer}) {
 		t.Fatalf("rollback skipped = %+v", skipped)
 	}
 }
@@ -198,6 +195,48 @@ func TestRollbackRechecksOwnershipAndCurrentState(t *testing.T) {
 	ready.AttemptID = otherAttempt
 	if err := operation.VerifyReady(ready); !errors.Is(err, ErrForeignOwnership) {
 		t.Fatalf("late ownership change error = %v", err)
+	}
+}
+
+func TestRollbackNeverCreatesInverseForForeignOrAmbiguousState(t *testing.T) {
+	plan := mustPlan(t, 1)
+	step, _ := plan.Step(0)
+	execution, err := NewExecution(plan, testActionID, testAttemptID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	execution, err = execution.RecordApplied(
+		0,
+		appliedObservation(step, testActionID, testAttemptID),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		ownership Ownership
+		reason    RollbackSkipReason
+	}{
+		{ownership: OwnershipForeign, reason: RollbackSkipForeignOwner},
+		{ownership: OwnershipAmbiguous, reason: RollbackSkipAmbiguousOwner},
+	}
+	for _, test := range tests {
+		t.Run(string(test.ownership), func(t *testing.T) {
+			observation := Observation{
+				StepID:      step.ID,
+				StateSHA256: step.AppliedSHA256,
+				Ownership:   test.ownership,
+			}
+			rollback, err := execution.BuildRollback(map[string]Observation{
+				step.ID: observation,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rollback.Operations()) != 0 || len(rollback.Skipped()) != 1 ||
+				rollback.Skipped()[0].Reason != test.reason {
+				t.Fatalf("rollback operations=%+v skipped=%+v", rollback.Operations(), rollback.Skipped())
+			}
+		})
 	}
 }
 

@@ -126,6 +126,20 @@ func TestSecondGuardCannotResumeClaimedLease(t *testing.T) {
 	}
 }
 
+func TestGuardAllowsOnlyOneInProcessExecutor(t *testing.T) {
+	lease := guardLease()
+	guard, err := NewGuard(&guardStore{lease: lease}, lease.ActionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := guard.BeginExecution(); err != nil {
+		t.Fatalf("first executor: %v", err)
+	}
+	if err := guard.BeginExecution(); !errors.Is(err, ErrLeaseReplay) {
+		t.Fatalf("second executor error = %v", err)
+	}
+}
+
 func TestGuardStopsWhenGenerationChangesBetweenSteps(t *testing.T) {
 	lease := guardLease()
 	store := &guardStore{lease: lease}

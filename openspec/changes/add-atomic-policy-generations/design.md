@@ -290,6 +290,17 @@ The initial allowlist contains only state-only `operator_resume` with
 `restore_control_snapshot`; process, route, tunnel and credential operations
 are not represented.
 
+The runner is one-shot per execution guard. It obtains a fresh authorization
+sample and durable lease check, then verifies ownership and before-state
+immediately before each apply. Every successful apply must be observed as the
+exact transaction-owned applied digest before the ordered ledger advances.
+Failure uses a bounded cancellation-independent compensation context, selects
+only the verified reverse suffix and rechecks ownership immediately before and
+after each inverse. An uncertain apply, skipped rollback state or inverse
+failure enters only the plan target into `SAFE_MODE` and emits the bounded
+critical code `action_rollback_failed`; no raw runtime error or foreign owner is
+included in the incident.
+
 For this change the only executable plan is the existing `operator_resume`
 state transition. It clears an exhausted recovery budget into `DEGRADED` but
 does not restart, reconnect or change network state. Generation changes cancel
