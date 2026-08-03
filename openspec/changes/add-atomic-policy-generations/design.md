@@ -271,11 +271,24 @@ resolves the transaction. This closes the crash window between a mutation and
 outcome persistence without treating an uncertain action as safe to repeat.
 
 The executor also rechecks policy and control-state generations immediately
-before each mutation step and before commit. A multi-step action has an ordered plan,
-per-step verification and an inverse plan. On staleness or failure it rolls
-back only the Hexroute-owned subset that this transaction applied; foreign or
-ambiguous state is never changed. Failed rollback places that target in
-`SAFE_MODE`, blocks further actions and emits a critical incident.
+before each mutation step and before commit. A multi-step action has an ordered
+plan, per-step verification and an inverse plan. On staleness or failure it
+rolls back only the Hexroute-owned subset that this transaction applied;
+foreign or ambiguous state is never changed. Failed rollback places that
+target in `SAFE_MODE`, blocks further actions and emits a critical incident.
+
+The ordered plan is a private immutable value built from bounded typed steps.
+Its canonical digest binds target, sequence, operation kind, input digest,
+before/applied state digests and inverse kind/input digest. Execution records
+are value-style append-only ledgers bound to the lease action ID and execution
+attempt ID. Rollback selection walks only the applied prefix in reverse order
+and emits an inverse operation only when a fresh observation proves the exact
+transaction still owns the exact applied-state digest. Missing, available,
+foreign, ambiguous or changed state is skipped without exposing a mutation
+primitive, and ownership is checked again immediately before each inverse.
+The initial allowlist contains only state-only `operator_resume` with
+`restore_control_snapshot`; process, route, tunnel and credential operations
+are not represented.
 
 For this change the only executable plan is the existing `operator_resume`
 state transition. It clears an exhausted recovery budget into `DEGRADED` but
