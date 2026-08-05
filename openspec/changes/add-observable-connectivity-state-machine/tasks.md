@@ -35,10 +35,10 @@
 ## 5. Journal, Checkpoint And Replay
 
 - [ ] 5.1 Extend separate root and user crash-safe priority journals with validated connectivity-fact records and accepted host-sequence metadata.
-- [ ] 5.2 Add an atomic generation-guarded aggregate checkpoint containing canonical snapshot and consumed host/source watermarks.
-- [ ] 5.3 Implement startup validation and deterministic replay of accepted facts after checkpoint watermarks.
+- [ ] 5.2 Add an atomic generation-guarded aggregate checkpoint and bounded append-only index containing checkpoint/parent identity, prior snapshot digest, consumed host sequence range and source watermarks, exact policy and reducer identity, and canonical snapshot/diff/proposal output digests.
+- [ ] 5.3 Implement startup lineage validation, bounded search for the newest fully valid retained read-model ancestor and deterministic replay of a continuous accepted-fact journal under the current active policy; never move the policy active pointer backward.
 - [ ] 5.4 Extend retention so the latest complete baseline for every configured component and critical transitions survive before diagnostic eviction.
-- [ ] 5.5 Add crash-point tests around journal append, checkpoint file sync, rename and directory sync plus corrupted checkpoint and truncated journal recovery.
+- [ ] 5.5 Add crash-point tests around journal/index append, checkpoint file sync, rename and directory sync plus parent-link tamper, output-digest tamper, missing ancestor, bounded-depth exhaustion, corrupted checkpoint and truncated-journal recovery.
 - [ ] 5.6 Add bounded-overflow tests proving an overflow condition is visible and no guessed healthy state is loaded.
 
 ## 6. Time, Sleep And Boot Semantics
@@ -68,17 +68,17 @@
 
 ## 9. Replay And Shadow Qualification
 
-- [ ] 9.1 Add an offline replay harness that verifies canonical snapshot, diff and proposal digests from a checkpoint, policy descriptor and synthetic accepted-fact trace.
-- [ ] 9.2 Add synthetic fault traces for duplicate, reorder, gap, collector loss, conflict, checkpoint corruption, policy change, sleep/wake and reboot.
+- [ ] 9.1 Add an offline replay harness that verifies checkpoint lineage and canonical snapshot, diff and proposal digests from a valid ancestor, current policy descriptor and synthetic accepted-fact trace.
+- [ ] 9.2 Add synthetic fault traces for duplicate, reorder, gap, collector loss, conflict, parent/output tamper, missing ancestor, bounded recovery-depth exhaustion, checkpoint corruption, policy change, sleep/wake and reboot.
 - [ ] 9.3 Add a shadow comparison recorder that correlates normalized proposals with existing component planner output without executing either proposal.
-- [ ] 9.4 Record the qualification gate for 72 eligible hours, two sleep/wake cycles, one reboot and every mandatory injected failure with no unexplained divergence.
+- [ ] 9.4 Record the qualification gate as a canonical append-only hash-linked evidence chain for 72 eligible hours, two sleep/wake cycles, one reboot and every mandatory injected failure with no unexplained divergence; bind each result to source checkpoint/snapshot/diff/proposal/fault-trace digests and reject gaps, tamper and cross-session evidence.
 - [ ] 9.5 Capture rollback evidence showing the reducer, collectors and status integration can be disabled while existing observation, Twilight, AdGuard and both Codex paths remain unchanged.
 - [ ] 9.6 Block completion and any follow-up executor proposal when retained facts cannot reproduce a published snapshot or proposal.
 
 ## 10. Documentation And Verification
 
 - [ ] 10.1 Document fact ownership, snapshot fields, reducer invariants, desired-state diff semantics, proposal non-executability and operator status interpretation.
-- [ ] 10.2 Document the pinned Firezone and NetBird architectural references, adopted mechanisms and Hexroute-specific safety differences.
+- [ ] 10.2 Document the pinned Firezone, NetBird, Agent Framework and Chain Indexer architectural references, adopted mechanisms and Hexroute-specific safety differences.
 - [ ] 10.3 Document startup replay, sleep/wake re-baselining, cloud-loss behavior, observe-only rollout and independently executable rollback.
 - [ ] 10.4 Run focused unit, race, replay, crash-recovery, IPC, cloud projection, secret-canary and cross-platform build tests for affected packages.
 - [ ] 10.5 Run `make check` and resolve every static, race, formatting, repository-boundary and secret-leak failure.

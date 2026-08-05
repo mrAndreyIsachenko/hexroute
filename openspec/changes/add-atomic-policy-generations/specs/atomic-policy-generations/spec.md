@@ -479,13 +479,39 @@ activation receipts and deployment evidence SHALL remain outside public Git.
 - **THEN** it retains only redacted digests, release references and bounded evidence in Git
 - **AND** live source, bundle and secret values remain in mode-private local or designated secret storage
 
+### Requirement: Repository-enforced executor capability boundary
+
+Every executable capability SHALL have a repository gate derived from the
+compiled safety envelope. The gate SHALL combine dependency/import checks, a
+typed capability allowlist and a gated live test proving the executor cannot
+reach undeclared network, route, DNS, TLS/certificate, credential or process
+capabilities. A future executor SHALL NOT pass release checks until its
+separately approved privilege and capability boundary is encoded by this gate.
+
+#### Scenario: Executor gains an undeclared fallback
+
+- **WHEN** an executor dependency or live path can bypass its declared capability adapter
+- **THEN** repository or gated-live checks fail
+- **AND** that executor cannot be released or enabled
+
+#### Scenario: Operator resume boundary is checked
+
+- **WHEN** the first bounded executor is built or tested
+- **THEN** its allowlist contains only the generation-guarded state-only resume adapter
+- **AND** direct network, route, DNS, TLS, credential and process capabilities remain unreachable
+
 ### Requirement: Shadow-gated bounded first activation
 
 Policy evaluation SHALL remain shadow-only until it completes 72 continuous
 eligible hours, at least two sleep/wake cycles, one reboot, and injected invalid
 signature, selector conflict, stale generation and crash-between-domain-commit
-tests with no unexplained safety mismatch. The first enforced capability SHALL
-be only `operator_resume`.
+tests with no unexplained safety mismatch. Qualification evidence SHALL be a
+canonical append-only hash-linked chain bound to the qualification session,
+boot identity, exact policy generations and bounded source evidence. The typed
+gate SHALL be derived only by durable replay of a complete gap-free chain; raw
+counters, booleans, unsigned summaries or probabilistic confidence SHALL NOT
+authorize enforcement. The first enforced capability SHALL be only
+`operator_resume`.
 
 #### Scenario: Shadow gate is incomplete
 
@@ -493,8 +519,14 @@ be only `operator_resume`.
 - **THEN** policy results remain observational
 - **AND** no production route, process, Pritunl, sing-box or credential mutation authority is enabled
 
+#### Scenario: Qualification evidence is missing or tampered
+
+- **WHEN** a record is missing, reordered, rewritten, has an invalid parent or output digest, or belongs to a different boot, session or policy generation
+- **THEN** qualification replay fails closed and the gate remains incomplete
+- **AND** no aggregate flag or manually supplied summary can replace the missing evidence
+
 #### Scenario: First active capability is enabled after the gate
 
-- **WHEN** all shadow criteria pass and `operator_resume` enforcement is explicitly enabled
+- **WHEN** durable replay verifies the complete qualification chain, all shadow criteria pass and `operator_resume` enforcement is explicitly enabled
 - **THEN** policy may authorize only the generation-guarded resume state transition
 - **AND** Twilight remains the production owner of the data plane

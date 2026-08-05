@@ -158,21 +158,37 @@ action or action lease.
 ### Requirement: Crash-safe bounded reconstruction
 
 Root and user fact journals and the aggregate checkpoint SHALL be bounded,
-crash-safe and generation-guarded. The checkpoint SHALL record consumed host
-and source watermarks, and startup SHALL validate it and replay later accepted
-facts. Retention SHALL preserve the latest complete baseline for every
-configured component before evicting diagnostics, and overflow SHALL remain
-observable.
+crash-safe and generation-guarded. Every checkpoint SHALL bind its immutable
+identity and parent digest, prior input snapshot digest, consumed host sequence
+range and source watermarks, exact policy generations and manifest digest,
+reducer identity/version, and canonical snapshot, diff and proposal output
+digests. A bounded append-only index SHALL preserve retained checkpoint lineage.
+Startup SHALL validate the lineage and replay later accepted facts. Retention
+SHALL preserve the latest complete baseline for every configured component
+before evicting diagnostics, and overflow SHALL remain observable.
+
+When the newest read-model checkpoint is invalid, startup MAY search backward
+within a configured bound for the newest fully valid retained ancestor and
+deterministically replay a continuous journal forward. Missing ancestry,
+journal gaps, policy/reducer mismatch, depth exhaustion or output-digest
+mismatch SHALL yield visible `unknown`/`conflict` state. This recovery SHALL NOT
+move the atomic-policy active pointer backward or authorize an older policy.
 
 #### Scenario: Daemon restarts after checkpoint persistence
 
 - **WHEN** startup loads a valid checkpoint and accepted facts after its watermarks
 - **THEN** replay reconstructs the same canonical current snapshot and diff
 
-#### Scenario: Checkpoint is corrupt
+#### Scenario: Latest checkpoint is corrupt and a valid ancestor is retained
 
-- **WHEN** checkpoint validation or replay integrity fails
-- **THEN** Hexroute rebuilds from retained complete facts when possible or publishes unknown/conflict state
+- **WHEN** latest-checkpoint validation fails but its bounded retained lineage and post-ancestor journal are complete
+- **THEN** Hexroute selects the newest fully valid ancestor and deterministically replays forward under the current active policy
+- **AND** it does not load the corrupt output, move policy backward or trigger a mutation
+
+#### Scenario: Checkpoint lineage cannot be proven
+
+- **WHEN** a parent link or output digest is invalid, an ancestor or journal range is missing, or the bounded search depth is exhausted
+- **THEN** Hexroute publishes unknown/conflict state with the lineage or journal gap visible
 - **AND** it does not load an unverified healthy snapshot or trigger a mutation
 
 #### Scenario: Journal reaches its configured bound
@@ -208,7 +224,11 @@ Keychain or credential mutation path. Before the change can be considered
 qualified, shadow evidence SHALL cover 72 eligible hours, two sleep/wake
 cycles, one reboot and injected duplicate, reorder, sequence-gap,
 collector-loss, checkpoint-corruption and policy-generation-change cases while
-Twilight remains the production owner.
+Twilight remains the production owner. Qualification results SHALL be canonical
+hash-linked records bound to their source checkpoint, snapshot, diff, proposal
+and fault-trace digests. Completion SHALL be derived by replay of a durable,
+gap-free evidence chain; aggregate flags or probabilistic confidence SHALL NOT
+complete the gate.
 
 #### Scenario: Reducer or proposal generation fails
 
@@ -221,3 +241,9 @@ Twilight remains the production owner.
 - **WHEN** a generated snapshot or proposal cannot be reproduced from retained facts and policy generation
 - **THEN** qualification fails
 - **AND** no later mutation change may use that evidence as a passing gate
+
+#### Scenario: Qualification provenance is incomplete
+
+- **WHEN** a qualification record or source digest is missing, reordered, rewritten or belongs to a different qualification session or policy generation
+- **THEN** qualification replay fails and the gate remains incomplete
+- **AND** an aggregate pass result cannot replace the missing evidence

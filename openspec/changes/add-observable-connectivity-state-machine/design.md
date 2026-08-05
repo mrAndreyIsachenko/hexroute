@@ -137,15 +137,38 @@ that authority is not part of this change.
 
 Root and user facts use the existing crash-safe priority journals. The aggregate
 checkpoint is written with generation compare-and-swap, atomic rename and
-directory synchronization, and records the last consumed host and source
-watermarks. Startup validates the checkpoint and replays accepted facts after
-those watermarks. Replaying identical inputs produces canonical identical
-output.
+directory synchronization. Every checkpoint has an immutable checkpoint ID,
+the parent checkpoint digest, prior input-snapshot digest, consumed host
+acceptance sequence range and source watermarks, exact bundle/domain generation
+and manifest digest, reducer identity/version, and canonical snapshot, diff and
+proposal output digests. A bounded append-only checkpoint index preserves the
+retained lineage independently from the mutable latest pointer. Replaying
+identical lineage and fact inputs produces canonical identical output.
+
+Startup validates the index, latest pointer, complete parent chain, policy and
+reducer bindings, checkpoint content digests and accepted facts after the
+checkpoint watermarks. If the newest checkpoint is corrupt or has a lineage
+mismatch, startup may walk backward only to the newest fully valid retained
+ancestor and deterministically replay forward through a continuous journal. The
+walk has a configured maximum depth. Missing ancestry, a journal gap, policy or
+reducer mismatch, exhausted depth or nondeterministic output publishes
+`unknown`/`conflict` and a visible incident instead of selecting a plausible
+healthy snapshot.
 
 Retention always preserves the latest complete baseline for every configured
 component before evicting lower-priority diagnostics. Corrupt or unreconstructible
 state yields an `unknown`/`conflict` observe-only snapshot and an incident; it
 never falls back to a guessed healthy checkpoint or triggers a mutation.
+
+Ancestor recovery applies only to this observe-only connectivity read model. It
+never rolls back the atomic-policy active pointer or selects an older
+authorization generation; policy recovery remains monotonic forward
+convergence. The lineage/index shape is informed by the durable checkpoint
+mechanism reviewed in
+[`microsoft/agent-framework-go`](https://github.com/microsoft/agent-framework-go/tree/421d96b86baf8f0e307a64ce4c63fc1d5b06cd18)
+and the bounded valid-ancestor recovery reviewed in
+[`Layr-Labs/chain-indexer`](https://github.com/Layr-Labs/chain-indexer/tree/7d774750b49b0d8b527edc2124bb6f248f56d006),
+without adding either project as a dependency.
 
 ### Boot, wall time and monotonic time have distinct roles
 
@@ -173,6 +196,11 @@ requires 72 eligible hours, two sleep/wake cycles, one reboot and injected
 duplicate, reorder, sequence-gap, collector-loss, checkpoint-corruption and
 policy-generation-change cases. Any divergence that cannot be explained from
 the retained facts blocks completion.
+
+Qualification records use the provenance-bound evidence contract from the
+atomic-policy foundation: every result is hash-linked to its source checkpoint,
+snapshot, diff, proposal and fault-trace digests. Aggregate pass flags and
+probabilistic confidence are diagnostics only and cannot complete the gate.
 
 ## Risks / Trade-offs
 

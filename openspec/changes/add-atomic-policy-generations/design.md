@@ -390,6 +390,43 @@ qualification recorder in task 10.3 produces and validates real evidence. This
 prevents implementation of the bounded executor from being mistaken for a live
 activation or from being enabled by a configuration boolean.
 
+### Qualification evidence is provenance-bound, not asserted
+
+The durable qualification recorder writes a canonical append-only chain of
+strict `QualificationEvidenceRecord` values. Every record carries a schema and
+record identity, the prior record digest, one allowlisted evidence kind, boot
+and qualification-session identities, exact bundle/domain generations and
+manifest digest, bounded source-event references and digests, UTC observation
+time plus source monotonic time where applicable, a typed result/reason and the
+canonical record digest. Reordering, removing, rewriting or joining records
+from a different boot, session or policy generation breaks validation.
+
+The typed qualification gate is derived only by replaying a durable, gap-free
+and hash-valid chain that covers all required eligible time, lifecycle events,
+fault injections and safety comparisons. Duration counters and pass/fail flags
+are projections of that chain, never caller-supplied authorization evidence.
+Unsigned summaries, probabilistic confidence and a generic polymorphic evidence
+record cannot enable enforcement. Evidence kinds may share a minimal provenance
+header, but keep their own strict payloads so an approval result, connectivity
+observation and recovery outcome cannot be substituted for one another.
+
+### Executor capability boundaries are repository-enforced
+
+Every data-plane executor change must add a repository capability-leak firewall
+derived from the installed safety envelope. The gate combines Go dependency
+graph/import checks, a typed capability allowlist and a gated live test proving
+there is no undeclared direct network fallback, route or DNS ownership escape,
+TLS/certificate fallback, credential access or process control. The existing
+`operator_resume` executor therefore remains limited to its state-only adapter;
+future capabilities fail release until their separately approved boundary is
+encoded and tested.
+
+This adapts the fail-closed leak-firewall mechanism reviewed in
+[`geiserx/tailscale-rs`](https://github.com/geiserx/tailscale-rs/tree/ec52d873bb78f260ae6b2a71c82c63d51d9fd54c)
+as design input only. Hexroute does not copy its token scanner or an IPv4-only
+rule: forbidden paths are generated from Hexroute's declared capability and
+privilege envelope.
+
 ## Risks / Trade-offs
 
 - **[The strict overlap model rejects a useful policy]** -> Require explicit,
