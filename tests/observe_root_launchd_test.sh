@@ -24,6 +24,9 @@ grep -q 'control-loop.heartbeat.json' "$PLIST"
 grep -q '<string>--socket</string>' "$PLIST"
 grep -q 'bootstrap_with_retry system "$PLIST_DEST"' "$INSTALLER"
 grep -q 'for attempt in 1 2 3' "$INSTALLER"
+source_check_line="$(grep -n '    --config "$config"' "$INSTALLER" | head -n 1 | cut -d: -f1)"
+install_binary_line="$(grep -n '"$binary" "$BIN_DIR/hexrouted"' "$INSTALLER" | cut -d: -f1)"
+[[ "$source_check_line" -lt "$install_binary_line" ]]
 
 if grep -Eqi 'com\.twilight|/twilight/|pritunl-otp-watchdog|adguard' "$PLIST" "$INSTALLER"; then
   echo "observe-only launchd package overlaps a protected runtime namespace" >&2

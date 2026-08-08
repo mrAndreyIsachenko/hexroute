@@ -54,6 +54,12 @@ install_observer() {
   require_regular_file "$config"
   require_regular_file "$PLIST_SOURCE"
 
+  "$binary" \
+    --check \
+    --config "$config" \
+    --state "$STATE_DIR/pritunl-planner.json" \
+    --socket "$SOCKET_PATH"
+
   /usr/bin/install -d -m 0700 \
     "$ROOT_DIR" "$BIN_DIR" "$CONFIG_DIR" "$STATE_DIR" "$LOG_DIR"
   if [[ ! -d "$HOME/Library/LaunchAgents" ]]; then

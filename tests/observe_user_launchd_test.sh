@@ -23,6 +23,9 @@ grep -q 'observe-user' "$INSTALLER"
 grep -q '/usr/libexec/PlistBuddy' "$INSTALLER"
 grep -q 'bootstrap_with_retry "$DOMAIN" "$PLIST_DEST"' "$INSTALLER"
 grep -q 'for attempt in 1 2 3' "$INSTALLER"
+source_check_line="$(grep -n '    --config "$config"' "$INSTALLER" | head -n 1 | cut -d: -f1)"
+install_binary_line="$(grep -n '"$binary" "$BIN_DIR/hexroute-userd"' "$INSTALLER" | cut -d: -f1)"
+[[ "$source_check_line" -lt "$install_binary_line" ]]
 
 if grep -q 'plutil -replace.*ProgramArguments' "$INSTALLER"; then
   echo "plist renderer inserts array elements instead of replacing them" >&2

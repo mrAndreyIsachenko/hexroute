@@ -47,6 +47,11 @@ install_observer() {
   require_regular_file "$config"
   require_regular_file "$PLIST_SOURCE"
 
+  "$binary" \
+    --check \
+    --config "$config" \
+    --socket "$SOCKET_DIR/hexrouted.sock"
+
   /usr/bin/install -d -o root -g wheel -m 0700 \
     "$ROOT_DIR" "$BIN_DIR" "$CONFIG_DIR" "$STATE_DIR" "$LOG_DIR"
   /usr/bin/install -d -o root -g wheel -m 0711 "$SOCKET_DIR"
