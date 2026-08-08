@@ -137,6 +137,20 @@ type Gate struct {
 	complete bool
 }
 
+type Progress struct {
+	RecordCount       uint64 `json:"record_count"`
+	EligibleSeconds   uint64 `json:"eligible_seconds"`
+	SleepWakeCycles   uint32 `json:"sleep_wake_cycles"`
+	RebootObserved    bool   `json:"reboot_observed"`
+	InvalidSignature  bool   `json:"invalid_signature"`
+	SelectorConflict  bool   `json:"selector_conflict"`
+	StaleGeneration   bool   `json:"stale_generation"`
+	CrossDomainCrash  bool   `json:"cross_domain_crash"`
+	SafetyComparisons uint32 `json:"safety_comparisons"`
+	FailedEvidence    bool   `json:"failed_evidence"`
+	Complete          bool   `json:"complete"`
+}
+
 var (
 	ErrInvalidBinding     = errors.New("invalid qualification binding")
 	ErrInvalidRecord      = errors.New("invalid qualification evidence record")

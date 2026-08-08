@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer check container-build container-test fmt ingress-observer-release-test postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test vet
+.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-arm-sleep postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
 
 build:
 	go build ./cmd/...
@@ -26,6 +26,31 @@ build-policy:
 build-policy-installer:
 	mkdir -p bin
 	go build -o bin/hexroute-policy-installer ./cmd/hexroute-policy-installer
+
+build-policy-qualification:
+	mkdir -p bin
+	go build -o bin/hexroute-policy-qualification ./cmd/hexroute-policy-qualification
+
+install-policy-qualification: build-policy-qualification
+	scripts/macos/policy-qualification-launchd.sh install bin/hexroute-policy-qualification
+
+uninstall-policy-qualification:
+	scripts/macos/policy-qualification-launchd.sh uninstall
+
+policy-qualification-status:
+	scripts/macos/policy-qualification-launchd.sh status
+
+policy-qualification-arm-sleep:
+	scripts/macos/policy-qualification-launchd.sh arm-sleep
+
+policy-qualification-restart-session:
+	scripts/macos/policy-qualification-launchd.sh restart-session
+
+policy-qualification-faults:
+	scripts/macos/policy-qualification-faults.sh
+
+logs-policy-qualification:
+	scripts/macos/policy-qualification-launchd.sh logs
 
 build-ingress-probe:
 	mkdir -p bin
@@ -68,7 +93,7 @@ terraform-test:
 terraform-state-test:
 	tests/terraform_state_policy_test.sh
 
-shell-test: build-observe-root build-observe-user build-policy-installer
+shell-test: build-observe-root build-observe-user build-policy-installer build-policy-qualification
 	bash -n scripts/baseline/*.sh scripts/macos/*.sh scripts/*.sh tests/*.sh
 	tests/baseline_archives_test.sh
 	tests/emergency_restore_test.sh
@@ -78,6 +103,7 @@ shell-test: build-observe-root build-observe-user build-policy-installer
 	tests/provider_b_documentation_test.sh
 	tests/policy_cli_boundary_test.sh
 	tests/policy_installer_boundary_test.sh
+	tests/policy_qualification_launchd_test.sh
 	tests/policy_cloud_independence_test.sh
 	tests/policy_documentation_test.sh
 	tests/operator_resume_boundary_test.sh

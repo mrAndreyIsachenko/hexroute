@@ -64,6 +64,59 @@ func TestReplayRejectsIncompleteQualificationCriteria(t *testing.T) {
 	}
 }
 
+func TestInspectValidatesSourcesBeforeQualificationIsComplete(t *testing.T) {
+	fixture := newCompleteChain(t, chainOptions{shortWindow: true})
+	for id := range fixture.sources {
+		fixture.sources[id] = []byte("rewritten source")
+		break
+	}
+	if _, err := Inspect(fixture.root, fixture.binding, fixture.loader()); !errors.Is(
+		err,
+		ErrInvalidChain,
+	) {
+		t.Fatalf("Inspect() error = %v, want %v", err, ErrInvalidChain)
+	}
+}
+
+func TestReplayAllowsOnlyRebootAccountedWindowGap(t *testing.T) {
+	fixture := newCompleteChain(t, chainOptions{})
+	records, err := ReadRecords(fixture.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range records {
+		if records[index].Kind != KindEligibleWindow ||
+			records[index].EligibleWindow.StartedAt == "2030-01-01T00:00:00Z" {
+			continue
+		}
+		started, _ := time.Parse(time.RFC3339Nano, records[index].EligibleWindow.StartedAt)
+		started = started.Add(2 * time.Minute)
+		records[index].EligibleWindow.StartedAt = started.Format(time.RFC3339Nano)
+		records[index].EligibleWindow.StartedMonotonicNS += int64(2 * time.Minute)
+		ended, _ := time.Parse(time.RFC3339Nano, records[index].EligibleWindow.EndedAt)
+		ended = ended.Add(2 * time.Minute)
+		records[index].EligibleWindow.EndedAt = ended.Format(time.RFC3339Nano)
+		records[index].EligibleWindow.EndedMonotonicNS += int64(2 * time.Minute)
+		records[index].ObservedAt = records[index].EligibleWindow.EndedAt
+		records[index].SourceMonotonicNS = records[index].EligibleWindow.EndedMonotonicNS
+		records[index].RecordSHA256 = ""
+		records[index].RecordSHA256, _ = records[index].digest()
+		for next := index + 1; next < len(records); next++ {
+			records[next].PreviousSHA256 = records[next-1].RecordSHA256
+			records[next].RecordSHA256 = ""
+			records[next].RecordSHA256, _ = records[next].digest()
+		}
+		break
+	}
+	writeRecords(t, fixture.root, records)
+	if _, err := Replay(fixture.root, fixture.binding, fixture.loader()); !errors.Is(
+		err,
+		ErrIncompleteEvidence,
+	) {
+		t.Fatalf("Replay() unaccounted gap error = %v, want %v", err, ErrIncompleteEvidence)
+	}
+}
+
 func TestReplayFailsClosedOnMissingReorderedRewrittenAndCrossGenerationEvidence(t *testing.T) {
 	t.Run("missing", func(t *testing.T) {
 		fixture := newCompleteChain(t, chainOptions{})

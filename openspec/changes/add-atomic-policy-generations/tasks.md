@@ -79,8 +79,8 @@
 - [x] 10.4 Install the candidate beside Twilight using disjoint Hexroute labels, paths, sockets and stores, and capture evidence that normal and Twilight Codex paths remain available.
 - [x] 10.5 Capture rollback evidence showing that disabling `operator_resume` enforcement or activating a higher deny/rollback generation leaves Twilight and AdGuard unchanged.
 - [x] 10.6 Update the local operator, root/user observe and roadmap documentation only after the corresponding implementation and qualification evidence exists.
-- [ ] 10.7 Implement a separate user-owned `hexroute-policy-qualification` agent and CLI that reads only redacted daemon policy status, persists bounded source artifacts and appends generation-bound eligible, lifecycle, fault and safety evidence without mutation authority.
-- [ ] 10.8 Add fail-closed session persistence, restart/reboot recovery, explicit sleep arming, sampling-gap detection, source-integrity replay and capability-boundary regression tests; document install, status, lifecycle and rollback operations.
+- [x] 10.7 Implement a separate user-owned `hexroute-policy-qualification` agent and CLI that reads only redacted daemon policy status, persists bounded source artifacts and appends generation-bound eligible, lifecycle, fault and safety evidence without mutation authority.
+- [x] 10.8 Add fail-closed session persistence, restart/reboot recovery, explicit sleep arming, sampling-gap detection, source-integrity replay and capability-boundary regression tests; document install, status, lifecycle and rollback operations.
 - [ ] 10.9 Install the disjoint user LaunchAgent, start a session bound to the active root/user generation, import the four controlled fault outcomes and verify replay reports incomplete rather than invalid while Twilight, AdGuard and both Codex paths remain unchanged.
 - [ ] 10.10 Complete one gap-free 72-hour live session with two explicitly armed sleep/wake cycles and one reboot, then retain the private replay result as shadow-qualification evidence.
 

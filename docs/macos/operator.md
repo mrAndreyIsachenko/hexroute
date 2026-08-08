@@ -49,6 +49,10 @@ active policy snapshot does not by itself grant production mutation authority;
 the separately recorded shadow qualification gate and executable capability
 boundary still apply.
 
+The live recorder lifecycle, explicit sleep arm, reboot handling and fail-closed
+status are documented in
+[`policy-qualification.md`](policy-qualification.md).
+
 An explicit resume requires the exact generation shown by status and a target
 owned by that socket:
 

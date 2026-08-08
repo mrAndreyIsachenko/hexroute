@@ -41,6 +41,7 @@ type chainState struct {
 	faults              map[Kind]bool
 	safetyComparisons   uint32
 	failedEvidence      bool
+	rebootTimes         []time.Time
 }
 
 type eligibleInterval struct {
@@ -49,34 +50,43 @@ type eligibleInterval struct {
 }
 
 func Replay(root string, binding Binding, sources SourceLoader) (Gate, error) {
+	progress, err := Inspect(root, binding, sources)
+	if err != nil {
+		return Gate{}, err
+	}
+	if !progress.Complete {
+		return Gate{}, ErrIncompleteEvidence
+	}
+	return Gate{complete: true}, nil
+}
+
+func Inspect(root string, binding Binding, sources SourceLoader) (Progress, error) {
 	if root == "" || filepath.Clean(root) == "." || binding.Validate() != nil || sources == nil {
-		return Gate{}, ErrInvalidBinding
+		return Progress{}, ErrInvalidBinding
 	}
 	path := filepath.Join(root, ChainFilename)
 	file, err := openLockedChain(path, unix.LOCK_SH)
 	if err != nil {
-		return Gate{}, err
+		return Progress{}, err
 	}
 	records, readErr := readRecords(file)
 	closeErr := closeLockedChain(file)
 	if readErr != nil {
-		return Gate{}, readErr
+		return Progress{}, readErr
 	}
 	if closeErr != nil {
-		return Gate{}, closeErr
+		return Progress{}, closeErr
 	}
-	if len(records) == 0 {
-		return Gate{}, ErrIncompleteEvidence
-	}
-	if _, err := validateChain(records, binding, true); err != nil {
-		return Gate{}, err
+	state, err := validateChain(records, binding, false)
+	if err != nil {
+		return Progress{}, err
 	}
 	for _, record := range records {
 		if err := verifySources(record.Sources, sources); err != nil {
-			return Gate{}, invalidChain(record.Sequence, "source")
+			return Progress{}, invalidChain(record.Sequence, "source")
 		}
 	}
-	return Gate{complete: true}, nil
+	return state.progress(uint64(len(records))), nil
 }
 
 func readRecords(reader io.Reader) ([]EvidenceRecord, error) {
@@ -224,6 +234,7 @@ func applyRecord(state *chainState, record EvidenceRecord) {
 		state.nonWindowTimes = append(state.nonWindowTimes, observedAt)
 		if record.Result == ResultPassed {
 			state.rebootObserved = true
+			state.rebootTimes = append(state.rebootTimes, observedAt)
 		}
 	case KindInvalidSignature, KindSelectorConflict, KindStaleGeneration, KindCrossDomainCrash:
 		state.nonWindowTimes = append(state.nonWindowTimes, observedAt)
@@ -249,23 +260,61 @@ func (state chainState) complete() bool {
 	sort.Slice(intervals, func(left, right int) bool {
 		return intervals[left].start.Before(intervals[right].start)
 	})
-	start := intervals[0].start
+	var total time.Duration
 	end := intervals[0].end
+	total += end.Sub(intervals[0].start)
 	for _, interval := range intervals[1:] {
-		if !interval.start.Equal(end) {
+		if interval.start.Before(end) ||
+			(!interval.start.Equal(end) && !containsTime(state.rebootTimes, interval.start)) {
 			return false
 		}
 		end = interval.end
+		total += interval.end.Sub(interval.start)
 	}
-	if end.Sub(start) < MinimumEligibleDuration {
+	if total < MinimumEligibleDuration {
 		return false
 	}
 	for _, observedAt := range state.nonWindowTimes {
-		if observedAt.Before(start) || observedAt.After(end) {
+		if !insideIntervals(intervals, observedAt) && !containsTime(state.rebootTimes, observedAt) {
 			return false
 		}
 	}
 	return true
+}
+
+func (state chainState) progress(recordCount uint64) Progress {
+	var eligible time.Duration
+	for _, window := range state.windows {
+		eligible += window.end.Sub(window.start)
+	}
+	return Progress{
+		RecordCount: recordCount, EligibleSeconds: uint64(eligible / time.Second),
+		SleepWakeCycles: state.sleepWakeCycles, RebootObserved: state.rebootObserved,
+		InvalidSignature:  state.faults[KindInvalidSignature],
+		SelectorConflict:  state.faults[KindSelectorConflict],
+		StaleGeneration:   state.faults[KindStaleGeneration],
+		CrossDomainCrash:  state.faults[KindCrossDomainCrash],
+		SafetyComparisons: state.safetyComparisons, FailedEvidence: state.failedEvidence,
+		Complete: state.complete(),
+	}
+}
+
+func insideIntervals(intervals []eligibleInterval, value time.Time) bool {
+	for _, interval := range intervals {
+		if !value.Before(interval.start) && !value.After(interval.end) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsTime(values []time.Time, value time.Time) bool {
+	for _, candidate := range values {
+		if candidate.Equal(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func verifySources(references []SourceReference, loader SourceLoader) error {

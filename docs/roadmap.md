@@ -39,9 +39,11 @@ Status date: 2026-08-09.
 
 `add-atomic-policy-generations` is in shadow qualification. The implementation,
 live side-by-side install and higher-deny safety check are complete; the
-continuous 72-hour chain, required sleep/wake and reboot coverage, and final
-baseline-spec synchronization remain gates before policy enforcement can be
-considered complete.
+user-owned durable qualification recorder and its fail-closed operational
+workflow are implemented. Its live LaunchAgent installation, continuous 72-hour
+chain, required sleep/wake and reboot coverage, and final baseline-spec
+synchronization remain gates before policy enforcement can be considered
+complete.
 
 `add-observable-connectivity-state-machine` is planned next. It will normalize
 peer, relay, DNS, SSH and session state and drive only observe-only proposed

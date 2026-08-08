@@ -44,6 +44,7 @@ This public repository contains generic application code, schemas, tests and syn
 | Operator surface and redacted diagnostics | [`docs/macos/operator.md`](docs/macos/operator.md) |
 | Policy signing | [`docs/macos/policy-signing.md`](docs/macos/policy-signing.md) |
 | Policy compile, activation and rollback operations | [`docs/macos/policy-operations.md`](docs/macos/policy-operations.md) |
+| Policy shadow qualification | [`docs/macos/policy-qualification.md`](docs/macos/policy-qualification.md) |
 | Cloud API, worker and migrator runtimes | [`docs/cloud/api-runtime.md`](docs/cloud/api-runtime.md), [`docs/cloud/worker-runtime.md`](docs/cloud/worker-runtime.md), [`docs/cloud/migration-runtime.md`](docs/cloud/migration-runtime.md) |
 | Container contract | [`docs/cloud/containers.md`](docs/cloud/containers.md) |
 | Terraform modules | [`terraform/README.md`](terraform/README.md) |
