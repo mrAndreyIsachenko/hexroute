@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/spool"
 )
 
@@ -46,6 +48,43 @@ func TestBatchEncodingIsCanonicalAndRoundTrips(t *testing.T) {
 		decoded.FirstSequence != 1 || decoded.LastSequence != 2 ||
 		len(decoded.Events) != 2 {
 		t.Fatalf("DecodeBatch() = %+v", decoded)
+	}
+}
+
+func TestRedactedPolicyLifecycleSurvivesBoundedJournalAndBatch(t *testing.T) {
+	journal := newJournal(t)
+	encoded, err := event.Encode(event.SchemaPolicy, event.PolicyLifecycle{
+		Status: policy.Status{
+			Schema: policy.PolicyStatusSchema, Domain: policy.DomainRoot,
+			State: policy.PolicyActive, BundleGeneration: 7,
+			PolicyGeneration: 5, ManifestSHA256: strings.Repeat("a", 64),
+			ActivatedAt: "2030-01-01T00:00:00Z", Reason: policy.ReasonNone,
+		},
+		AuthorizationSuspension: policy.AuthorizationSuspension{
+			Schema: policy.AuthorizationSuspensionSchema, Reason: policy.ReasonNone,
+		},
+	})
+	if err != nil {
+		t.Fatalf("encode policy lifecycle: %v", err)
+	}
+	if _, err := journal.Append(encoded); err != nil {
+		t.Fatalf("append policy lifecycle: %v", err)
+	}
+	entries, err := journal.Entries()
+	if err != nil {
+		t.Fatalf("Entries() error = %v", err)
+	}
+	batchBytes, err := EncodeBatch(testBatchID, entries)
+	if err != nil {
+		t.Fatalf("EncodeBatch() error = %v", err)
+	}
+	batch, err := DecodeBatch(batchBytes)
+	if err != nil || len(batch.Events) != 1 {
+		t.Fatalf("DecodeBatch() = %+v, %v", batch, err)
+	}
+	record, err := event.Decode(batch.Events[0].Record)
+	if err != nil || record.Schema != event.SchemaPolicy {
+		t.Fatalf("policy record = %+v, %v", record, err)
 	}
 }
 

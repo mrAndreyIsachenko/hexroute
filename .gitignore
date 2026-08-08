@@ -27,3 +27,15 @@
 *.tfvars.json
 crash.log
 .terraform/
+
+# Live policy sources, compiled bundles, approvals and local trust material.
+/operator-policy/
+/policy-runtime/
+/policy-evidence/
+*.policy.yaml
+*.policy.yml
+*.policy-bundle.json
+*.signed-policy.json
+*.policy-approval.json
+*.policy-receipt.json
+*.policy-fingerprint

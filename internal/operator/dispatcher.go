@@ -49,7 +49,7 @@ func (dispatcher *Dispatcher) HandleIPC(
 	}
 	switch request.Action {
 	case ipc.ActionStatus, ipc.ActionExportDiagnostics:
-		return dispatcher.readOnly.Handle(request)
+		return dispatcher.handleReadWithPolicy(ctx, request)
 	case ipc.ActionResumeTarget, ipc.ActionRescuePritunlService:
 		if !dispatcher.policy.MutationAllowed() {
 			return ipc.Response{
@@ -69,5 +69,37 @@ func (dispatcher *Dispatcher) HandleIPC(
 			RequestID: request.RequestID,
 			Error:     ipc.ErrorInvalidRequest,
 		}
+	}
+}
+
+func (dispatcher *Dispatcher) handleReadWithPolicy(
+	ctx context.Context,
+	request ipc.Request,
+) ipc.Response {
+	response := dispatcher.readOnly.Handle(request)
+	if !response.OK {
+		return response
+	}
+	policyResponse := dispatcher.policy.HandleIPC(ctx, ipc.Request{
+		Version: request.Version, RequestID: request.RequestID,
+		Action: ipc.ActionPolicyStatus, PolicyStatus: &ipc.PolicyStatusRequest{},
+	})
+	if !policyResponse.OK || policyResponse.PolicyStatus == nil {
+		return ipc.Response{
+			Version: request.Version, RequestID: request.RequestID,
+			Error: ipc.ErrorInternal,
+		}
+	}
+	if response.Status != nil {
+		response.Status.Policy = policyResponse.PolicyStatus
+		return response
+	}
+	if response.Diagnostics != nil {
+		response.Diagnostics.Status.Policy = policyResponse.PolicyStatus
+		return response
+	}
+	return ipc.Response{
+		Version: request.Version, RequestID: request.RequestID,
+		Error: ipc.ErrorInternal,
 	}
 }

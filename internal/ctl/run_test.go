@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 )
 
 func TestStatusQueriesBothFixedRoleSockets(t *testing.T) {
@@ -29,6 +30,7 @@ func TestStatusQueriesBothFixedRoleSockets(t *testing.T) {
 			Mode:       ipc.ModeObserveOnly,
 			State:      control.StateHealthy,
 			Generation: 4,
+			Policy:     policyStatusForRole(role),
 		}
 		return ipc.Response{
 			Version:   ipc.ProtocolVersion,
@@ -60,6 +62,29 @@ func TestStatusQueriesBothFixedRoleSockets(t *testing.T) {
 		output.Results[0].Role != ipc.RoleRoot ||
 		output.Results[1].Role != ipc.RoleUser {
 		t.Fatalf("output = %+v", output)
+	}
+	if strings.Count(stdout.String(), `"policy"`) != 2 ||
+		!strings.Contains(stdout.String(), `"manifest_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"`) {
+		t.Fatalf("status omitted redacted policy projection: %s", stdout.String())
+	}
+}
+
+func policyStatusForRole(role ipc.DaemonRole) *ipc.PolicyStatusResult {
+	domain := policy.DomainRoot
+	if role == ipc.RoleUser {
+		domain = policy.DomainUser
+	}
+	return &ipc.PolicyStatusResult{
+		Status: policy.Status{
+			Schema: policy.PolicyStatusSchema, Domain: domain,
+			State: policy.PolicyActive, BundleGeneration: 7,
+			PolicyGeneration: 5,
+			ManifestSHA256:   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			ActivatedAt:      "2030-01-01T00:00:00Z", Reason: policy.ReasonNone,
+		},
+		AuthorizationSuspension: policy.AuthorizationSuspension{
+			Schema: policy.AuthorizationSuspensionSchema, Reason: policy.ReasonNone,
+		},
 	}
 }
 

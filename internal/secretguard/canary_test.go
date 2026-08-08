@@ -12,6 +12,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/spool"
 	"github.com/mrAndreyIsachenko/hexroute/internal/telemetry"
 )
@@ -31,6 +32,21 @@ func TestRepositorySecretCanariesCannotReachSerializedOutputs(t *testing.T) {
 			if eventErr == nil {
 				outputs.Write(encodedEvent)
 				t.Fatal("event serializer accepted secret canary")
+			}
+
+			_, policyEventErr := event.Encode(event.SchemaPolicy, event.PolicyLifecycle{
+				Status: policy.Status{
+					Schema: policy.PolicyStatusSchema, Domain: policy.DomainRoot,
+					State: policy.PolicyActive, BundleGeneration: 7,
+					PolicyGeneration: 5, ManifestSHA256: canary,
+					ActivatedAt: "2030-01-01T00:00:00Z", Reason: policy.ReasonNone,
+				},
+				AuthorizationSuspension: policy.AuthorizationSuspension{
+					Schema: policy.AuthorizationSuspensionSchema, Reason: policy.ReasonNone,
+				},
+			})
+			if policyEventErr == nil {
+				t.Fatal("policy telemetry accepted secret canary")
 			}
 
 			logger, err := logging.New(&outputs, logging.ComponentDaemon)

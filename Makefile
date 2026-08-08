@@ -73,6 +73,7 @@ shell-test: build-observe-root build-observe-user
 	tests/observe_user_launchd_test.sh
 	tests/provider_b_documentation_test.sh
 	tests/policy_cli_boundary_test.sh
+	tests/policy_cloud_independence_test.sh
 	tests/operator_resume_boundary_test.sh
 	tests/policy_signer_profile_host_test.sh
 	tests/ingress_observer_release_test.sh
@@ -80,7 +81,7 @@ shell-test: build-observe-root build-observe-user
 	tests/terraform_state_policy_test.sh
 
 secret-test:
-	go test ./internal/secretguard -run TestRepositorySecretCanaries -count=1
+	go test ./internal/secretguard ./internal/repositoryguard -count=1
 
 spec-check:
 	OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive

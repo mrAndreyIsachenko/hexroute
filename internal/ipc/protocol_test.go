@@ -6,9 +6,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 )
 
 func TestRequestFrameRoundTrip(t *testing.T) {
@@ -212,6 +214,35 @@ func TestReadResponseRejectsUnknownFieldsAndInvalidSafeMode(t *testing.T) {
 		) {
 			t.Fatalf("ReadResponse() error = %v, want %v", err, ErrMalformedFrame)
 		}
+	}
+}
+
+func TestStatusCarriesOnlyMatchingRedactedPolicyDomain(t *testing.T) {
+	status := Status{
+		Role: RoleRoot, Mode: ModeObserveOnly, State: control.StateHealthy,
+		Generation: 9,
+		Policy: &PolicyStatusResult{
+			Status: policy.Status{
+				Schema: policy.PolicyStatusSchema, Domain: policy.DomainRoot,
+				State: policy.PolicyActive, BundleGeneration: 7,
+				PolicyGeneration: 5, ManifestSHA256: strings.Repeat("a", 64),
+				ActivatedAt: "2030-01-01T00:00:00Z", Reason: policy.ReasonNone,
+			},
+			AuthorizationSuspension: policy.AuthorizationSuspension{
+				Schema: policy.AuthorizationSuspensionSchema, Reason: policy.ReasonNone,
+			},
+		},
+	}
+	response := Response{
+		Version: ProtocolVersion, RequestID: "status-policy-01", OK: true,
+		Status: &status,
+	}
+	if err := response.Validate(); err != nil {
+		t.Fatalf("matching policy status error = %v", err)
+	}
+	status.Policy.Status.Domain = policy.DomainUser
+	if err := response.Validate(); !errors.Is(err, ErrMalformedFrame) {
+		t.Fatalf("cross-domain policy status error = %v, want %v", err, ErrMalformedFrame)
 	}
 }
 

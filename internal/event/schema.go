@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 )
 
 const (
@@ -30,6 +31,7 @@ const (
 	SchemaConfigVersion Schema = "config.lifecycle"
 	SchemaDiagnostic    Schema = "runtime.diagnostic"
 	SchemaSleep         Schema = "node.sleep"
+	SchemaPolicy        Schema = "policy.lifecycle"
 )
 
 type Priority string
@@ -197,6 +199,15 @@ type Sleep struct {
 	Reason SleepReason `json:"reason"`
 }
 
+// PolicyLifecycle is the complete allowlisted policy projection accepted by
+// local journals and cloud telemetry. It deliberately has no selector, source,
+// lease, endpoint, credential or arbitrary detail field.
+type PolicyLifecycle struct {
+	Status                  policy.Status                  `json:"status"`
+	AuthorizationSuspension policy.AuthorizationSuspension `json:"authorization_suspension"`
+	ExistingState           *policy.ExistingStateStatus    `json:"existing_state,omitempty"`
+}
+
 var (
 	ErrUnknownSchema      = errors.New("unknown event schema")
 	ErrUnsupportedVersion = errors.New("unsupported event schema version")
@@ -216,7 +227,7 @@ func DefinitionFor(schema Schema) (Definition, bool) {
 	case SchemaDiagnostic:
 		priority = PriorityDiagnostic
 	case SchemaTransition, SchemaAction, SchemaIncident, SchemaDeployment,
-		SchemaConfigVersion, SchemaSleep:
+		SchemaConfigVersion, SchemaSleep, SchemaPolicy:
 		priority = PriorityCritical
 	default:
 		return Definition{}, false
@@ -330,6 +341,8 @@ func newPayload(schema Schema) any {
 		return &Diagnostic{}
 	case SchemaSleep:
 		return &Sleep{}
+	case SchemaPolicy:
+		return &PolicyLifecycle{}
 	default:
 		return nil
 	}
@@ -383,6 +396,18 @@ func validatePayload(schema Schema, payload any) error {
 	case SchemaSleep:
 		value, ok := asSleep(payload)
 		if !ok || !validSleep(value) {
+			return ErrInvalidField
+		}
+	case SchemaPolicy:
+		value, ok := asPolicyLifecycle(payload)
+		if !ok || value.Status.Validate() != nil ||
+			value.AuthorizationSuspension.Validate() != nil {
+			return ErrInvalidField
+		}
+		if value.ExistingState != nil &&
+			(value.ExistingState.Validate() != nil ||
+				value.ExistingState.Domain != value.Status.Domain ||
+				value.Status.State == policy.PolicyNone) {
 			return ErrInvalidField
 		}
 	default:
@@ -622,6 +647,18 @@ func asConfigVersion(payload any) (ConfigVersion, bool) {
 	default:
 	}
 	return ConfigVersion{}, false
+}
+
+func asPolicyLifecycle(payload any) (PolicyLifecycle, bool) {
+	switch value := payload.(type) {
+	case PolicyLifecycle:
+		return value, true
+	case *PolicyLifecycle:
+		if value != nil {
+			return *value, true
+		}
+	}
+	return PolicyLifecycle{}, false
 }
 
 func asDiagnostic(payload any) (Diagnostic, bool) {

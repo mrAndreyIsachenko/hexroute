@@ -65,11 +65,11 @@
 
 ## 9. Redacted Status, Telemetry And Advisory Output
 
-- [ ] 9.1 Extend local snapshots, `hexroutectl` status and bounded journals with allowlisted policy generations, digests, lifecycle states, timestamps and reason codes.
-- [ ] 9.2 Add redacted policy telemetry schemas and secret-canary tests that reject selectors, endpoints, source paths, leases, credential references and credential values before persistence or upload.
-- [ ] 9.3 Prove cloud API, PostgreSQL and worker loss cannot block local compile, prepare, commit, resume, suspension or safe-mode behavior and cannot request a local mutation.
-- [ ] 9.4 Add a redacted advisor output format that can draft operator YAML changes but has no merge, signing, installation or activation path.
-- [ ] 9.5 Add Git ignore, repository-boundary and secret-canary checks that reject live YAML, signed bundles, trust fingerprints, non-synthetic selectors and credential references from public Git.
+- [x] 9.1 Extend local snapshots, `hexroutectl` status and bounded journals with allowlisted policy generations, digests, lifecycle states, timestamps and reason codes.
+- [x] 9.2 Add redacted policy telemetry schemas and secret-canary tests that reject selectors, endpoints, source paths, leases, credential references and credential values before persistence or upload.
+- [x] 9.3 Prove cloud API, PostgreSQL and worker loss cannot block local compile, prepare, commit, resume, suspension or safe-mode behavior and cannot request a local mutation.
+- [x] 9.4 Add a redacted advisor output format that can draft operator YAML changes but has no merge, signing, installation or activation path.
+- [x] 9.5 Add Git ignore, repository-boundary and secret-canary checks that reject live YAML, signed bundles, trust fingerprints, non-synthetic selectors and credential references from public Git.
 
 ## 10. Documentation And Shadow Qualification
 
@@ -82,7 +82,7 @@
 
 ## 11. Verification And Spec Synchronization
 
-- [ ] 11.1 Run focused unit, race, crash-recovery, replay, secret-canary and macOS integration tests for all affected packages, including a safety-envelope-derived capability-leak firewall for every executable capability.
-- [ ] 11.2 Run `make check` and resolve every static, race, formatting and secret-leak failure.
-- [ ] 11.3 Run `openspec validate add-atomic-policy-generations --strict` and keep proposal, design, specs and tasks synchronized with the implementation.
+- [x] 11.1 Run focused unit, race, crash-recovery, replay, secret-canary and macOS integration tests for all affected packages, including a safety-envelope-derived capability-leak firewall for every executable capability.
+- [x] 11.2 Run `make check` and resolve every static, race, formatting and secret-leak failure.
+- [x] 11.3 Run `openspec validate add-atomic-policy-generations --strict` and keep proposal, design, specs and tasks synchronized with the implementation.
 - [ ] 11.4 Sync the validated delta requirements into baseline specs only when implementation and shadow qualification for this change are complete.

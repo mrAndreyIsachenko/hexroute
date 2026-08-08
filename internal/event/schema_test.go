@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 )
 
 const testDigest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -98,6 +99,20 @@ func TestRegisteredSchemasRoundTrip(t *testing.T) {
 			payload: Sleep{
 				Phase:  SleepStarted,
 				Reason: SleepReasonLidClosed,
+			},
+		},
+		{
+			schema: SchemaPolicy,
+			payload: PolicyLifecycle{
+				Status: policy.Status{
+					Schema: policy.PolicyStatusSchema, Domain: policy.DomainRoot,
+					State: policy.PolicyActive, BundleGeneration: 7,
+					PolicyGeneration: 5, ManifestSHA256: testDigest,
+					ActivatedAt: "2030-01-01T00:00:00Z", Reason: policy.ReasonNone,
+				},
+				AuthorizationSuspension: policy.AuthorizationSuspension{
+					Schema: policy.AuthorizationSuspensionSchema, Reason: policy.ReasonNone,
+				},
 			},
 		},
 	}
@@ -204,6 +219,7 @@ func TestEverySchemaHasFixedVersionPriorityAndPayloadLimit(t *testing.T) {
 		SchemaConfigVersion,
 		SchemaDiagnostic,
 		SchemaSleep,
+		SchemaPolicy,
 	}
 	for _, schema := range schemas {
 		definition, ok := DefinitionFor(schema)
@@ -217,6 +233,23 @@ func TestEverySchemaHasFixedVersionPriorityAndPayloadLimit(t *testing.T) {
 			definition.Priority != PriorityOperational &&
 			definition.Priority != PriorityDiagnostic {
 			t.Fatalf("DefinitionFor(%q) has invalid priority %q", schema, definition.Priority)
+		}
+	}
+}
+
+func TestPolicyLifecycleRejectsUnallowlistedFields(t *testing.T) {
+	for _, field := range []string{
+		"selector", "endpoint", "source_path", "lease", "credential_reference", "credential_value",
+	} {
+		encoded := `{"schema":"policy.lifecycle","version":1,"priority":"critical",` +
+			`"payload":{"status":{"schema":"hexroute.policy-status.v1","domain":"root",` +
+			`"state":"active","bundle_generation":7,"policy_generation":5,` +
+			`"manifest_sha256":"` + testDigest + `","activated_at":"2030-01-01T00:00:00Z",` +
+			`"reason":"none"},"authorization_suspension":{"schema":` +
+			`"hexroute.authorization-suspension.v1","suspended":false,"reason":"none"},` +
+			`"` + field + `":"forbidden"}}`
+		if _, err := Decode([]byte(encoded)); !errors.Is(err, ErrMalformedEvent) {
+			t.Fatalf("field %q error = %v, want %v", field, err, ErrMalformedEvent)
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 )
 
 const (
@@ -78,11 +79,12 @@ type Response struct {
 }
 
 type Status struct {
-	Role       DaemonRole    `json:"role"`
-	Mode       RuntimeMode   `json:"mode"`
-	State      control.State `json:"state"`
-	Generation uint64        `json:"generation"`
-	SafeMode   bool          `json:"safe_mode"`
+	Role       DaemonRole          `json:"role"`
+	Mode       RuntimeMode         `json:"mode"`
+	State      control.State       `json:"state"`
+	Generation uint64              `json:"generation"`
+	SafeMode   bool                `json:"safe_mode"`
+	Policy     *PolicyStatusResult `json:"policy,omitempty"`
 }
 
 type Diagnostics struct {
@@ -249,10 +251,25 @@ func (request Request) validPolicyEnvelope(payloads int, expected bool) bool {
 }
 
 func (status Status) valid() bool {
-	return validRole(status.Role) &&
-		validMode(status.Mode) &&
-		status.State.Valid() &&
-		status.SafeMode == (status.State == control.StateSafeMode)
+	if !validRole(status.Role) ||
+		!validMode(status.Mode) ||
+		!status.State.Valid() ||
+		status.SafeMode != (status.State == control.StateSafeMode) {
+		return false
+	}
+	if status.Policy == nil {
+		return true
+	}
+	expectedDomain := policyDomainForRole(status.Role)
+	return status.Policy.Validate() == nil &&
+		status.Policy.Status.Domain == expectedDomain
+}
+
+func policyDomainForRole(role DaemonRole) policy.Domain {
+	if role == RoleRoot {
+		return policy.DomainRoot
+	}
+	return policy.DomainUser
 }
 
 func (diagnostics Diagnostics) valid() bool {
