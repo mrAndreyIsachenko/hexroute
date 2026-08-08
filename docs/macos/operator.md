@@ -28,6 +28,12 @@ Diagnostics contain only daemon role, mode, lifecycle state, generation,
 recovery counters, monotonic ticks and an allowlisted reason. They never read
 raw daemon logs or configuration.
 
+Status also carries the matching redacted policy projection: bundle and domain
+generations, manifest digest, lifecycle state, activation time, bounded reason
+and authorization overlays. The complete compile, signing, typed activation
+and monotonic rollback workflow is documented in
+[`policy-operations.md`](policy-operations.md).
+
 An explicit resume requires the exact generation shown by status and a target
 owned by that socket:
 

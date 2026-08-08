@@ -38,10 +38,12 @@ This public repository contains generic application code, schemas, tests and syn
 |---|---|
 | Roadmap and ordered cutover sequence | [`docs/roadmap.md`](docs/roadmap.md) |
 | Immutable policy storage | [`docs/architecture/policy-storage.md`](docs/architecture/policy-storage.md) |
+| Atomic policy model and OpenShell attribution | [`docs/architecture/atomic-policy-generations.md`](docs/architecture/atomic-policy-generations.md) |
 | Provider-B ingress topology and gating | [`docs/architecture/provider-b-ingress.md`](docs/architecture/provider-b-ingress.md) |
 | Root observe-only mode | [`docs/macos/root-observe.md`](docs/macos/root-observe.md) |
 | Operator surface and redacted diagnostics | [`docs/macos/operator.md`](docs/macos/operator.md) |
 | Policy signing | [`docs/macos/policy-signing.md`](docs/macos/policy-signing.md) |
+| Policy compile, activation and rollback operations | [`docs/macos/policy-operations.md`](docs/macos/policy-operations.md) |
 | Cloud API, worker and migrator runtimes | [`docs/cloud/api-runtime.md`](docs/cloud/api-runtime.md), [`docs/cloud/worker-runtime.md`](docs/cloud/worker-runtime.md), [`docs/cloud/migration-runtime.md`](docs/cloud/migration-runtime.md) |
 | Container contract | [`docs/cloud/containers.md`](docs/cloud/containers.md) |
 | Terraform modules | [`terraform/README.md`](terraform/README.md) |
