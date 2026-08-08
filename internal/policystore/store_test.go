@@ -186,6 +186,58 @@ func TestStoreRejectsSymlinkedOrInsecureDirectories(t *testing.T) {
 	})
 }
 
+func TestInitializeStorePinsCreatedDirectoryGroup(t *testing.T) {
+	groups, err := os.Getgroups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	alternateGID := -1
+	for _, gid := range groups {
+		if gid != os.Getegid() {
+			alternateGID = gid
+			break
+		}
+	}
+	if alternateGID < 0 {
+		t.Skip("no supplemental group available")
+	}
+
+	parent := filepath.Join(realTempDir(t), "alternate-group")
+	if err := os.Mkdir(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chown(parent, -1, alternateGID); err != nil {
+		t.Skipf("cannot assign supplemental group: %v", err)
+	}
+	if err := os.Chmod(parent, os.ModeSetgid|0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	storePath := filepath.Join(parent, "store")
+	store, err := initializeStoreAt(
+		storePath, policy.DomainRoot, currentUID(), currentGID(),
+	)
+	if err != nil {
+		t.Fatalf("initialize store below alternate-group parent: %v", err)
+	}
+	defer store.Close()
+	for _, path := range []string{
+		storePath,
+		filepath.Join(storePath, generationsDirectory),
+		filepath.Join(storePath, stateDirectory),
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || stat.Uid != currentUID() || stat.Gid != currentGID() ||
+			info.Mode().Perm() != DirectoryMode {
+			t.Fatalf("directory identity was not pinned: path=%q mode=%v stat=%+v", path, info.Mode(), stat)
+		}
+	}
+}
+
 func TestOpenStoreRejectsFixedPathReplacement(t *testing.T) {
 	store, path := newTestStore(t, policy.DomainRoot)
 	defer store.Close()

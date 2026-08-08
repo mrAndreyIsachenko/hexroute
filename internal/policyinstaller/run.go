@@ -451,7 +451,7 @@ func initializeStore(domain policy.Domain) (artifactStore, error) {
 		}
 		store, err := policystore.InitializeRoot()
 		if err != nil {
-			return nil, errInstallFailed
+			return nil, err
 		}
 		return store, nil
 	case policy.DomainUser:
@@ -460,7 +460,7 @@ func initializeStore(domain policy.Domain) (artifactStore, error) {
 		}
 		store, err := policystore.InitializeCurrentUser()
 		if err != nil {
-			return nil, errInstallFailed
+			return nil, err
 		}
 		return store, nil
 	default:
@@ -507,6 +507,12 @@ func failureCode(err error) string {
 		return "invalid_bundle"
 	case errors.Is(err, errInvalidConfig):
 		return "invalid_config"
+	case errors.Is(err, policystore.ErrInvalidStore):
+		return "invalid_store"
+	case errors.Is(err, policystore.ErrInsecureStore):
+		return "insecure_store"
+	case errors.Is(err, policystore.ErrStoreUnavailable):
+		return "store_unavailable"
 	default:
 		return "install_failed"
 	}

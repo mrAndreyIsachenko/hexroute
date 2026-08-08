@@ -485,9 +485,15 @@ func ensureDirectoryAt(parentFD int, name string, uid, gid uint32) (int, bool, e
 	if err != nil {
 		return -1, false, ErrInsecureStore
 	}
-	if created && unix.Fchmod(fd, uint32(DirectoryMode.Perm())) != nil {
-		_ = unix.Close(fd)
-		return -1, false, ErrStoreUnavailable
+	if created {
+		// macOS inherits a new directory's group from its parent. Pin both
+		// identities before validation so a root:admin parent can safely host
+		// the required root:wheel policy store.
+		if unix.Fchown(fd, int(uid), int(gid)) != nil ||
+			unix.Fchmod(fd, uint32(DirectoryMode.Perm())) != nil {
+			_ = unix.Close(fd)
+			return -1, false, ErrStoreUnavailable
+		}
 	}
 	if validateDirectoryFD(fd, uid, gid) != nil {
 		_ = unix.Close(fd)

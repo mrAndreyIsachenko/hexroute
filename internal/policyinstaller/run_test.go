@@ -43,6 +43,22 @@ func TestInstallCandidateVerifiesAndWritesImmutableDomainArtifactsIdempotently(t
 	}
 }
 
+func TestFailureCodePreservesBoundedStoreReason(t *testing.T) {
+	tests := []struct {
+		err  error
+		want string
+	}{
+		{policystore.ErrInvalidStore, "invalid_store"},
+		{policystore.ErrInsecureStore, "insecure_store"},
+		{policystore.ErrStoreUnavailable, "store_unavailable"},
+	}
+	for _, test := range tests {
+		if got := failureCode(test.err); got != test.want {
+			t.Fatalf("failureCode(%v)=%q, want %q", test.err, got, test.want)
+		}
+	}
+}
+
 func TestInstallCandidateRejectsWrongTrustAndCompatibilityBeforeStoreWrite(t *testing.T) {
 	fixture := newInstallerFixture(t)
 	for _, mutate := range []func(*policyconfig.RuntimeConfig){
