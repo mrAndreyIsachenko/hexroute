@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -100,6 +102,61 @@ func TestReadPrivateDirectoryRejectsExtraSymlinkAndLooseMode(t *testing.T) {
 	}
 	if _, err := readPrivateDirectory(private, []string{"manifest.json"}, owner); err == nil {
 		t.Fatal("readPrivateDirectory() accepted loose directory mode")
+	}
+}
+
+func TestReadInstalledPolicyConfigUsesSecureDescriptorMetadata(t *testing.T) {
+	fixture := newInstallerFixture(t)
+	root := t.TempDir()
+	configPath := filepath.Join(root, "root-observe.json")
+	static := policyconfig.StaticConfig{
+		Schema:            policyconfig.StaticConfigSchema,
+		Installed:         fixture.rootRuntime.Installed,
+		PinnedPublicKey:   base64.RawStdEncoding.EncodeToString(fixture.rootRuntime.PinnedPublicKey),
+		SignerFingerprint: policy.SHA256Hex(fixture.rootRuntime.PinnedPublicKey),
+	}
+	encoded, err := json.Marshal(observerConfig{Schema: rootConfig, PolicyControl: &static})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writePrivateFile(t, configPath, encoded)
+	runtime, err := readInstalledPolicyConfig(
+		configPath,
+		rootConfig,
+		uint32(os.Geteuid()),
+		policy.DomainRoot,
+	)
+	if err != nil || runtime.Validate() != nil {
+		t.Fatalf("readInstalledPolicyConfig() runtime=%+v err=%v", runtime, err)
+	}
+
+	if err := os.Chmod(configPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readInstalledPolicyConfig(configPath, rootConfig, uint32(os.Geteuid()), policy.DomainRoot); err == nil {
+		t.Fatal("readInstalledPolicyConfig() accepted loose mode")
+	}
+	if err := os.Chmod(configPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hardlink := filepath.Join(root, "hardlink.json")
+	if err := os.Link(configPath, hardlink); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readInstalledPolicyConfig(configPath, rootConfig, uint32(os.Geteuid()), policy.DomainRoot); err == nil {
+		t.Fatal("readInstalledPolicyConfig() accepted multiple links")
+	}
+	if err := os.Remove(hardlink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(configPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "missing.json"), configPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readInstalledPolicyConfig(configPath, rootConfig, uint32(os.Geteuid()), policy.DomainRoot); err == nil {
+		t.Fatal("readInstalledPolicyConfig() accepted symlink")
 	}
 }
 

@@ -377,26 +377,38 @@ func loadInstalledPolicyConfig(domain policy.Domain) (policyconfig.RuntimeConfig
 	if err != nil {
 		return policyconfig.RuntimeConfig{}, err
 	}
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 {
-		return policyconfig.RuntimeConfig{}, errInvalidConfig
-	}
-	stat, ok := info.Sys().(*unix.Stat_t)
-	if !ok || stat.Uid != ownerUID || stat.Nlink != 1 {
-		return policyconfig.RuntimeConfig{}, errInvalidConfig
-	}
-	file, err := os.Open(path)
+	return readInstalledPolicyConfig(path, schema, ownerUID, domain)
+}
+
+func readInstalledPolicyConfig(
+	path string,
+	schema string,
+	ownerUID uint32,
+	domain policy.Domain,
+) (policyconfig.RuntimeConfig, error) {
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return policyconfig.RuntimeConfig{}, errInvalidConfig
 	}
+	file := os.NewFile(uintptr(fd), "installed-policy-config")
+	if file == nil {
+		unix.Close(fd)
+		return policyconfig.RuntimeConfig{}, errInvalidConfig
+	}
 	defer file.Close()
+	var stat unix.Stat_t
+	if unix.Fstat(fd, &stat) != nil || stat.Uid != ownerUID || stat.Nlink != 1 ||
+		stat.Mode&unix.S_IFMT != unix.S_IFREG || os.FileMode(stat.Mode).Perm() != 0o600 ||
+		stat.Size <= 0 || stat.Size > 64*1024 {
+		return policyconfig.RuntimeConfig{}, errInvalidConfig
+	}
 	var config observerConfig
 	decoder := json.NewDecoder(io.LimitReader(file, 64*1024+1))
 	if decoder.Decode(&config) != nil || config.Schema != schema || config.PolicyControl == nil {
 		return policyconfig.RuntimeConfig{}, errInvalidConfig
 	}
 	var extra any
-	if decoder.Decode(&extra) != io.EOF {
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return policyconfig.RuntimeConfig{}, errInvalidConfig
 	}
 	runtime, err := config.PolicyControl.Runtime(domain)
