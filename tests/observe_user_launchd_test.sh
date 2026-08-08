@@ -23,6 +23,10 @@ grep -q 'observe-user' "$INSTALLER"
 grep -q '/usr/libexec/PlistBuddy' "$INSTALLER"
 grep -q 'bootstrap_with_retry "$DOMAIN" "$PLIST_DEST"' "$INSTALLER"
 grep -q 'for attempt in 1 2 3' "$INSTALLER"
+grep -q 'launchctl bootstrap "$domain" "$plist" 2>"$error_file"' "$INSTALLER"
+error_output_line="$(grep -n 'cat "$error_file" >&2' "$INSTALLER" | cut -d: -f1)"
+retry_loop_line="$(grep -n 'for attempt in 1 2 3' "$INSTALLER" | cut -d: -f1)"
+[[ "$error_output_line" -gt "$retry_loop_line" ]]
 source_check_line="$(grep -n '    --config "$config"' "$INSTALLER" | head -n 1 | cut -d: -f1)"
 install_binary_line="$(grep -n '"$binary" "$BIN_DIR/hexroute-userd"' "$INSTALLER" | cut -d: -f1)"
 [[ "$source_check_line" -lt "$install_binary_line" ]]

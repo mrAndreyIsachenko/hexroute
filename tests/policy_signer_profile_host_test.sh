@@ -20,10 +20,14 @@ grep -Fq 'keychain-access-groups' "$entitlements"
 grep -Fq '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)' "$entitlements"
 grep -Fq 'CGO_ENABLED=1' "$embed_script"
 grep -Fq 'build -trimpath' "$embed_script"
+grep -Fq 'policy signer release build requires a clean Git worktree' "$embed_script"
+grep -Fq 'internal/buildinfo.Version=' "$embed_script"
+grep -Fq 'internal/buildinfo.Commit=' "$embed_script"
 grep -Fq -- '-allowProvisioningUpdates' "$build_script"
 grep -Fq 'codesign --verify --deep --strict' "$build_script"
 grep -Fq 'profile_authorizes' "$build_script"
 grep -Fq '"${permitted%\*}" != *' "$build_script"
+grep -Fq 'signed policy compiler identity does not match the clean source revision' "$build_script"
 
 if git ls-files | grep -Eq '\.(provisionprofile|mobileprovision|xcconfig)$'; then
   printf 'tracked private Apple signing artifact detected\n' >&2

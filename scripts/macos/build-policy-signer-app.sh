@@ -13,6 +13,14 @@ decoded_profile="$(mktemp /private/tmp/hexroute-policy-profile.XXXXXX)"
 signed_entitlements="$(mktemp /private/tmp/hexroute-policy-entitlements.XXXXXX)"
 trap 'rm -f "$build_log" "$decoded_profile" "$signed_entitlements"' EXIT
 
+if ! git -C "$repo_root" diff --quiet --ignore-submodules -- ||
+  ! git -C "$repo_root" diff --cached --quiet --ignore-submodules --; then
+  printf 'error: policy signer release build requires a clean Git worktree\n' >&2
+  exit 1
+fi
+expected_commit="$(git -C "$repo_root" rev-parse --verify HEAD)"
+expected_version="git.$(git -C "$repo_root" rev-parse --short=12 HEAD)"
+
 if [[ "$(uname -s)" != "Darwin" ]]; then
   printf 'error: macOS is required\n' >&2
   exit 1
@@ -71,5 +79,9 @@ if [[ -z "$signed_app_id" || -z "$signed_group" || "$signed_app_id" != "$signed_
 fi
 
 "$binary" --check
+if [[ "$("$binary" --version)" != "hexroute-policy version=$expected_version commit=$expected_commit" ]]; then
+  printf 'error: signed policy compiler identity does not match the clean source revision\n' >&2
+  exit 1
+fi
 printf 'ok: signed Hexroute policy app and provisioning profile verified\n'
 printf 'app=%s\n' "$app"

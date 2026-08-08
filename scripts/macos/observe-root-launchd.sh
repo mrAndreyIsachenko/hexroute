@@ -28,13 +28,19 @@ bootstrap_with_retry() {
   local domain="$1"
   local plist="$2"
   local attempt
+  local error_file
+
+  error_file="$(/usr/bin/mktemp /private/tmp/hexroute-launchctl-bootstrap.XXXXXX)"
 
   for attempt in 1 2 3; do
-    if /bin/launchctl bootstrap "$domain" "$plist"; then
+    if /bin/launchctl bootstrap "$domain" "$plist" 2>"$error_file"; then
+      /bin/rm -f "$error_file"
       return 0
     fi
     [[ "$attempt" == "3" ]] || /bin/sleep 1
   done
+  /bin/cat "$error_file" >&2
+  /bin/rm -f "$error_file"
   return 1
 }
 
