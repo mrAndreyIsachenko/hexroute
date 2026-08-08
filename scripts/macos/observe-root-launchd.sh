@@ -24,6 +24,20 @@ require_regular_file() {
   [[ -f "$1" && ! -L "$1" ]] || die "regular non-symlink file required"
 }
 
+bootstrap_with_retry() {
+  local domain="$1"
+  local plist="$2"
+  local attempt
+
+  for attempt in 1 2 3; do
+    if /bin/launchctl bootstrap "$domain" "$plist"; then
+      return 0
+    fi
+    [[ "$attempt" == "3" ]] || /bin/sleep 1
+  done
+  return 1
+}
+
 install_observer() {
   require_root
   local binary="${1:-}"
@@ -45,7 +59,7 @@ install_observer() {
     --config "$CONFIG_DIR/root-observe.json" \
     --socket "$SOCKET_DIR/hexrouted.sock"
   /bin/launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true
-  /bin/launchctl bootstrap system "$PLIST_DEST"
+  bootstrap_with_retry system "$PLIST_DEST"
   /bin/launchctl kickstart -k "system/$LABEL"
   printf 'installed %s in observe-only mode\n' "$LABEL"
 }

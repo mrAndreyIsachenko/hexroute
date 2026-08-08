@@ -21,6 +21,8 @@ grep -q -- '<string>--socket</string>' "$PLIST"
 grep -q '__HEXROUTE_USERD_BINARY__' "$PLIST"
 grep -q 'observe-user' "$INSTALLER"
 grep -q '/usr/libexec/PlistBuddy' "$INSTALLER"
+grep -q 'bootstrap_with_retry "$DOMAIN" "$PLIST_DEST"' "$INSTALLER"
+grep -q 'for attempt in 1 2 3' "$INSTALLER"
 
 if grep -q 'plutil -replace.*ProgramArguments' "$INSTALLER"; then
   echo "plist renderer inserts array elements instead of replacing them" >&2
