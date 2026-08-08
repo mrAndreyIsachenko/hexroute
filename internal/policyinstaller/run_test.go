@@ -59,6 +59,61 @@ func TestFailureCodePreservesBoundedStoreReason(t *testing.T) {
 	}
 }
 
+func TestRuntimeForInstallBindsCompatibilityToConfirmedActivePolicy(t *testing.T) {
+	fixture := newInstallerFixture(t)
+	store := &recoveringMemoryStore{
+		memoryStore: &memoryStore{domain: policy.DomainRoot, artifacts: make(map[policystore.ArtifactKind][]byte)},
+		active: policystore.RevalidatedActive{
+			Domain: policy.DomainRoot,
+			Generation: policystore.Generation{
+				Bundle: fixture.bundle.Candidate.Manifest.BundleGeneration,
+				Policy: fixture.bundle.Candidate.Root.PolicyGeneration,
+			},
+			PayloadSHA256: fixture.bundle.Candidate.Manifest.Root.PayloadSHA256,
+			ConfirmedAt:   fixture.now.Format(time.RFC3339Nano),
+			Manifest:      fixture.bundle.Candidate.Manifest,
+			Payload:       fixture.bundle.Candidate.Root,
+		},
+	}
+	runtime, err := runtimeForInstall(store, fixture.rootRuntime, fixture.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.Installed.CurrentBundleGeneration != fixture.bundle.Candidate.Manifest.BundleGeneration ||
+		runtime.Installed.CurrentPolicyGeneration != fixture.bundle.Candidate.Root.PolicyGeneration ||
+		runtime.Installed.CurrentPayloadSHA256 != fixture.bundle.Candidate.Manifest.Root.PayloadSHA256 {
+		t.Fatalf("runtime was not rebound to confirmed active policy: %+v", runtime.Installed)
+	}
+}
+
+func TestRuntimeForInstallRejectsUnconfirmedOrUnrecoverableActivePolicy(t *testing.T) {
+	fixture := newInstallerFixture(t)
+	active := policystore.RevalidatedActive{
+		Domain: policy.DomainRoot,
+		Generation: policystore.Generation{
+			Bundle: fixture.bundle.Candidate.Manifest.BundleGeneration,
+			Policy: fixture.bundle.Candidate.Root.PolicyGeneration,
+		},
+		PayloadSHA256: fixture.bundle.Candidate.Manifest.Root.PayloadSHA256,
+		Manifest:      fixture.bundle.Candidate.Manifest,
+		Payload:       fixture.bundle.Candidate.Root,
+	}
+	for _, store := range []*recoveringMemoryStore{
+		{
+			memoryStore: &memoryStore{domain: policy.DomainRoot, artifacts: make(map[policystore.ArtifactKind][]byte)},
+			active:      active,
+		},
+		{
+			memoryStore: &memoryStore{domain: policy.DomainRoot, artifacts: make(map[policystore.ArtifactKind][]byte)},
+			recoverErr:  policystore.ErrActivePointerConsistency,
+		},
+	} {
+		if _, err := runtimeForInstall(store, fixture.rootRuntime, fixture.now); !errors.Is(err, errInvalidConfig) {
+			t.Fatalf("runtimeForInstall() error=%v", err)
+		}
+	}
+}
+
 func TestInstallCandidateRejectsWrongTrustAndCompatibilityBeforeStoreWrite(t *testing.T) {
 	fixture := newInstallerFixture(t)
 	for _, mutate := range []func(*policyconfig.RuntimeConfig){
@@ -307,6 +362,20 @@ func (signer testSigner) Sign(message []byte) ([]byte, error) {
 type memoryStore struct {
 	domain    policy.Domain
 	artifacts map[policystore.ArtifactKind][]byte
+}
+
+type recoveringMemoryStore struct {
+	*memoryStore
+	active     policystore.RevalidatedActive
+	recoverErr error
+}
+
+func (store *recoveringMemoryStore) RecoverActive(
+	_ policy.InstalledCompatibility,
+	_ ed25519.PublicKey,
+	_ time.Time,
+) (policystore.RevalidatedActive, error) {
+	return store.active, store.recoverErr
 }
 
 func (store *memoryStore) Domain() policy.Domain { return store.domain }

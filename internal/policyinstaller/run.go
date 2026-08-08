@@ -66,6 +66,15 @@ type artifactStore interface {
 	Close() error
 }
 
+type installStore interface {
+	artifactStore
+	RecoverActive(
+		policy.InstalledCompatibility,
+		ed25519.PublicKey,
+		time.Time,
+	) (policystore.RevalidatedActive, error)
+}
+
 func Run(args []string, stdout, stderr io.Writer) int {
 	if stdout == nil || stderr == nil {
 		return 1
@@ -149,7 +158,12 @@ func runInstall(args []string) (result, error) {
 		return result{}, err
 	}
 	defer store.Close()
-	if err := installCandidate(store, runtime, bundle, time.Now().UTC()); err != nil {
+	now := time.Now().UTC()
+	runtime, err = runtimeForInstall(store, runtime, now)
+	if err != nil {
+		return result{}, err
+	}
+	if err := installCandidate(store, runtime, bundle, now); err != nil {
 		return result{}, err
 	}
 	manifest := bundle.Candidate.Manifest
@@ -163,6 +177,40 @@ func runInstall(args []string) (result, error) {
 		PolicyGeneration: generation,
 		ManifestSHA256:   bundle.Candidate.ManifestSHA256,
 	}, nil
+}
+
+func runtimeForInstall(
+	store installStore,
+	runtime policyconfig.RuntimeConfig,
+	now time.Time,
+) (policyconfig.RuntimeConfig, error) {
+	if store == nil || runtime.Validate() != nil || store.Domain() != runtime.Installed.Domain || now.IsZero() {
+		return policyconfig.RuntimeConfig{}, errInvalidConfig
+	}
+	active, err := store.RecoverActive(runtime.Installed, runtime.PinnedPublicKey, now)
+	if errors.Is(err, policystore.ErrRecordNotFound) {
+		if runtime.Installed.CurrentBundleGeneration != 0 ||
+			runtime.Installed.CurrentPolicyGeneration != 0 ||
+			runtime.Installed.CurrentPayloadSHA256 != "" {
+			return policyconfig.RuntimeConfig{}, errInvalidConfig
+		}
+		return runtime, nil
+	}
+	if err != nil || active.ConfirmedAt == "" || active.Domain != store.Domain() ||
+		active.Generation.Bundle == 0 || active.Generation.Policy == 0 ||
+		active.Manifest.BundleGeneration != active.Generation.Bundle ||
+		active.Payload.PolicyGeneration != active.Generation.Policy ||
+		active.PayloadSHA256 == "" {
+		return policyconfig.RuntimeConfig{}, errInvalidConfig
+	}
+	runtime.Installed.CurrentPolicySchema = active.Manifest.PolicySchema
+	runtime.Installed.CurrentBundleGeneration = active.Generation.Bundle
+	runtime.Installed.CurrentPolicyGeneration = active.Generation.Policy
+	runtime.Installed.CurrentPayloadSHA256 = active.PayloadSHA256
+	if runtime.Validate() != nil {
+		return policyconfig.RuntimeConfig{}, errInvalidConfig
+	}
+	return runtime, nil
 }
 
 func installCandidate(
@@ -443,7 +491,7 @@ func installedConfigIdentity(domain policy.Domain) (string, string, uint32, erro
 	}
 }
 
-func initializeStore(domain policy.Domain) (artifactStore, error) {
+func initializeStore(domain policy.Domain) (installStore, error) {
 	switch domain {
 	case policy.DomainRoot:
 		if os.Geteuid() != 0 {
