@@ -513,6 +513,17 @@ counters, booleans, unsigned summaries or probabilistic confidence SHALL NOT
 authorize enforcement. The first enforced capability SHALL be only
 `operator_resume`.
 
+Qualification collection SHALL be performed by a disjoint user-owned
+observe-only agent with no root, process-mutation, route, DNS, network, TLS,
+credential or policy-activation authority. It SHALL consume only redacted typed daemon status
+and bounded source artifacts, and SHALL persist private source, session and chain
+state before claiming evidence. The agent SHALL bind one session to one exact
+active bundle, root policy, user policy and manifest digest. Binding changes,
+authorization suspension, invalid sources, chain errors and sampling gaps SHALL
+fail closed without carrying elapsed time into another session. Sleep/wake SHALL
+count only after explicit pre-sleep arming and post-wake validation; reboot SHALL
+be represented as a typed boundary between contiguous boot segments.
+
 #### Scenario: Shadow gate is incomplete
 
 - **WHEN** any duration, lifecycle or fault-injection criterion has not passed
@@ -524,6 +535,30 @@ authorize enforcement. The first enforced capability SHALL be only
 - **WHEN** a record is missing, reordered, rewritten, has an invalid parent or output digest, or belongs to a different boot, session or policy generation
 - **THEN** qualification replay fails closed and the gate remains incomplete
 - **AND** no aggregate flag or manually supplied summary can replace the missing evidence
+
+#### Scenario: Operational recorder is absent or interrupted
+
+- **WHEN** the user agent is not running or cannot prove a contiguous eligible sampling interval
+- **THEN** the unobserved wall-clock interval does not count toward the 72-hour gate
+- **AND** policy evaluation remains shadow-only
+
+#### Scenario: Active policy binding changes during qualification
+
+- **WHEN** either domain reports another bundle, policy generation or manifest digest, or reports authorization suspension
+- **THEN** the current qualification session cannot continue or contribute elapsed time to the new binding
+- **AND** a new session requires complete validation from its first record
+
+#### Scenario: Sleep is not explicitly armed
+
+- **WHEN** the agent observes a scheduling gap, lid transition or wake without a valid pre-sleep arm for the same boot and binding
+- **THEN** it does not append passed sleep/wake evidence
+- **AND** the lifecycle criterion remains incomplete
+
+#### Scenario: Recorder resumes after relaunch or reboot
+
+- **WHEN** the LaunchAgent starts after process relaunch or system reboot
+- **THEN** it revalidates the private state, source files, hash chain and active binding before appending evidence
+- **AND** it either resumes the exact eligible session with a typed reboot boundary or fails the session closed
 
 #### Scenario: First active capability is enabled after the gate
 

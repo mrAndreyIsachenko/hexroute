@@ -386,9 +386,10 @@ The enforcement API accepts a typed qualification gate whose completion bit is
 private and can be produced only by validating all required evidence fields; a
 zero or incomplete gate fails closed. The current daemon wiring does not call
 the enforcement API, so runtime behavior remains shadow-only until the durable
-qualification recorder in task 10.3 produces and validates real evidence. This
-prevents implementation of the bounded executor from being mistaken for a live
-activation or from being enabled by a configuration boolean.
+qualification recorder API and its user-owned operational agent produce and
+validate real evidence. This prevents implementation of the bounded executor
+from being mistaken for a live activation or from being enabled by a
+configuration boolean.
 
 ### Qualification evidence is provenance-bound, not asserted
 
@@ -409,6 +410,32 @@ Unsigned summaries, probabilistic confidence and a generic polymorphic evidence
 record cannot enable enforcement. Evidence kinds may share a minimal provenance
 header, but keep their own strict payloads so an approval result, connectivity
 observation and recovery outcome cannot be substituted for one another.
+
+The operational recorder is a disjoint user LaunchAgent and CLI. It has no root,
+process-mutation, route, DNS, network, TLS, credential or policy-activation
+authority. It
+reads only the redacted typed policy status exposed by the existing authenticated
+root and user Unix sockets, writes a private user-owned session root, and records
+bounded source artifacts before referring to their event IDs and digests. The
+agent never reads the root policy store or raw policy payloads.
+
+A session is initialized from one exact active root/user binding. A binding
+change, authorization suspension, policy-status disagreement, invalid source,
+hash-chain failure or sampling gap closes that session as ineligible; elapsed
+wall time is never carried into another session. Periodic samples append exact
+contiguous eligible windows using a boot-scoped monotonic source. Agent relaunch
+may resume only after state, chain, sources, binding and monotonic continuity are
+revalidated. A reboot starts a new boot segment and appends one typed reboot
+boundary without joining unrelated sessions.
+
+Sleep/wake evidence is deliberately operator-armed before the lid closes. On
+wake, the agent accepts the cycle only when the persisted arm, boot identity,
+continuous-clock interval, current full-wake state and unchanged policy binding
+all validate. A scheduler delay, agent outage or unarmed lid cycle does not count
+as sleep/wake. Controlled fault-injection evidence is imported only from bounded
+typed source results whose event identity and digest are persisted before the
+qualification record. Status is a replay projection (`collecting`, `invalid` or
+`complete`), never an editable completion flag.
 
 ### Executor capability boundaries are repository-enforced
 

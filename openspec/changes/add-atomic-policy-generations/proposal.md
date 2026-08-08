@@ -23,6 +23,10 @@ one intended change into unrelated local mutations.
   invariants and recent redacted observations before a policy can be signed.
 - Add redacted local and cloud-visible policy status without exposing selectors,
   endpoints, source paths, leases or credential references.
+- Add a disjoint user-owned observe-only qualification agent that continuously
+  turns redacted local status and bounded source evidence into the durable
+  generation-bound chain required by the shadow gate. Calendar time while the
+  agent is absent, unhealthy or observing another binding does not qualify.
 - Enforce a repository boundary in which public Hexroute contains only policy
   contracts, schemas, synthetic examples and tests; live policy sources, signed
   bundles, trust fingerprints and activation evidence remain operational
@@ -62,8 +66,9 @@ change.
 
 ## Impact
 
-- Adds a separate `hexroute-policy` operator binary and policy model, compiler,
-  validator, replay, signing and storage packages in public Go code.
+- Adds separate `hexroute-policy` and `hexroute-policy-qualification` operator
+  binaries plus policy model, compiler, validator, replay, signing, storage and
+  qualification packages in public Go code.
 - Extends versioned root/user IPC and `hexroutectl` with typed policy lifecycle
   operations that carry generations and digests, never arbitrary paths or
   policy payloads.
@@ -71,6 +76,8 @@ change.
   restart-required, mismatch, suspension and action-lease metadata.
 - Adds synthetic conflict, replay, crash-recovery, sleep/wake and reboot fixtures
   plus bounded, secret-redacted telemetry schemas.
+- Adds a user LaunchAgent with no root, process, route, DNS, network or credential
+  mutation authority; it owns only private qualification state and evidence.
 - Adds ignore and secret-canary gates that reject live policy material from the
   public source tree; private infrastructure may retain only redacted digests and
   deployment references while secret values stay in their designated stores.
