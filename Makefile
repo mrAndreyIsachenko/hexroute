@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy check container-build container-test fmt ingress-observer-release-test postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test vet
+.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer check container-build container-test fmt ingress-observer-release-test postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test vet
 
 build:
 	go build ./cmd/...
@@ -22,6 +22,10 @@ build-ctl:
 build-policy:
 	mkdir -p bin
 	go build -o bin/hexroute-policy ./cmd/hexroute-policy
+
+build-policy-installer:
+	mkdir -p bin
+	go build -o bin/hexroute-policy-installer ./cmd/hexroute-policy-installer
 
 build-ingress-probe:
 	mkdir -p bin
@@ -64,7 +68,7 @@ terraform-test:
 terraform-state-test:
 	tests/terraform_state_policy_test.sh
 
-shell-test: build-observe-root build-observe-user
+shell-test: build-observe-root build-observe-user build-policy-installer
 	bash -n scripts/baseline/*.sh scripts/macos/*.sh scripts/*.sh tests/*.sh
 	tests/baseline_archives_test.sh
 	tests/emergency_restore_test.sh
@@ -73,6 +77,7 @@ shell-test: build-observe-root build-observe-user
 	tests/observe_user_launchd_test.sh
 	tests/provider_b_documentation_test.sh
 	tests/policy_cli_boundary_test.sh
+	tests/policy_installer_boundary_test.sh
 	tests/policy_cloud_independence_test.sh
 	tests/policy_documentation_test.sh
 	tests/operator_resume_boundary_test.sh
