@@ -3,6 +3,9 @@ package operator
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -10,6 +13,7 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
+	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyqualification"
 	"github.com/mrAndreyIsachenko/hexroute/internal/resumeplan"
@@ -365,10 +369,7 @@ func TestControllerEnforcesResumeOnlyBehindValidatedQualification(t *testing.T) 
 	); !errors.Is(err, ErrInvalidController) {
 		t.Fatalf("zero qualification error=%v", err)
 	}
-	gate, err := policyqualification.Validate(completeResumeEvidence())
-	if err != nil {
-		t.Fatal(err)
-	}
+	gate := completeResumeGate(t)
 	executor.after = snapshot
 	executor.after.State = control.StateDegraded
 	executor.after.Generation++
@@ -418,10 +419,7 @@ func TestControllerActiveResumeDenialCannotReachAnyMutation(t *testing.T) {
 	if err := controller.SetResumePolicyEvaluator(evaluator); err != nil {
 		t.Fatal(err)
 	}
-	gate, err := policyqualification.Validate(completeResumeEvidence())
-	if err != nil {
-		t.Fatal(err)
-	}
+	gate := completeResumeGate(t)
 	if err := controller.EnableResumePolicyEnforcement(executor, gate); err != nil {
 		t.Fatal(err)
 	}
@@ -437,13 +435,127 @@ func TestControllerActiveResumeDenialCannotReachAnyMutation(t *testing.T) {
 	}
 }
 
-func completeResumeEvidence() policyqualification.Evidence {
-	return policyqualification.Evidence{
-		EligibleDuration: 72 * time.Hour, SleepWakeCycles: 2,
-		RebootObserved: true, InvalidSignatureInjected: true,
-		SelectorConflictInjected: true, StaleGenerationInjected: true,
-		CrossDomainCrashInjected: true,
+func completeResumeGate(t *testing.T) policyqualification.Gate {
+	t.Helper()
+	binding := policyqualification.Binding{
+		SessionID:        "11111111-1111-4111-8111-111111111111",
+		BundleGeneration: 7, RootPolicyGeneration: 5, UserPolicyGeneration: 6,
+		ManifestSHA256: policy.SHA256Hex([]byte("operator test manifest")),
 	}
+	root := filepath.Join(t.TempDir(), "qualification")
+	recorder, err := policyqualification.OpenRecorder(root, binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2030, time.January, 1, 0, 0, 0, 0, time.UTC)
+	bootOne := metadata.UUID("22222222-2222-4222-8222-222222222222")
+	bootTwo := metadata.UUID("33333333-3333-4333-8333-333333333333")
+	sources := make(map[metadata.UUID][]byte)
+	sequence := 0
+	observation := func(boot metadata.UUID, offset, monotonic time.Duration) policyqualification.Observation {
+		sequence++
+		id := metadata.UUID(fmt.Sprintf("00000000-0000-4000-8000-%012d", sequence))
+		content := []byte(fmt.Sprintf("operator source %d", sequence))
+		sources[id] = content
+		return policyqualification.Observation{
+			BootID:            boot,
+			Sources:           []policyqualification.SourceReference{{EventID: id, SHA256: policy.SHA256Hex(content)}},
+			ObservedAt:        base.Add(offset).Format(time.RFC3339Nano),
+			SourceMonotonicNS: int64(monotonic),
+			Result:            policyqualification.ResultPassed, Reason: policyqualification.ReasonNone,
+		}
+	}
+	must := func(_ policyqualification.EvidenceRecord, err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("append qualification record %d: %v", sequence, err)
+		}
+	}
+	decisionDigest := policy.SHA256Hex([]byte("same decision"))
+	must(recorder.RecordSafetyComparison(
+		observation(bootOne, time.Hour, time.Hour),
+		policyqualification.SafetyComparison{
+			ExpectedSHA256: decisionDigest, ObservedSHA256: decisionDigest,
+		},
+	))
+	must(recorder.RecordSleepWake(
+		observation(bootOne, 2*time.Hour, 2*time.Hour),
+		policyqualification.SleepWake{
+			SleptAt:          base.Add(90 * time.Minute).Format(time.RFC3339Nano),
+			WokeAt:           base.Add(2 * time.Hour).Format(time.RFC3339Nano),
+			SleptMonotonicNS: int64(90 * time.Minute), WokeMonotonicNS: int64(2 * time.Hour),
+		},
+	))
+	must(recorder.RecordFaultInjection(
+		policyqualification.KindInvalidSignature,
+		observation(bootOne, 3*time.Hour, 3*time.Hour),
+		policyqualification.FaultInjection{Outcome: policyqualification.OutcomeCandidateRejected},
+	))
+	must(recorder.RecordEligibleWindow(
+		observation(bootOne, 4*time.Hour, 4*time.Hour),
+		policyqualification.EligibleWindow{
+			StartedAt:        base.Format(time.RFC3339Nano),
+			EndedAt:          base.Add(4 * time.Hour).Format(time.RFC3339Nano),
+			EndedMonotonicNS: int64(4 * time.Hour),
+		},
+	))
+	must(recorder.RecordReboot(
+		observation(bootTwo, 4*time.Hour, 0),
+		policyqualification.Reboot{
+			PreviousBootID: bootOne, CurrentBootID: bootTwo,
+			ObservedAt: base.Add(4 * time.Hour).Format(time.RFC3339Nano),
+		},
+	))
+	must(recorder.RecordFaultInjection(
+		policyqualification.KindSelectorConflict,
+		observation(bootTwo, 5*time.Hour, time.Hour),
+		policyqualification.FaultInjection{Outcome: policyqualification.OutcomeCandidateRejected},
+	))
+	must(recorder.RecordFaultInjection(
+		policyqualification.KindStaleGeneration,
+		observation(bootTwo, 6*time.Hour, 2*time.Hour),
+		policyqualification.FaultInjection{Outcome: policyqualification.OutcomeMutationRejected},
+	))
+	must(recorder.RecordFaultInjection(
+		policyqualification.KindCrossDomainCrash,
+		observation(bootTwo, 7*time.Hour, 3*time.Hour),
+		policyqualification.FaultInjection{Outcome: policyqualification.OutcomeDomainMismatchBlocked},
+	))
+	must(recorder.RecordSleepWake(
+		observation(bootTwo, 8*time.Hour, 4*time.Hour),
+		policyqualification.SleepWake{
+			SleptAt:          base.Add(15 * time.Hour / 2).Format(time.RFC3339Nano),
+			WokeAt:           base.Add(8 * time.Hour).Format(time.RFC3339Nano),
+			SleptMonotonicNS: int64(7 * time.Hour / 2), WokeMonotonicNS: int64(4 * time.Hour),
+		},
+	))
+	must(recorder.RecordEligibleWindow(
+		observation(bootTwo, 72*time.Hour, 68*time.Hour),
+		policyqualification.EligibleWindow{
+			StartedAt:        base.Add(4 * time.Hour).Format(time.RFC3339Nano),
+			EndedAt:          base.Add(72 * time.Hour).Format(time.RFC3339Nano),
+			EndedMonotonicNS: int64(68 * time.Hour),
+		},
+	))
+	if records, err := policyqualification.ReadRecords(root); err != nil || len(records) != 10 {
+		t.Fatalf("read qualification records count=%d error=%v", len(records), err)
+	}
+	gate, err := policyqualification.Replay(
+		root,
+		binding,
+		policyqualification.SourceLoaderFunc(func(id metadata.UUID) ([]byte, error) {
+			content, ok := sources[id]
+			if !ok {
+				t.Fatalf("qualification source %s not found", id)
+				return nil, os.ErrNotExist
+			}
+			return content, nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return gate
 }
 
 func safeModeSnapshot() control.Snapshot {

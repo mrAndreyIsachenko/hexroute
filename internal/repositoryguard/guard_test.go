@@ -19,6 +19,11 @@ func TestTrackedStructuredArtifactsRespectPublicRepositoryBoundary(t *testing.T)
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(repository, filepath.FromSlash(path)))
+		if errors.Is(err, os.ErrNotExist) {
+			// The index can still list files deleted by the working-tree change
+			// currently being checked. There is no artifact content to validate.
+			continue
+		}
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
