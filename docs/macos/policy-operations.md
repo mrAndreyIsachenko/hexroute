@@ -132,6 +132,13 @@ apply the ownership, mode, no-symlink and `fsync` rules in
 [`policy-storage.md`](../architecture/policy-storage.md). Installation does not
 change an active pointer.
 
+For the initial bundle the installer validates against the static bootstrap
+compatibility anchor. For every later bundle it first revalidates the confirmed
+active pointer, signature and immutable artifacts from the local domain store,
+then derives the current parent and domain generation from that evidence. It
+never trusts a caller-supplied current generation or rewrites an existing store
+to make a candidate fit.
+
 After both stores contain the same signed bundle, derive one bounded
 transaction identity from canonical artifacts:
 

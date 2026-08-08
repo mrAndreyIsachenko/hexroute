@@ -34,6 +34,21 @@ and authorization overlays. The complete compile, signing, typed activation
 and monotonic rollback workflow is documented in
 [`policy-operations.md`](policy-operations.md).
 
+Before any activation, require both domains to be available and either both to
+report `none/no_valid_generation` for an initial rollout or both to report the
+same confirmed bundle for an update:
+
+```sh
+bin/hexroutectl policy status
+```
+
+Root and user policy generations advance independently, so a valid status may
+show one unchanged domain generation under a newer shared bundle. A mismatch,
+unconfirmed pointer or authorization suspension blocks the transaction. An
+active policy snapshot does not by itself grant production mutation authority;
+the separately recorded shadow qualification gate and executable capability
+boundary still apply.
+
 An explicit resume requires the exact generation shown by status and a target
 owned by that socket:
 

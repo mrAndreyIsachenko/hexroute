@@ -1,13 +1,19 @@
 # Hexroute Roadmap
 
-Status date: 2026-08-01.
+Status date: 2026-08-09.
 
 ## Current Baseline
 
 - Twilight remains the production owner of sing-box, scoped routes and
   Keychain-backed Pritunl recovery.
-- Hexroute provides typed Go commands for root, user, sentinel, operator and
-  cloud roles, but local daemons remain pre-cutover and mutation-disabled.
+- Hexroute root and user daemons are installed beside Twilight under disjoint
+  labels, paths, sockets and stores. They remain pre-cutover and have no
+  production data-plane mutation authority.
+- The atomic policy compiler, user-presence signer, immutable root/user stores
+  and typed cross-domain activation are implemented. A deny-only initial bundle
+  and a higher-deny successor have passed a live local activation and rollback
+  safety check while both Codex paths, Twilight and AdGuard remained available;
+  private artifacts and evidence remain outside public Git.
 - Deterministic lifecycle policy, typed peer-authenticated IPC, bounded local
   journals, signed ingestion and redacted diagnostics are implemented and
   covered by synthetic tests.
@@ -29,26 +35,36 @@ Status date: 2026-08-01.
   failover-enabled. See
   [`docs/architecture/provider-b-ingress.md`](architecture/provider-b-ingress.md).
 
-## Active Change
+## Active Changes
 
-The next infrastructure change is an evidence-based provider-B bake-off and
-deployment of an independent VLESS/Reality ingress outside DigitalOcean and
-its ASN. It must preserve the current Twilight data path and the dedicated-Team
-Hexroute control plane throughout qualification.
+`add-atomic-policy-generations` is in shadow qualification. The implementation,
+live side-by-side install and higher-deny safety check are complete; the
+continuous 72-hour chain, required sleep/wake and reboot coverage, and final
+baseline-spec synchronization remain gates before policy enforcement can be
+considered complete.
+
+`add-observable-connectivity-state-machine` is planned next. It will normalize
+peer, relay, DNS, SSH and session state and drive only observe-only proposed
+mutations until its own qualification gates pass. It cannot absorb the current
+policy qualification or take ownership from Twilight.
 
 ## Ordered Changes
 
-1. Complete root observe-only soak and resolve every materially divergent
+1. Complete the atomic-policy 72-hour shadow chain, required lifecycle cycles
+   and fault evidence, then synchronize and archive the validated change.
+2. Implement and qualify the observable connectivity state machine without
+   enabling production mutations.
+3. Complete root observe-only soak and resolve every materially divergent
    proposed action without enabling mutations.
-2. Run an evidence-based provider-B bake-off and deploy an independent
+4. Run an evidence-based provider-B bake-off and deploy an independent
    VLESS/Reality ingress in a different provider and ASN.
-3. Deploy and qualify two-provider Telegram ingress using native MTG, Nginx SNI
+5. Deploy and qualify two-provider Telegram ingress using native MTG, Nginx SNI
    pass-through and functional MTProto health evidence.
-4. Add signed configuration and A/B release delivery with local rollback.
-5. Cut root tunnel ownership from Twilight to Hexroute transactionally.
-6. Cut user Pritunl recovery ownership from the legacy OTP watchdog to
+6. Add signed configuration and A/B release delivery with local rollback.
+7. Cut root tunnel ownership from Twilight to Hexroute transactionally.
+8. Cut user Pritunl recovery ownership from the legacy OTP watchdog to
    `hexroute-userd` transactionally.
-7. Complete public qualification, supply-chain evidence and legacy cleanup.
+9. Complete public qualification, supply-chain evidence and legacy cleanup.
 
 Each numbered item requires its own grill session and bounded OpenSpec change.
 No future item may be bundled into an earlier cutover merely because

@@ -77,8 +77,8 @@
 - [x] 10.2 Document the OpenShell architectural attribution and Hexroute's independent Go implementation and excluded L7/runtime dependencies.
 - [x] 10.3 Add a canonical append-only hash-linked shadow qualification recorder for 72 eligible hours, two sleep/wake cycles, one reboot and the four mandatory injected failures; derive the typed gate only by replaying a durable gap-free session/boot/policy-bound chain and test missing, reordered, rewritten and cross-generation evidence.
 - [x] 10.4 Install the candidate beside Twilight using disjoint Hexroute labels, paths, sockets and stores, and capture evidence that normal and Twilight Codex paths remain available.
-- [ ] 10.5 Capture rollback evidence showing that disabling `operator_resume` enforcement or activating a higher deny/rollback generation leaves Twilight and AdGuard unchanged.
-- [ ] 10.6 Update the local operator, root/user observe and roadmap documentation only after the corresponding implementation and qualification evidence exists.
+- [x] 10.5 Capture rollback evidence showing that disabling `operator_resume` enforcement or activating a higher deny/rollback generation leaves Twilight and AdGuard unchanged.
+- [x] 10.6 Update the local operator, root/user observe and roadmap documentation only after the corresponding implementation and qualification evidence exists.
 
 ## 11. Verification And Spec Synchronization
 

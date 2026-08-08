@@ -23,6 +23,21 @@ Replace only synthetic observation identifiers and policy values in the
 untracked private configuration. Credentials and Keychain item names do not
 belong in this file.
 
+When `policy_control` is present, initialize and populate the user policy store
+as the login user, never with `sudo`:
+
+```sh
+bin/hexroute-policy-installer init --domain user
+bin/hexroute-policy-installer install \
+  --domain user \
+  --candidate '<private canonical candidate directory>' \
+  --signed '<private signed review directory>'
+```
+
+Installation revalidates a confirmed active generation before accepting a
+later parent generation. It writes immutable policy artifacts but does not
+change the active pointer, access Keychain or reconnect Pritunl.
+
 ## Install
 
 Run the installer as the login user, without `sudo`:
@@ -46,6 +61,10 @@ Build `hexroutectl` and use the commands in
 [`operator.md`](operator.md) to inspect typed state. Explicit resume only
 changes a persisted candidate `SAFE_MODE` snapshot back to `DEGRADED`; in
 observe-only mode it does not connect Pritunl.
+
+Root and user daemons must confirm the same bundle before policy-authorized
+state transitions are eligible. Their domain policy generation numbers may
+differ when only one domain's effective payload changed.
 
 The user daemon also emits a bounded local notification when its Pritunl
 planner enters `SAFE_MODE`. Notification delivery is best effort and cannot
