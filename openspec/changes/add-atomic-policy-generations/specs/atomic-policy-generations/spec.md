@@ -382,11 +382,21 @@ values rather than wall timestamps, sleep SHALL count toward lease TTL, and
 reboot SHALL require active-policy signature, digest, static and validity
 revalidation.
 
+The production continuous monotonic source SHALL include time spent in system
+sleep. On Darwin it SHALL use `CLOCK_MONOTONIC`; a process-relative runtime
+clock that excludes sleep SHALL NOT be used for policy skew or lease timing.
+
 #### Scenario: Wall clock moves backward before activation
 
 - **WHEN** a candidate cannot satisfy the configured clock-skew checks
 - **THEN** new activation is blocked and the last valid active policy continues
 - **AND** the daemon reports a bounded clock anomaly
+
+#### Scenario: Mac wakes after normal system sleep
+
+- **WHEN** wall time and the sleep-aware continuous monotonic source advance by the sleep duration
+- **THEN** the daemon does not report a clock anomaly solely because the Mac slept
+- **AND** lease TTL includes the complete sleep interval
 
 #### Scenario: Active policy is loaded after reboot
 

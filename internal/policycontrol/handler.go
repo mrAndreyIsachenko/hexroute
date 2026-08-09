@@ -70,10 +70,15 @@ func NewHandler(
 	config RuntimeConfig,
 	now func() time.Time,
 ) (*Handler, error) {
-	started := time.Now()
-	return newHandlerWithClock(store, config, now, func() time.Duration {
-		return time.Since(started)
-	})
+	return newHandlerWithClock(store, config, now, continuousNow)
+}
+
+func continuousNow() time.Duration {
+	sample, err := policyclock.ContinuousNow()
+	if err != nil {
+		return -1
+	}
+	return sample
 }
 
 func newHandlerWithClock(
@@ -138,10 +143,9 @@ func NewUnavailableHandler(domain policy.Domain) (*Handler, error) {
 	if err != nil {
 		return nil, ErrInvalidConfig
 	}
-	started := time.Now()
 	return &Handler{
 		domain: domain, status: noPolicyStatus(domain), now: time.Now,
-		monotonicNow:            func() time.Duration { return time.Since(started) },
+		monotonicNow:            continuousNow,
 		clockGuard:              clockGuard,
 		authorizationSuspension: clearAuthorizationSuspension(),
 	}, nil

@@ -45,7 +45,7 @@
 
 - [x] 6.1 Add the local `authorization_suspended` overlay for corruption, signature/digest mismatch, domain mismatch, clock anomaly and IPC ownership violation.
 - [x] 6.2 Verify suspension and invalid candidates preserve the last valid policy or enter observe-only `SAFE_MODE` without stopping AdGuard, Twilight, Pritunl, sing-box or established sessions.
-- [x] 6.3 Add UTC policy validity and clock-skew checks plus monotonic lease timing, boot-ID invalidation and sleep-counts-toward-TTL tests.
+- [x] 6.3 Add UTC policy validity and clock-skew checks plus sleep-aware platform monotonic lease timing, boot-ID invalidation and sleep-counts-toward-TTL regression tests.
 - [x] 6.4 Add active-policy reboot revalidation and prove unfinished pre-reboot leases cannot resume.
 - [x] 6.5 Add `grandfathered_noncompliant` and `reconcile_by` state reporting with tests proving no implicit disconnect or hidden stop action exists.
 

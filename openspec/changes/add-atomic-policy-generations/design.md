@@ -340,6 +340,11 @@ remain signed audit metadata. Sleep counts toward TTL and reboot invalidates
 unfinished leases. An active policy can survive reboot only after its signature,
 digest, static binding and validity are rechecked.
 
+The production source is explicitly sleep-aware: Darwin uses
+`CLOCK_MONOTONIC`, and Linux uses `CLOCK_BOOTTIME`. A process-relative
+`time.Since` source is not acceptable because its Darwin runtime clock excludes
+system sleep and would misclassify a normal lid cycle as `clock_anomaly`.
+
 This avoids treating a wall clock as an execution timer while still making
 signed policy expiry portable and auditable.
 

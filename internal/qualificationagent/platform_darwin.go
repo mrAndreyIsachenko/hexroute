@@ -9,6 +9,7 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policyclock"
 	"github.com/mrAndreyIsachenko/hexroute/internal/userobserve"
 	"golang.org/x/sys/unix"
 )
@@ -34,12 +35,12 @@ func (platform *SystemPlatform) Sample(context.Context) (PlatformSample, error) 
 	if err != nil {
 		return PlatformSample{}, ErrUnsupportedPlatform
 	}
-	var monotonic unix.Timespec
-	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &monotonic); err != nil {
+	monotonic, err := policyclock.ContinuousNow()
+	if err != nil {
 		return PlatformSample{}, ErrUnsupportedPlatform
 	}
 	return PlatformSample{
-		BootID: bootID, ObservedAt: time.Now().UTC(), MonotonicNS: monotonic.Nano(),
+		BootID: bootID, ObservedAt: time.Now().UTC(), MonotonicNS: monotonic.Nanoseconds(),
 	}, nil
 }
 
