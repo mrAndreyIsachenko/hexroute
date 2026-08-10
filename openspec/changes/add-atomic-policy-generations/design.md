@@ -446,6 +446,10 @@ typed source results whose event identity and digest are persisted before the
 qualification record. Status is a replay projection (`collecting`, `invalid` or
 `complete`), never an editable completion flag.
 
+If a sleep arm is rejected while the session is invalidated, the state retains
+that arm only as forensic metadata. Invalid lifecycle state prevents the arm
+from authorizing or counting any later wake.
+
 ### Executor capability boundaries are repository-enforced
 
 Every data-plane executor change must add a repository capability-leak firewall

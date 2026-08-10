@@ -241,6 +241,33 @@ func TestAgentKeepsArmAcrossRegularSamplesBeyondFiveMinutes(t *testing.T) {
 	}
 }
 
+func TestAgentRetainsRejectedArmForInvalidSessionForensics(t *testing.T) {
+	base := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	platform := &fakePlatform{
+		samples: []PlatformSample{
+			testSample(testBootOne, base, 0),
+			testSample(testBootOne, base.Add(time.Second), time.Second),
+			testSample(testBootOne, base.Add(25*time.Hour), 25*time.Hour),
+		},
+		wake: userobserve.WakeObservation{Lid: observe.LidStateOpen, Wake: observe.WakeKindFull},
+	}
+	agent := newTestAgent(t, &fakeStatusReader{snapshots: []PolicySnapshot{activeSnapshot()}}, platform)
+	startAndAttach(t, agent)
+	if err := agent.ArmSleep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.Sample(context.Background(), testRunID); !errors.Is(err, ErrSessionInvalid) {
+		t.Fatalf("Sample() error = %v, want %v", err, ErrSessionInvalid)
+	}
+	state, err := agent.store.readState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Lifecycle != LifecycleInvalid || state.Reason != ReasonTimingGap || state.SleepArm == nil {
+		t.Fatalf("state = %+v", state)
+	}
+}
+
 func TestAgentImportsOnlyDigestOfControlledFaultReport(t *testing.T) {
 	base := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
 	agent := newTestAgent(t, &fakeStatusReader{snapshots: []PolicySnapshot{activeSnapshot()}}, &fakePlatform{

@@ -443,7 +443,6 @@ func (agent *Agent) Status() (Status, error) {
 func (agent *Agent) invalidate(state *State, reason StateReason) error {
 	state.Lifecycle = LifecycleInvalid
 	state.Reason = reason
-	state.SleepArm = nil
 	if err := agent.store.writeState(*state); err != nil {
 		return err
 	}

@@ -61,6 +61,10 @@ observations neither count the cycle nor invalidate it. An unarmed long
 scheduler gap or an agent relaunch still invalidates the session. Repeat this
 procedure for the second required cycle.
 
+An invalidated session retains any rejected arm as non-authoritative forensic
+metadata. It can explain a failed wake decision but cannot authorize or count a
+later cycle; only a new collecting session can be armed.
+
 Perform one ordinary reboot while the agent is installed. On launchd restart,
 the agent revalidates the complete chain and source store, records the boot UUID
 transition and begins a new eligible segment. Reboot downtime is accounted for

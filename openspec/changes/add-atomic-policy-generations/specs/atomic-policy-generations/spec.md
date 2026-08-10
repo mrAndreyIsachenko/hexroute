@@ -538,7 +538,9 @@ advancing eligible time or recording a failed gap. It SHALL resolve only after
 the same arm, agent run, boot, policy binding and continuous-clock interval are
 validated in full wake. Regular samples before sleep SHALL NOT clear an explicit
 arm; the arm SHALL expire after 24 hours. An unarmed gap or invalid binding SHALL
-still fail closed.
+still fail closed. When a rejected arm is present during invalidation, the agent
+SHALL retain it as non-authoritative forensic metadata; an invalid session SHALL
+NOT use that metadata to count a later cycle.
 
 #### Scenario: Shadow gate is incomplete
 
