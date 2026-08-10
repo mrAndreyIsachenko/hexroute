@@ -205,32 +205,38 @@ func TestAgentDefersArmedDarkWakeUntilFullWake(t *testing.T) {
 	}
 }
 
-func TestAgentKeepsFreshArmAcrossRegularSample(t *testing.T) {
+func TestAgentKeepsArmAcrossRegularSamplesBeyondFiveMinutes(t *testing.T) {
 	base := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
 	fullWake := userobserve.WakeObservation{Lid: observe.LidStateOpen, Wake: observe.WakeKindFull}
+	samples := []PlatformSample{
+		testSample(testBootOne, base, time.Hour),
+		testSample(testBootOne, base.Add(time.Second), time.Hour+time.Second),
+	}
+	for elapsed := 10 * time.Second; elapsed <= 6*time.Minute; elapsed += 10 * time.Second {
+		samples = append(samples, testSample(testBootOne, base.Add(elapsed), time.Hour+elapsed))
+	}
+	samples = append(samples, testSample(
+		testBootOne,
+		base.Add(6*time.Minute+30*time.Second),
+		time.Hour+6*time.Minute+30*time.Second,
+	))
 	platform := &fakePlatform{
-		samples: []PlatformSample{
-			testSample(testBootOne, base, time.Hour),
-			testSample(testBootOne, base.Add(time.Second), time.Hour+time.Second),
-			testSample(testBootOne, base.Add(10*time.Second), time.Hour+10*time.Second),
-			testSample(testBootOne, base.Add(40*time.Second), time.Hour+40*time.Second),
-		},
-		wake: fullWake,
+		samples: samples,
+		wake:    fullWake,
 	}
 	agent := newTestAgent(t, &fakeStatusReader{snapshots: []PolicySnapshot{activeSnapshot()}}, platform)
 	startAndAttach(t, agent)
 	if err := agent.ArmSleep(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if err := agent.Sample(context.Background(), testRunID); err != nil {
-		t.Fatalf("regular sample: %v", err)
-	}
-	if err := agent.Sample(context.Background(), testRunID); err != nil {
-		t.Fatalf("wake sample: %v", err)
+	for index := 2; index < len(samples); index++ {
+		if err := agent.Sample(context.Background(), testRunID); err != nil {
+			t.Fatalf("sample %d: %v", index, err)
+		}
 	}
 	status, _ := agent.Status()
 	if status.Lifecycle != LifecycleCollecting || status.Progress.SleepWakeCycles != 1 ||
-		status.Progress.EligibleSeconds != 40 || status.Progress.FailedEvidence {
+		status.Progress.EligibleSeconds != 390 || status.Progress.FailedEvidence {
 		t.Fatalf("status = %+v", status)
 	}
 }

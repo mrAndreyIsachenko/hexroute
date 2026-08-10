@@ -268,6 +268,7 @@ func (agent *Agent) sampleLocked(ctx context.Context, state *State) error {
 		); err != nil {
 			return agent.invalidate(state, ReasonWakeInvalid)
 		}
+		state.SleepArm = nil
 	}
 	if _, err := recorder.RecordEligibleWindow(passedObservation(sample, reference), window); err != nil {
 		return agent.invalidate(state, ReasonChainInvalid)
@@ -276,7 +277,7 @@ func (agent *Agent) sampleLocked(ctx context.Context, state *State) error {
 	state.LastMonotonicNS = sample.MonotonicNS
 	if state.SleepArm != nil {
 		armedAt, _ := time.Parse(time.RFC3339Nano, state.SleepArm.ArmedAt)
-		if sample.ObservedAt.Sub(armedAt) > maximumPreSleepArmDelay {
+		if sample.ObservedAt.Sub(armedAt) > maximumArmDuration {
 			state.SleepArm = nil
 		}
 	}

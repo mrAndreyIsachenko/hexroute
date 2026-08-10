@@ -536,7 +536,9 @@ be represented as a typed boundary between contiguous boot segments.
 An armed sleep gap observed during macOS dark wake SHALL remain pending without
 advancing eligible time or recording a failed gap. It SHALL resolve only after
 the same arm, agent run, boot, policy binding and continuous-clock interval are
-validated in full wake; an unarmed gap or invalid binding SHALL still fail closed.
+validated in full wake. Regular samples before sleep SHALL NOT clear an explicit
+arm; the arm SHALL expire after 24 hours. An unarmed gap or invalid binding SHALL
+still fail closed.
 
 #### Scenario: Shadow gate is incomplete
 

@@ -437,8 +437,10 @@ Sleep/wake evidence is deliberately operator-armed before the lid closes. On
 wake, the agent accepts the cycle only when the persisted arm, boot identity,
 continuous-clock interval, current full-wake state and unchanged policy binding
 all validate. An armed cycle remains pending through macOS dark wakes and a
-short pre-sleep sampling race; neither event advances eligible time or creates
-sleep/wake evidence. A scheduler delay without a valid arm, agent outage or
+pre-sleep sampling race; those samples do not clear the explicit arm. The arm
+remains valid for at most 24 hours and is consumed only by a validated full
+wake. Neither pending dark wake nor pre-sleep samples create sleep/wake
+evidence. A scheduler delay without a valid arm, agent outage or
 unarmed lid cycle does not count as sleep/wake. Controlled fault-injection evidence is imported only from bounded
 typed source results whose event identity and digest are persisted before the
 qualification record. Status is a replay projection (`collecting`, `invalid` or
