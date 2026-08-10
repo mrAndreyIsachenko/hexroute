@@ -245,13 +245,17 @@ func (agent *Agent) sampleLocked(ctx context.Context, state *State) error {
 		StartedMonotonicNS: state.LastMonotonicNS, EndedMonotonicNS: sample.MonotonicNS,
 	}
 	if wallElapsed > agent.config.MaximumGap {
-		if !agent.validSleepWake(ctx, *state, sample) {
+		switch agent.sleepWakeDecision(ctx, *state, sample) {
+		case sleepWakePending:
+			return nil
+		case sleepWakeInvalid:
 			if _, err := recorder.RecordEligibleWindow(
 				failedObservation(sample, reference, policyqualification.ReasonTimingGap), window,
 			); err != nil {
 				return agent.invalidate(state, ReasonChainInvalid)
 			}
 			return agent.invalidate(state, ReasonTimingGap)
+		case sleepWakeComplete:
 		}
 		armAt, _ := time.Parse(time.RFC3339Nano, state.SleepArm.ArmedAt)
 		if _, err := recorder.RecordSleepWake(
@@ -270,24 +274,36 @@ func (agent *Agent) sampleLocked(ctx context.Context, state *State) error {
 	}
 	state.LastObservedAt = canonicalUTC(sample.ObservedAt)
 	state.LastMonotonicNS = sample.MonotonicNS
-	state.SleepArm = nil
+	if state.SleepArm != nil {
+		armedAt, _ := time.Parse(time.RFC3339Nano, state.SleepArm.ArmedAt)
+		if sample.ObservedAt.Sub(armedAt) > maximumPreSleepArmDelay {
+			state.SleepArm = nil
+		}
+	}
 	return agent.store.writeState(*state)
 }
 
-func (agent *Agent) validSleepWake(ctx context.Context, state State, sample PlatformSample) bool {
+func (agent *Agent) sleepWakeDecision(
+	ctx context.Context,
+	state State,
+	sample PlatformSample,
+) sleepWakeDecision {
 	if state.SleepArm == nil || state.SleepArm.AgentRunID != state.AgentRunID ||
 		state.SleepArm.BootID != sample.BootID || sample.MonotonicNS <= state.SleepArm.MonotonicNS {
-		return false
+		return sleepWakeInvalid
 	}
 	armedAt, err := time.Parse(time.RFC3339Nano, state.SleepArm.ArmedAt)
 	if err != nil || sample.ObservedAt.Sub(armedAt) <= 0 ||
 		sample.ObservedAt.Sub(armedAt) > maximumArmDuration ||
 		absDuration(sample.ObservedAt.Sub(armedAt)-
 			time.Duration(sample.MonotonicNS-state.SleepArm.MonotonicNS)) > 2*time.Minute {
-		return false
+		return sleepWakeInvalid
 	}
 	wake, err := agent.platform.Wake(ctx)
-	return err == nil && wake.Lid == observe.LidStateOpen && wake.Wake == observe.WakeKindFull
+	if err != nil || wake.Lid != observe.LidStateOpen || wake.Wake != observe.WakeKindFull {
+		return sleepWakePending
+	}
+	return sleepWakeComplete
 }
 
 func (agent *Agent) ArmSleep(ctx context.Context) error {

@@ -54,8 +54,10 @@ make policy-qualification-arm-sleep
 After wake, the running agent counts the cycle only when the same agent run,
 boot ID and policy binding remain valid, the Darwin continuous monotonic clock
 matches elapsed UTC time, and macOS reports an open lid and full wake. An
-unarmed long scheduler gap, a dark wake or an agent relaunch does not count and
-invalidates that session. Repeat this procedure for the second required cycle.
+armed cycle remains pending through intermediate macOS dark wakes and a short
+pre-sleep sampling race; those observations neither count the cycle nor
+invalidate it. An unarmed long scheduler gap or an agent relaunch still
+invalidates the session. Repeat this procedure for the second required cycle.
 
 Perform one ordinary reboot while the agent is installed. On launchd restart,
 the agent revalidates the complete chain and source store, records the boot UUID

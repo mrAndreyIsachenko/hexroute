@@ -41,9 +41,11 @@ func (reader *fakeStatusReader) ReadPolicySnapshot(context.Context) (PolicySnaps
 }
 
 type fakePlatform struct {
-	samples []PlatformSample
-	index   int
-	wake    userobserve.WakeObservation
+	samples   []PlatformSample
+	index     int
+	wake      userobserve.WakeObservation
+	wakes     []userobserve.WakeObservation
+	wakeIndex int
 }
 
 func (platform *fakePlatform) Sample(context.Context) (PlatformSample, error) {
@@ -56,6 +58,15 @@ func (platform *fakePlatform) Sample(context.Context) (PlatformSample, error) {
 }
 
 func (platform *fakePlatform) Wake(context.Context) (userobserve.WakeObservation, error) {
+	if len(platform.wakes) != 0 {
+		index := platform.wakeIndex
+		if index >= len(platform.wakes) {
+			index = len(platform.wakes) - 1
+		} else {
+			platform.wakeIndex++
+		}
+		return platform.wakes[index], nil
+	}
 	return platform.wake, nil
 }
 
@@ -151,6 +162,75 @@ func TestAgentCountsOnlyExplicitlyArmedFullWake(t *testing.T) {
 	status, _ := agent.Status()
 	if status.Lifecycle != LifecycleCollecting || status.Progress.SleepWakeCycles != 1 ||
 		status.Progress.EligibleSeconds != 31 {
+		t.Fatalf("status = %+v", status)
+	}
+}
+
+func TestAgentDefersArmedDarkWakeUntilFullWake(t *testing.T) {
+	base := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	fullWake := userobserve.WakeObservation{Lid: observe.LidStateOpen, Wake: observe.WakeKindFull}
+	platform := &fakePlatform{
+		samples: []PlatformSample{
+			testSample(testBootOne, base, time.Hour),
+			testSample(testBootOne, base.Add(time.Second), time.Hour+time.Second),
+			testSample(testBootOne, base.Add(31*time.Second), time.Hour+31*time.Second),
+			testSample(testBootOne, base.Add(41*time.Second), time.Hour+41*time.Second),
+		},
+		wakes: []userobserve.WakeObservation{
+			fullWake,
+			{Lid: observe.LidStateClosed, Wake: observe.WakeKindDark},
+			fullWake,
+		},
+	}
+	agent := newTestAgent(t, &fakeStatusReader{snapshots: []PolicySnapshot{activeSnapshot()}}, platform)
+	startAndAttach(t, agent)
+	if err := agent.ArmSleep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.Sample(context.Background(), testRunID); err != nil {
+		t.Fatalf("dark wake sample: %v", err)
+	}
+	status, _ := agent.Status()
+	if status.Lifecycle != LifecycleCollecting || status.Progress.SleepWakeCycles != 0 ||
+		status.Progress.FailedEvidence {
+		t.Fatalf("dark wake status = %+v", status)
+	}
+	if err := agent.Sample(context.Background(), testRunID); err != nil {
+		t.Fatalf("full wake sample: %v", err)
+	}
+	status, _ = agent.Status()
+	if status.Lifecycle != LifecycleCollecting || status.Progress.SleepWakeCycles != 1 ||
+		status.Progress.EligibleSeconds != 41 || status.Progress.FailedEvidence {
+		t.Fatalf("full wake status = %+v", status)
+	}
+}
+
+func TestAgentKeepsFreshArmAcrossRegularSample(t *testing.T) {
+	base := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	fullWake := userobserve.WakeObservation{Lid: observe.LidStateOpen, Wake: observe.WakeKindFull}
+	platform := &fakePlatform{
+		samples: []PlatformSample{
+			testSample(testBootOne, base, time.Hour),
+			testSample(testBootOne, base.Add(time.Second), time.Hour+time.Second),
+			testSample(testBootOne, base.Add(10*time.Second), time.Hour+10*time.Second),
+			testSample(testBootOne, base.Add(40*time.Second), time.Hour+40*time.Second),
+		},
+		wake: fullWake,
+	}
+	agent := newTestAgent(t, &fakeStatusReader{snapshots: []PolicySnapshot{activeSnapshot()}}, platform)
+	startAndAttach(t, agent)
+	if err := agent.ArmSleep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.Sample(context.Background(), testRunID); err != nil {
+		t.Fatalf("regular sample: %v", err)
+	}
+	if err := agent.Sample(context.Background(), testRunID); err != nil {
+		t.Fatalf("wake sample: %v", err)
+	}
+	status, _ := agent.Status()
+	if status.Lifecycle != LifecycleCollecting || status.Progress.SleepWakeCycles != 1 ||
+		status.Progress.EligibleSeconds != 40 || status.Progress.FailedEvidence {
 		t.Fatalf("status = %+v", status)
 	}
 }

@@ -533,6 +533,10 @@ authorization suspension, invalid sources, chain errors and sampling gaps SHALL
 fail closed without carrying elapsed time into another session. Sleep/wake SHALL
 count only after explicit pre-sleep arming and post-wake validation; reboot SHALL
 be represented as a typed boundary between contiguous boot segments.
+An armed sleep gap observed during macOS dark wake SHALL remain pending without
+advancing eligible time or recording a failed gap. It SHALL resolve only after
+the same arm, agent run, boot, policy binding and continuous-clock interval are
+validated in full wake; an unarmed gap or invalid binding SHALL still fail closed.
 
 #### Scenario: Shadow gate is incomplete
 
@@ -551,6 +555,12 @@ be represented as a typed boundary between contiguous boot segments.
 - **WHEN** the user agent is not running or cannot prove a contiguous eligible sampling interval
 - **THEN** the unobserved wall-clock interval does not count toward the 72-hour gate
 - **AND** policy evaluation remains shadow-only
+
+#### Scenario: Armed sleep includes an intermediate dark wake
+
+- **WHEN** macOS runs the qualification agent during dark wake before the lid is opened
+- **THEN** the armed gap remains pending and no failed evidence is appended
+- **AND** the cycle is recorded only after the same binding reaches a validated full wake
 
 #### Scenario: Active policy binding changes during qualification
 

@@ -11,14 +11,23 @@ import (
 )
 
 const (
-	stateSchema        = "hexroute.policy-qualification-state.v1"
-	statusSchema       = "hexroute.policy-qualification-status.v1"
-	statusSourceSchema = "hexroute.policy-qualification-status-source.v1"
-	faultSourceSchema  = "hexroute.policy-qualification-fault-source.v1"
-	stateFilename      = "current.json"
-	lockFilename       = "agent.lock"
-	maximumStateBytes  = 32 * 1024
-	maximumArmDuration = 24 * time.Hour
+	stateSchema             = "hexroute.policy-qualification-state.v1"
+	statusSchema            = "hexroute.policy-qualification-status.v1"
+	statusSourceSchema      = "hexroute.policy-qualification-status-source.v1"
+	faultSourceSchema       = "hexroute.policy-qualification-fault-source.v1"
+	stateFilename           = "current.json"
+	lockFilename            = "agent.lock"
+	maximumStateBytes       = 32 * 1024
+	maximumArmDuration      = 24 * time.Hour
+	maximumPreSleepArmDelay = 5 * time.Minute
+)
+
+type sleepWakeDecision uint8
+
+const (
+	sleepWakeInvalid sleepWakeDecision = iota
+	sleepWakePending
+	sleepWakeComplete
 )
 
 type Lifecycle string
