@@ -120,6 +120,49 @@ func TestAgentFailsClosedOnUnarmedSamplingGap(t *testing.T) {
 	}
 }
 
+func TestServeExitsWhenCurrentSessionIsInvalid(t *testing.T) {
+	base := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	agent := newTestAgent(t, &fakeStatusReader{snapshots: []PolicySnapshot{activeSnapshot()}}, &fakePlatform{
+		samples: []PlatformSample{
+			testSample(testBootOne, base, 0),
+			testSample(testBootOne, base.Add(30*time.Second), 30*time.Second),
+		},
+	})
+	startAndAttach(t, agent)
+	if err := agent.Sample(context.Background(), testRunID); !errors.Is(err, ErrSessionInvalid) {
+		t.Fatalf("Sample() error = %v, want %v", err, ErrSessionInvalid)
+	}
+	if err := agent.Serve(context.Background()); !errors.Is(err, ErrSessionInvalid) {
+		t.Fatalf("Serve() error = %v, want %v", err, ErrSessionInvalid)
+	}
+}
+
+func TestServeExitsWhenSamplingInvalidatesSession(t *testing.T) {
+	base := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	agent := newTestAgent(t, &fakeStatusReader{snapshots: []PolicySnapshot{activeSnapshot()}}, &fakePlatform{
+		samples: []PlatformSample{
+			testSample(testBootOne, base, 0),
+			testSample(testBootOne, base.Add(30*time.Second), 30*time.Second),
+		},
+	})
+	if err := agent.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := agent.Serve(ctx); !errors.Is(err, ErrSessionInvalid) {
+		t.Fatalf("Serve() error = %v, want %v", err, ErrSessionInvalid)
+	}
+	status, err := agent.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Lifecycle != LifecycleInvalid || status.Reason != ReasonTimingGap ||
+		!status.Progress.FailedEvidence {
+		t.Fatalf("status = %+v", status)
+	}
+}
+
 func TestAgentRejectsBindingChangeWithDurableFailedComparison(t *testing.T) {
 	base := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
 	changed := activeSnapshot()

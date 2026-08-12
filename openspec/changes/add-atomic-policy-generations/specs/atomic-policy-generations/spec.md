@@ -560,6 +560,13 @@ NOT use that metadata to count a later cycle.
 - **THEN** the unobserved wall-clock interval does not count toward the 72-hour gate
 - **AND** policy evaluation remains shadow-only
 
+#### Scenario: Operational recorder session becomes invalid while serving
+
+- **WHEN** the qualification service observes a terminal invalid session or a sample invalidates the current session
+- **THEN** the service exits fail-closed with a bounded `session_invalid` result instead of remaining silently idle
+- **AND** status continues to expose the invalid lifecycle and reason until an explicit restart creates a new session
+- **AND** no elapsed time from the invalid session is carried into the replacement session
+
 #### Scenario: Armed sleep includes an intermediate dark wake
 
 - **WHEN** macOS runs the qualification agent during dark wake before the lid is opened

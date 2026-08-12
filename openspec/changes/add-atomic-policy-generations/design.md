@@ -433,6 +433,12 @@ may resume only after state, chain, sources, binding and monotonic continuity ar
 revalidated. A reboot starts a new boot segment and appends one typed reboot
 boundary without joining unrelated sessions.
 
+If a terminal invalid state already exists when the service starts, or a live
+sample invalidates the active session, the service exits fail-closed instead of
+remaining as a healthy-looking idle process. The invalid lifecycle and bounded
+reason remain visible in status until the operator explicitly starts a new
+qualification session; no elapsed time is copied into that replacement session.
+
 Sleep/wake evidence is deliberately operator-armed before the lid closes. On
 wake, the agent accepts the cycle only when the persisted arm, boot identity,
 continuous-clock interval, current full-wake state and unchanged policy binding

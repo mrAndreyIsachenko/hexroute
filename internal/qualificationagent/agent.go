@@ -102,10 +102,12 @@ func (agent *Agent) Serve(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := agent.attachRun(runID); err != nil && !errors.Is(err, ErrSessionInvalid) {
+	if err := agent.attachRun(runID); err != nil {
 		return err
 	}
-	agent.sampleForRun(ctx, runID)
+	if err := agent.sampleForRun(ctx, runID); err != nil {
+		return err
+	}
 	ticker := time.NewTicker(agent.config.SampleInterval)
 	defer ticker.Stop()
 	for {
@@ -113,17 +115,19 @@ func (agent *Agent) Serve(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			agent.sampleForRun(ctx, runID)
+			if err := agent.sampleForRun(ctx, runID); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-func (agent *Agent) sampleForRun(ctx context.Context, runID metadata.UUID) {
+func (agent *Agent) sampleForRun(ctx context.Context, runID metadata.UUID) error {
 	err := agent.Sample(ctx, runID)
-	if errors.Is(err, ErrStatusUnavailable) || errors.Is(err, ErrSessionInvalid) ||
-		errors.Is(err, context.Canceled) {
-		return
+	if err == nil || errors.Is(err, ErrStatusUnavailable) || errors.Is(err, context.Canceled) {
+		return nil
 	}
+	return err
 }
 
 func (agent *Agent) attachRun(runID metadata.UUID) error {
