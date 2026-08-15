@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/signing"
 	"github.com/mrAndreyIsachenko/hexroute/internal/spool"
@@ -183,6 +184,100 @@ func TestCloudLossRetainsEvidenceWhileLocalRecoveryContinuesAndDrainsOnReturn(
 	}
 }
 
+func TestUploaderReplaysRetainedGapExactlyOnce(t *testing.T) {
+	journal := newJournal(t)
+	appendObservation(t, journal)
+	appendTransition(t, journal)
+	appendObservation(t, journal)
+	original, err := journal.Entries()
+	if err != nil {
+		t.Fatalf("Entries() error = %v", err)
+	}
+	key := uploaderKey(t)
+	transport := &gapReplayTransport{}
+	uploader, err := NewUploader(
+		journal,
+		key,
+		transport,
+		bytes.NewReader(repeatedBytes(64)),
+		func() time.Time {
+			return time.Date(2026, time.August, 15, 13, 0, 0, 0, time.UTC)
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewUploader() error = %v", err)
+	}
+
+	if err := uploader.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if len(transport.batches) != 2 {
+		t.Fatalf("uploads = %d, want 2", len(transport.batches))
+	}
+	replay := transport.batches[1]
+	if len(replay.Events) != 1 ||
+		replay.Events[0].Metadata.Sequence != 2 ||
+		!bytes.Equal(replay.Events[0].Record, original[1].Event) {
+		t.Fatalf("replay batch = %+v", replay)
+	}
+	if transport.envelopes[0].Envelope.RequestID == transport.envelopes[1].Envelope.RequestID {
+		t.Fatal("replay reused the original request identity")
+	}
+	remaining, err := journal.Entries()
+	if err != nil {
+		t.Fatalf("Entries(after replay) error = %v", err)
+	}
+	if len(remaining) != 1 || remaining[0].Sequence != 1 {
+		t.Fatalf("remaining entries = %+v", remaining)
+	}
+}
+
+func TestUploaderReportsExpiredGapAndAllowsNewUploads(t *testing.T) {
+	journal := newJournal(t)
+	appendObservation(t, journal)
+	key := uploaderKey(t)
+	transport := &expiredGapTransport{}
+	uploader, err := NewUploader(
+		journal,
+		key,
+		transport,
+		bytes.NewReader(repeatedBytes(128)),
+		func() time.Time {
+			return time.Date(2026, time.August, 15, 13, 30, 0, 0, time.UTC)
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewUploader() error = %v", err)
+	}
+
+	if err := uploader.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce(first) error = %v", err)
+	}
+	entries, err := journal.Entries()
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("entries after expired gap = %d, %v", len(entries), err)
+	}
+	record, err := event.Decode(entries[0].Event)
+	if err != nil || record.Schema != event.SchemaDiagnostic {
+		t.Fatalf("diagnostic record = %+v, %v", record, err)
+	}
+	diagnostic := record.Payload.(*event.Diagnostic)
+	if diagnostic.Code != event.DiagnosticTelemetryGapUnrecoverable {
+		t.Fatalf("diagnostic = %+v", diagnostic)
+	}
+
+	if err := uploader.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce(second) error = %v", err)
+	}
+	entries, err = journal.Entries()
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("entries after diagnostic upload = %d, %v", len(entries), err)
+	}
+	if transport.calls != 2 {
+		t.Fatalf("transport calls = %d, want 2", transport.calls)
+	}
+}
+
 type blockingFailTransport struct {
 	entered chan<- struct{}
 	release <-chan struct{}
@@ -230,6 +325,90 @@ func (transport *recoveringTransport) Upload(
 		HighWatermark:    batch.LastSequence,
 		AcceptedEventIDs: eventIDs,
 	}, nil
+}
+
+type gapReplayTransport struct {
+	envelopes []signing.SignedEnvelope
+	batches   []Batch
+}
+
+func (transport *gapReplayTransport) Upload(
+	_ context.Context,
+	envelope signing.SignedEnvelope,
+	body []byte,
+) (Acknowledgement, error) {
+	batch, err := DecodeBatch(body)
+	if err != nil {
+		return Acknowledgement{}, err
+	}
+	transport.envelopes = append(transport.envelopes, envelope)
+	transport.batches = append(transport.batches, batch)
+	if len(transport.batches) == 1 {
+		return Acknowledgement{
+			Schema:           AcknowledgementSchema,
+			Version:          ProtocolVersion,
+			BatchID:          batch.BatchID,
+			NodeID:           batch.NodeID,
+			RequestID:        envelope.Envelope.RequestID,
+			HighWatermark:    batch.LastSequence,
+			AcceptedEventIDs: []metadata.UUID{batch.Events[len(batch.Events)-1].Metadata.EventID},
+			MissingSequences: []SequenceRange{{First: 2, Last: 2}},
+		}, nil
+	}
+	if len(batch.Events) != 1 || batch.Events[0].Metadata.Sequence != 2 {
+		return Acknowledgement{}, ErrInvalidBatch
+	}
+	return Acknowledgement{
+		Schema:           AcknowledgementSchema,
+		Version:          ProtocolVersion,
+		BatchID:          batch.BatchID,
+		NodeID:           batch.NodeID,
+		RequestID:        envelope.Envelope.RequestID,
+		HighWatermark:    batch.LastSequence,
+		AcceptedEventIDs: []metadata.UUID{batch.Events[0].Metadata.EventID},
+	}, nil
+}
+
+type expiredGapTransport struct {
+	calls int
+}
+
+func (transport *expiredGapTransport) Upload(
+	_ context.Context,
+	envelope signing.SignedEnvelope,
+	body []byte,
+) (Acknowledgement, error) {
+	transport.calls++
+	batch, err := DecodeBatch(body)
+	if err != nil {
+		return Acknowledgement{}, err
+	}
+	eventIDs := make([]metadata.UUID, 0, len(batch.Events))
+	for _, item := range batch.Events {
+		eventIDs = append(eventIDs, item.Metadata.EventID)
+	}
+	acknowledgement := Acknowledgement{
+		Schema:           AcknowledgementSchema,
+		Version:          ProtocolVersion,
+		BatchID:          batch.BatchID,
+		NodeID:           batch.NodeID,
+		RequestID:        envelope.Envelope.RequestID,
+		HighWatermark:    batch.LastSequence,
+		AcceptedEventIDs: eventIDs,
+	}
+	if transport.calls == 1 {
+		acknowledgement.HighWatermark = 2
+		acknowledgement.MissingSequences = []SequenceRange{{First: 2, Last: 2}}
+	}
+	return acknowledgement, nil
+}
+
+func repeatedBytes(count int) []byte {
+	output := make([]byte, count)
+	for index := range output {
+		output[index] = byte(index + 1)
+	}
+	return output
 }
 
 func uploaderKey(t *testing.T) signing.Key {

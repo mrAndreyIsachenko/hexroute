@@ -72,7 +72,7 @@
 
 - [x] 8.1 Extend signed ingestion acknowledgements with node/request binding, durable high-watermark and bounded sorted missing-sequence ranges.
 - [x] 8.2 Validate range count, width, ordering, node/request identity, response size, retry rate and local scan-work bounds.
-- [ ] 8.3 Implement local exact-record replay for retained requested ranges without synthesis, renumbering or reducer/action package dependencies.
+- [x] 8.3 Implement local exact-record replay for retained requested ranges without synthesis, renumbering or reducer/action package dependencies.
 - [x] 8.4 Persist report delivery independently as `pending`, `acknowledged` or `terminally_rejected` without changing local action outcome.
 - [x] 8.5 Emit one redacted `telemetry_gap_unrecoverable` record when requested evidence has expired locally while allowing newer uploads.
 - [x] 8.6 Add a strict redacted action-evidence projection and reject action-like fields in ingestion responses.

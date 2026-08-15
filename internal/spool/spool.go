@@ -146,7 +146,7 @@ func (spool *Spool) Append(encodedEvent []byte) (uint64, error) {
 		return 0, err
 	}
 	sequence := eventMetadata.Sequence
-	if sequence != nextSequence(entries) {
+	if sequence <= lastSequence(entries) {
 		return 0, ErrCorruptSpool
 	}
 	incoming, err := newEntry(eventMetadata, record.Priority, encodedEvent)
@@ -624,13 +624,6 @@ func excessBytes(size, maximum int64) int64 {
 		return 0
 	}
 	return size - maximum
-}
-
-func nextSequence(entries []Entry) uint64 {
-	if len(entries) == 0 {
-		return 1
-	}
-	return entries[len(entries)-1].Sequence + 1
 }
 
 func lastSequence(entries []Entry) uint64 {

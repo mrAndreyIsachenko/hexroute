@@ -175,6 +175,40 @@ func TestCriticalOverflowPreservesNewestChainAndRecordsIncident(t *testing.T) {
 	assertWithinCap(t, spool)
 }
 
+func TestAppendAfterAcknowledgementKeepsMonotonicSequence(t *testing.T) {
+	spool, err := Open(
+		filepath.Join(t.TempDir(), "spool"),
+		OwnerRoot,
+		testOptions(4096),
+	)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	mustAppend(t, spool, mustObservation(t))
+	mustAppend(t, spool, mustTransition(t, 2))
+	entries, err := spool.Entries()
+	if err != nil {
+		t.Fatalf("Entries() error = %v", err)
+	}
+	_, err = spool.Acknowledge([]metadata.UUID{
+		entries[0].Metadata.EventID,
+		entries[1].Metadata.EventID,
+	})
+	if err != nil {
+		t.Fatalf("Acknowledge() error = %v", err)
+	}
+
+	sequence := mustAppend(t, spool, mustDiagnostic(t))
+	if sequence != 3 {
+		t.Fatalf("post-ack sequence = %d, want 3", sequence)
+	}
+	entries, err = spool.Entries()
+	if err != nil {
+		t.Fatalf("Entries(after append) error = %v", err)
+	}
+	assertSequences(t, entries, []uint64{3})
+}
+
 func mustDeployment(t *testing.T) []byte {
 	t.Helper()
 	encoded, err := event.Encode(event.SchemaDeployment, event.Deployment{

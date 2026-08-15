@@ -27,6 +27,7 @@ type Uploader struct {
 	transport Transport
 	random    io.Reader
 	now       func() time.Time
+	gaps      GapUnrecoverableReporter
 }
 
 var (
@@ -97,6 +98,62 @@ func (uploader *Uploader) RunOnce(ctx context.Context) error {
 		uploader.key.NodeID,
 		requestID,
 		acknowledgement,
+	)
+	if err != nil {
+		return err
+	}
+	return uploader.replayMissingSequences(ctx, acknowledgement)
+}
+
+func (uploader *Uploader) replayMissingSequences(
+	ctx context.Context,
+	acknowledgement Acknowledgement,
+) error {
+	if len(acknowledgement.MissingSequences) == 0 {
+		return nil
+	}
+	batchID, err := metadata.NewUUID(uploader.random)
+	if err != nil {
+		return err
+	}
+	requestID, err := metadata.NewUUID(uploader.random)
+	if err != nil {
+		return err
+	}
+	budget := NewGapReplayBudget(MaxGapReplayBatchesPerRun)
+	request, err := PrepareGapReplay(
+		uploader.journal,
+		uploader.key,
+		acknowledgement.MissingSequences,
+		batchID,
+		requestID,
+		uploader.now(),
+		&budget,
+	)
+	if errors.Is(err, ErrGapEvidenceExpired) {
+		_, reportErr := uploader.gaps.EmitOnce(
+			uploader.journal,
+			acknowledgement.MissingSequences,
+		)
+		return reportErr
+	}
+	if err != nil {
+		return err
+	}
+	replayAcknowledgement, err := uploader.transport.Upload(
+		ctx,
+		request.Envelope,
+		request.Body,
+	)
+	if err != nil {
+		return errors.Join(ErrUploadFailed, err)
+	}
+	_, err = ApplyAcknowledgement(
+		uploader.journal,
+		request.BatchID,
+		uploader.key.NodeID,
+		request.RequestID,
+		replayAcknowledgement,
 	)
 	return err
 }
