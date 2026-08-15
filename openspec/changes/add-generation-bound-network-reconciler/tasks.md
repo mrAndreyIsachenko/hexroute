@@ -83,7 +83,7 @@
 - [x] 9.1 Add root and user domain-local synthetic action stores with disjoint paths, ownership and peer-authenticated typed IPC.
 - [x] 9.2 Reject cross-domain proposals and keep root unable to forward or execute user actions or credential-backed operations.
 - [x] 9.3 Wire synthetic proposal comparison and replay behind a disabled feature gate without adding production capability IDs or adapters.
-- [ ] 9.4 Prove missing root/user peer state disables cross-domain reconciliation while preserving observe-only status and the available domain.
+- [x] 9.4 Prove missing root/user peer state disables cross-domain reconciliation while preserving observe-only status and the available domain.
 - [ ] 9.5 Add integration tests proving cloud loss and engine failure leave observable state, Twilight, AdGuard, Pritunl, sing-box, routes, DNS and both Codex paths unchanged.
 
 ## 10. Qualification, Documentation And Rollback
