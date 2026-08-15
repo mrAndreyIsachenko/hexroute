@@ -91,7 +91,7 @@
 - [x] 10.1 Build canonical synthetic traces for no-op, all acknowledgement classes, operation-session resume/reject paths, expiry, cancellation before/after apply, compensation and generation changes.
 - [x] 10.2 Add crash-after-claim/apply, verification mismatch, missing-state rehydration, foreign conflict, retained telemetry gap and unrecoverable-gap traces.
 - [x] 10.3 Add a replay harness proving identical canonical sessions, checkpoints, plans, transitions, outcomes and provenance from every mandatory trace.
-- [ ] 10.4 Run unit, race, fuzz, crash-recovery, replay, IPC, schema-boundary, secret-canary and capability-leak test suites before enabling the synthetic runtime gate.
+- [x] 10.4 Run unit, race, fuzz, crash-recovery, replay, IPC, schema-boundary, secret-canary and capability-leak test suites before enabling the synthetic runtime gate.
 - [ ] 10.5 Document readiness interpretation, acknowledgement semantics, crash/cancel recovery, telemetry gap repair and the absence of production adapters.
 - [ ] 10.6 Document that every real capability adapter, live shadow qualification and ownership cutover requires a separate grill session, OpenSpec change and independently executable rollback.
 - [ ] 10.7 Capture rollback evidence showing the engine and gap-repair uploader can be disabled while existing observe-only telemetry and all production paths remain unchanged.

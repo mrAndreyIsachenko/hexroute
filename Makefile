@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-summary policy-qualification-arm-sleep postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
+.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt fuzz ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-summary policy-qualification-arm-sleep postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
 
 build:
 	go build ./cmd/...
@@ -78,6 +78,9 @@ test:
 race:
 	go test -race ./...
 
+fuzz:
+	go test ./... -run '^$$'
+
 vet:
 	go vet ./...
 
@@ -109,6 +112,7 @@ shell-test: build-observe-root build-observe-user build-policy-installer build-p
 	tests/policy_qualification_launchd_test.sh
 	tests/policy_cloud_independence_test.sh
 	bash tests/reconciler_shadow_integration_test.sh
+	tests/reconciler_qualification_documentation_test.sh
 	tests/policy_documentation_test.sh
 	tests/operator_resume_boundary_test.sh
 	tests/policy_signer_profile_host_test.sh
@@ -122,4 +126,4 @@ secret-test:
 spec-check:
 	OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive
 
-check: fmt vet test race build shell-test secret-test spec-check
+check: fmt vet test race fuzz build shell-test secret-test spec-check
