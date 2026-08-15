@@ -27,13 +27,13 @@
 
 ## 4. Proposal Translation And Acknowledgements
 
-- [ ] 4.1 Implement the pure proposal translator from exact proposal, snapshot, diff, active policy, static capability descriptor and canonical adapter metadata.
-- [ ] 4.2 Bind generated plans to target, proposal/diff/readiness digests, snapshot, bundle/domain/control generations, capability/adapter version and ordered verification/compensation steps.
-- [ ] 4.3 Reject arbitrary commands, arguments, paths, endpoints, credential fields and undeclared operation classes during plan construction.
-- [ ] 4.4 Implement canonical semantic no-op handling that returns accepted no-action without minting a lease or attempt.
-- [ ] 4.5 Implement `accepted`, `temporarily_rejected` and `denied` acknowledgements with exact durable-acceptance semantics and replay-safe request identity.
-- [ ] 4.6 Add determinism, stale-binding, wrong-owner, undeclared-capability, no-op and acknowledgement retryability tests.
-- [ ] 4.7 Add an architectural test proving translation performs no I/O and cannot access environment, clock, filesystem, process, network or credential packages.
+- [x] 4.1 Implement the pure proposal translator from exact proposal, snapshot, diff, active policy, static capability descriptor and canonical adapter metadata.
+- [x] 4.2 Bind generated plans to target, proposal/diff/readiness digests, snapshot, bundle/domain/control generations, capability/adapter version and ordered verification/compensation steps.
+- [x] 4.3 Reject arbitrary commands, arguments, paths, endpoints, credential fields and undeclared operation classes during plan construction.
+- [x] 4.4 Implement canonical semantic no-op handling that returns accepted no-action without minting a lease or attempt.
+- [x] 4.5 Implement `accepted`, `temporarily_rejected` and `denied` acknowledgements with exact durable-acceptance semantics and replay-safe request identity.
+- [x] 4.6 Add determinism, stale-binding, wrong-owner, undeclared-capability, no-op and acknowledgement retryability tests.
+- [x] 4.7 Add an architectural test proving translation performs no I/O and cannot access environment, clock, filesystem, process, network or credential packages.
 
 ## 5. Durable Attempt Lifecycle And Crash Recovery
 

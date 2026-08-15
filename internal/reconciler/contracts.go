@@ -225,13 +225,22 @@ type AcknowledgementRecord struct {
 }
 
 type ActionPlanRecord struct {
-	PlanSHA256          string       `json:"plan_sha256"`
-	Target              string       `json:"target"`
-	CapabilityID        CapabilityID `json:"capability_id"`
-	AdapterVersion      string       `json:"adapter_version"`
-	StepDigests         []string     `json:"step_digests"`
-	VerificationDigests []string     `json:"verification_digests"`
-	CompensationDigests []string     `json:"compensation_digests"`
+	PlanSHA256             string       `json:"plan_sha256"`
+	Target                 string       `json:"target"`
+	CapabilityID           CapabilityID `json:"capability_id"`
+	AdapterVersion         string       `json:"adapter_version"`
+	AdapterSHA256          string       `json:"adapter_sha256"`
+	ProposalSHA256         string       `json:"proposal_sha256"`
+	DiffSHA256             string       `json:"diff_sha256"`
+	SnapshotSHA256         string       `json:"snapshot_sha256"`
+	ReadinessSHA256        string       `json:"readiness_sha256"`
+	BundleGeneration       uint64       `json:"bundle_generation"`
+	DomainPolicyGeneration uint64       `json:"domain_policy_generation"`
+	ControlGeneration      uint64       `json:"control_generation"`
+	SnapshotGeneration     uint64       `json:"snapshot_generation"`
+	StepDigests            []string     `json:"step_digests"`
+	VerificationDigests    []string     `json:"verification_digests"`
+	CompensationDigests    []string     `json:"compensation_digests"`
 }
 
 type OperationSessionRecord struct {
@@ -367,6 +376,15 @@ func (payload ActionPlanRecord) Validate() error {
 		!capabilityIDPattern.MatchString(string(payload.CapabilityID)) ||
 		hasProductionFragment(string(payload.CapabilityID)) ||
 		!versionPattern.MatchString(payload.AdapterVersion) ||
+		!validDigest(payload.AdapterSHA256) ||
+		!validDigest(payload.ProposalSHA256) ||
+		!validDigest(payload.DiffSHA256) ||
+		!validDigest(payload.SnapshotSHA256) ||
+		!validDigest(payload.ReadinessSHA256) ||
+		payload.BundleGeneration == 0 ||
+		payload.DomainPolicyGeneration == 0 ||
+		payload.ControlGeneration == 0 ||
+		payload.SnapshotGeneration == 0 ||
 		!validDigestList(payload.StepDigests, 1, MaxPlanSteps) ||
 		!validDigestList(payload.VerificationDigests, 1, MaxPlanSteps) ||
 		!validDigestList(payload.CompensationDigests, 1, MaxPlanSteps) ||
