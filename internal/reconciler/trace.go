@@ -26,6 +26,11 @@ const (
 	TraceCancellationAfterApply  SyntheticTraceScenario = "cancellation_after_apply"
 	TraceCompensation            SyntheticTraceScenario = "compensation"
 	TraceGenerationChange        SyntheticTraceScenario = "generation_change"
+	TraceCrashAfterClaim         SyntheticTraceScenario = "crash_after_claim"
+	TraceCrashAfterApply         SyntheticTraceScenario = "crash_after_apply"
+	TraceVerificationMismatch    SyntheticTraceScenario = "verification_mismatch"
+	TraceMissingStateRehydrate   SyntheticTraceScenario = "missing_state_rehydrate"
+	TraceForeignConflict         SyntheticTraceScenario = "foreign_conflict"
 )
 
 type SyntheticTrace struct {
@@ -36,6 +41,8 @@ type SyntheticTrace struct {
 	Checkpoints         []OperationCheckpointEnvelope `json:"checkpoints,omitempty"`
 	ReplayContinuations []ReplayContinuationRecord    `json:"replay_continuations,omitempty"`
 	ResumeDecision      *OperationResumeDecision      `json:"resume_decision,omitempty"`
+	StartupRecovery     *StartupRecovery              `json:"startup_recovery,omitempty"`
+	SyntheticDiff       *SyntheticDiff                `json:"synthetic_diff,omitempty"`
 	Expected            SyntheticTraceExpectation     `json:"expected"`
 	TraceSHA256         string                        `json:"trace_sha256"`
 }
@@ -60,6 +67,8 @@ type syntheticTraceDigestInput struct {
 	Checkpoints         []OperationCheckpointEnvelope `json:"checkpoints,omitempty"`
 	ReplayContinuations []ReplayContinuationRecord    `json:"replay_continuations,omitempty"`
 	ResumeDecision      *OperationResumeDecision      `json:"resume_decision,omitempty"`
+	StartupRecovery     *StartupRecovery              `json:"startup_recovery,omitempty"`
+	SyntheticDiff       *SyntheticDiff                `json:"synthetic_diff,omitempty"`
 	Expected            SyntheticTraceExpectation     `json:"expected"`
 }
 
@@ -85,6 +94,11 @@ func CanonicalSyntheticTraces() ([]SyntheticTrace, error) {
 		TraceCancellationAfterApply,
 		TraceCompensation,
 		TraceGenerationChange,
+		TraceCrashAfterClaim,
+		TraceCrashAfterApply,
+		TraceVerificationMismatch,
+		TraceMissingStateRehydrate,
+		TraceForeignConflict,
 	}
 	traces := make([]SyntheticTrace, 0, len(scenarios))
 	for _, scenario := range scenarios {
@@ -125,6 +139,16 @@ func BuildCanonicalSyntheticTrace(scenario SyntheticTraceScenario) (SyntheticTra
 		return builder.compensation()
 	case TraceGenerationChange:
 		return builder.generationChange()
+	case TraceCrashAfterClaim:
+		return builder.crashAfterClaim()
+	case TraceCrashAfterApply:
+		return builder.crashAfterApply()
+	case TraceVerificationMismatch:
+		return builder.verificationMismatch()
+	case TraceMissingStateRehydrate:
+		return builder.missingStateRehydrate()
+	case TraceForeignConflict:
+		return builder.foreignConflict()
 	default:
 		return SyntheticTrace{}, ErrSyntheticTrace
 	}
@@ -168,6 +192,13 @@ func (trace SyntheticTrace) Validate() error {
 		(!trace.ResumeDecision.Reason.Valid() || !trace.ResumeDecision.Lifecycle.Valid()) {
 		return ErrSyntheticTrace
 	}
+	if trace.StartupRecovery != nil &&
+		(!trace.StartupRecovery.Class.Valid() || !trace.StartupRecovery.Reason.Valid()) {
+		return ErrSyntheticTrace
+	}
+	if trace.SyntheticDiff != nil && trace.SyntheticDiff.validate() != nil {
+		return ErrSyntheticTrace
+	}
 	digest, err := syntheticTraceDigest(trace)
 	if err != nil || digest != trace.TraceSHA256 {
 		return ErrSyntheticTrace
@@ -207,11 +238,21 @@ func (scenario SyntheticTraceScenario) Valid() bool {
 	switch scenario {
 	case TraceNoop, TraceAcknowledgementAccept, TraceAcknowledgementBlock, TraceAcknowledgementDeny,
 		TraceOperationResumeAccept, TraceOperationResumeReject, TraceExpiry,
-		TraceCancellationBeforeApply, TraceCancellationAfterApply, TraceCompensation, TraceGenerationChange:
+		TraceCancellationBeforeApply, TraceCancellationAfterApply, TraceCompensation, TraceGenerationChange,
+		TraceCrashAfterClaim, TraceCrashAfterApply, TraceVerificationMismatch, TraceMissingStateRehydrate,
+		TraceForeignConflict:
 		return true
 	default:
 		return false
 	}
+}
+
+func (class StartupRecoveryClass) Valid() bool {
+	return class == RecoveryTerminal ||
+		class == RecoveryUntouched ||
+		class == RecoveryVerifyOwned ||
+		class == RecoverySafeMode ||
+		class == RecoveryBlocked
 }
 
 func newTraceBuilder(scenario SyntheticTraceScenario) traceBuilder {
@@ -653,6 +694,225 @@ func (builder *traceBuilder) generationChange() (SyntheticTrace, error) {
 	})
 }
 
+func (builder *traceBuilder) crashAfterClaim() (SyntheticTrace, error) {
+	binding := builder.attemptBinding(traceDigest(builder.scenario, "plan"))
+	journal := NewMemoryAttemptJournal()
+	entries, err := appendAttemptStates(journal, binding, []attemptTransition{
+		{to: AttemptPending, reason: ReasonAccepted},
+		{from: AttemptPending, to: AttemptClaimed, reason: ReasonAccepted},
+	})
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	recovery, err := ClassifyStartupAttempt(entries[1], StartupObservation{
+		BootID: binding.BootID, AttemptID: binding.AttemptID, TargetState: TargetUntouched,
+	})
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	records, err := builder.records(
+		payloadEnvelope{kind: RecordAttempt, payload: entries[0].Attempt},
+		payloadEnvelope{kind: RecordAttempt, payload: entries[1].Attempt},
+	)
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	return builder.finalize(SyntheticTrace{
+		Schema:          SyntheticTraceSchema,
+		Scenario:        builder.scenario,
+		Records:         records,
+		AttemptJournal:  entries,
+		StartupRecovery: &recovery,
+		Expected: SyntheticTraceExpectation{
+			Reason: ReasonAccepted, AttemptState: AttemptClaimed, ActionStateUnchanged: true,
+		},
+	})
+}
+
+func (builder *traceBuilder) crashAfterApply() (SyntheticTrace, error) {
+	binding := builder.attemptBinding(traceDigest(builder.scenario, "plan"))
+	step := builder.syntheticStep(binding, "alpha", syntheticMissingStateSHA256(), traceDigest(builder.scenario, "after-alpha"))
+	journal := NewMemoryAttemptJournal()
+	entries, err := appendAttemptStates(journal, binding, []attemptTransition{
+		{to: AttemptPending, reason: ReasonAccepted},
+		{from: AttemptPending, to: AttemptClaimed, reason: ReasonAccepted},
+		{from: AttemptClaimed, to: AttemptRunning, reason: ReasonAccepted},
+	})
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	recovery, err := ClassifyStartupAttempt(entries[2], StartupObservation{
+		BootID: binding.BootID, AttemptID: binding.AttemptID, TargetState: TargetUncertain,
+	})
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	records, err := builder.records(
+		payloadEnvelope{kind: RecordAttempt, payload: entries[0].Attempt},
+		payloadEnvelope{kind: RecordAttempt, payload: entries[1].Attempt},
+		payloadEnvelope{kind: RecordAttempt, payload: entries[2].Attempt},
+		payloadEnvelope{kind: RecordStep, payload: StepRecord{
+			StepID: step.ID, State: StepApplied, Operation: step.Operation,
+			InputSHA256: step.InputSHA256, BeforeSHA256: step.BeforeSHA256, AppliedSHA256: step.AppliedSHA256,
+		}},
+	)
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	return builder.finalize(SyntheticTrace{
+		Schema:          SyntheticTraceSchema,
+		Scenario:        builder.scenario,
+		Records:         records,
+		AttemptJournal:  entries,
+		StartupRecovery: &recovery,
+		Expected: SyntheticTraceExpectation{
+			Reason: ReasonSafeMode, AttemptState: AttemptRunning, ActionStateUnchanged: true,
+		},
+	})
+}
+
+func (builder *traceBuilder) verificationMismatch() (SyntheticTrace, error) {
+	binding := builder.attemptBinding(traceDigest(builder.scenario, "plan"))
+	step := builder.syntheticStep(binding, "alpha", syntheticMissingStateSHA256(), traceDigest(builder.scenario, "after-alpha"))
+	journal := NewMemoryAttemptJournal()
+	entries, err := appendAttemptStates(journal, binding, []attemptTransition{
+		{to: AttemptPending, reason: ReasonAccepted},
+		{from: AttemptPending, to: AttemptClaimed, reason: ReasonAccepted},
+		{from: AttemptClaimed, to: AttemptRunning, reason: ReasonAccepted},
+		{from: AttemptRunning, to: AttemptVerifying, reason: ReasonVerification},
+		{from: AttemptVerifying, to: AttemptFailed, reason: ReasonVerification},
+	})
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	outcome := OutcomeRecord{
+		ActionID: binding.ActionID, AttemptID: binding.AttemptID,
+		Outcome: OutcomeFailed, Reason: ReasonVerification, ReportDelivery: ReportPending,
+	}
+	records, err := builder.records(
+		payloadEnvelope{kind: RecordAttempt, payload: entries[0].Attempt},
+		payloadEnvelope{kind: RecordAttempt, payload: entries[1].Attempt},
+		payloadEnvelope{kind: RecordAttempt, payload: entries[2].Attempt},
+		payloadEnvelope{kind: RecordStep, payload: StepRecord{
+			StepID: step.ID, State: StepApplied, Operation: step.Operation,
+			InputSHA256: step.InputSHA256, BeforeSHA256: step.BeforeSHA256, AppliedSHA256: step.AppliedSHA256,
+		}},
+		payloadEnvelope{kind: RecordAttempt, payload: entries[3].Attempt},
+		payloadEnvelope{kind: RecordStep, payload: StepRecord{
+			StepID: step.ID, State: StepFailed, Operation: step.Operation,
+			InputSHA256: step.InputSHA256, BeforeSHA256: step.BeforeSHA256, AppliedSHA256: traceDigest(builder.scenario, "unexpected-after"),
+		}},
+		payloadEnvelope{kind: RecordAttempt, payload: entries[4].Attempt},
+		payloadEnvelope{kind: RecordOutcome, payload: outcome},
+	)
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	return builder.finalize(SyntheticTrace{
+		Schema:         SyntheticTraceSchema,
+		Scenario:       builder.scenario,
+		Records:        records,
+		AttemptJournal: entries,
+		Expected: SyntheticTraceExpectation{
+			Reason: ReasonVerification, AttemptState: AttemptFailed, TerminalOutcome: OutcomeFailed,
+		},
+	})
+}
+
+func (builder *traceBuilder) missingStateRehydrate() (SyntheticTrace, error) {
+	binding := builder.attemptBinding(traceDigest(builder.scenario, "plan-placeholder"))
+	adapter, err := NewMemorySyntheticAdapter(nil)
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	diff, err := adapter.SemanticCompare(SyntheticDesiredState{
+		Fresh: true, Authorized: true, Owner: binding,
+		Resources: []SyntheticDesiredResource{{
+			ID: "synthetic.alpha", Operation: OperationSyntheticState,
+			InputSHA256: traceDigest(builder.scenario, "input-alpha"),
+			StateSHA256: traceDigest(builder.scenario, "state-alpha"),
+		}},
+	})
+	if err != nil || len(diff.Steps) != 1 || len(diff.Conflicts) != 0 ||
+		diff.Steps[0].BeforeSHA256 != syntheticMissingStateSHA256() {
+		return SyntheticTrace{}, ErrSyntheticTrace
+	}
+	input, err := builder.translationInput(ReadinessRecord{
+		Target: "synthetic.target", Status: ReadinessReady, Reason: ReasonAccepted, RetryClass: RetryNone,
+	}, false)
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	input.Steps = []TranslationStep{diff.Steps[0].TranslationStep()}
+	result, err := TranslateProposal(input)
+	if err != nil || result.Plan == nil {
+		return SyntheticTrace{}, ErrSyntheticTrace
+	}
+	records, err := builder.records(
+		payloadEnvelope{kind: RecordAcknowledgement, payload: result.Acknowledgement},
+		payloadEnvelope{kind: RecordActionPlan, payload: *result.Plan},
+		payloadEnvelope{kind: RecordStep, payload: StepRecord{
+			StepID: diff.Steps[0].ID, State: StepPending, Operation: diff.Steps[0].Operation,
+			InputSHA256: diff.Steps[0].InputSHA256, BeforeSHA256: diff.Steps[0].BeforeSHA256,
+			AppliedSHA256: diff.Steps[0].AppliedSHA256,
+		}},
+	)
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	return builder.finalize(SyntheticTrace{
+		Schema:        SyntheticTraceSchema,
+		Scenario:      builder.scenario,
+		Records:       records,
+		SyntheticDiff: &diff,
+		Expected: SyntheticTraceExpectation{
+			Acknowledgement: AckAccepted, Reason: ReasonAccepted, RetryClass: RetryNone,
+			PlanSHA256: result.Plan.PlanSHA256,
+		},
+	})
+}
+
+func (builder *traceBuilder) foreignConflict() (SyntheticTrace, error) {
+	binding := builder.attemptBinding(traceDigest(builder.scenario, "plan"))
+	desired := SyntheticDesiredState{
+		Fresh: true, Authorized: true, Owner: binding,
+		Resources: []SyntheticDesiredResource{{
+			ID: "synthetic.alpha", Operation: OperationSyntheticState,
+			InputSHA256: traceDigest(builder.scenario, "input-alpha"),
+			StateSHA256: traceDigest(builder.scenario, "state-alpha"),
+		}},
+	}
+	current := SyntheticState{Resources: []SyntheticResource{{
+		ID: "synthetic.alpha", Operation: OperationSyntheticState,
+		StateSHA256: traceDigest(builder.scenario, "state-foreign"),
+		Ownership:   SyntheticForeign,
+	}}}
+	diff, err := DiffSyntheticState(current, desired)
+	if err != nil || len(diff.Steps) != 0 || len(diff.Conflicts) != 1 ||
+		diff.Conflicts[0].Reason != ReasonOwnership {
+		return SyntheticTrace{}, ErrSyntheticTrace
+	}
+	incident := IncidentRecord{
+		IncidentID: deterministicTraceUUID(builder.scenario, "incident"),
+		Severity:   SeverityWarning,
+		Reason:     ReasonOwnership,
+		Target:     "synthetic.target",
+	}
+	records, err := builder.records(payloadEnvelope{kind: RecordIncident, payload: incident})
+	if err != nil {
+		return SyntheticTrace{}, err
+	}
+	return builder.finalize(SyntheticTrace{
+		Schema:        SyntheticTraceSchema,
+		Scenario:      builder.scenario,
+		Records:       records,
+		SyntheticDiff: &diff,
+		Expected: SyntheticTraceExpectation{
+			Reason: ReasonOwnership, ActionStateUnchanged: true,
+		},
+	})
+}
+
 type traceTranslation struct {
 	Readiness ReadinessRecord
 	Result    TranslationResult
@@ -730,6 +990,25 @@ func (builder *traceBuilder) attemptBinding(planSHA256 string) AttemptBinding {
 		ControlGeneration:      builder.binding.ControlGeneration,
 		SnapshotGeneration:     builder.binding.SnapshotGeneration,
 		PlanSHA256:             planSHA256,
+	}
+}
+
+func (builder *traceBuilder) syntheticStep(
+	binding AttemptBinding,
+	label string,
+	beforeSHA256 string,
+	appliedSHA256 string,
+) SyntheticPlanStep {
+	return SyntheticPlanStep{
+		ID:                 "synthetic.step" + label,
+		ResourceID:         "synthetic." + label,
+		Operation:          OperationSyntheticState,
+		Owner:              binding,
+		InputSHA256:        traceDigest(builder.scenario, "input-"+label),
+		BeforeSHA256:       beforeSHA256,
+		AppliedSHA256:      appliedSHA256,
+		VerificationSHA256: traceDigest(builder.scenario, "verify-"+label),
+		CompensationSHA256: traceDigest(builder.scenario, "compensate-"+label),
 	}
 }
 
@@ -837,6 +1116,8 @@ func syntheticTraceDigest(trace SyntheticTrace) (string, error) {
 		Checkpoints:         trace.Checkpoints,
 		ReplayContinuations: trace.ReplayContinuations,
 		ResumeDecision:      trace.ResumeDecision,
+		StartupRecovery:     trace.StartupRecovery,
+		SyntheticDiff:       trace.SyntheticDiff,
 		Expected:            trace.Expected,
 	})
 	if err != nil {
