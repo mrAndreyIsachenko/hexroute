@@ -9,8 +9,8 @@
 
 ## 2. Action, Acknowledgement And Provenance Contracts
 
-- [ ] 2.1 Add bounded versioned models for readiness, typed acknowledgements, action plans, attempts, steps, resources, outcomes and report-delivery state.
-- [ ] 2.2 Add the minimal `ActionProvenance` header with strict record-kind payloads, parent/root identity, domain/boot/generation bindings and source/input/output digests.
+- [ ] 2.1 Add bounded versioned models for readiness, typed acknowledgements, action plans, operation sessions, checkpoints, attempts, steps, resources, outcomes and report-delivery state.
+- [ ] 2.2 Add the minimal `ActionProvenance` header with strict record-kind payloads, parent/root identity, domain/boot/generation bindings and source/input/output digests for operation-session and action records.
 - [ ] 2.3 Implement canonical encoding, hashing and strict decoding that rejects unknown fields, trailing data, non-canonical forms and payload-kind substitution.
 - [ ] 2.4 Define allowlisted reason, retry and terminal-outcome enums without raw runtime or adapter error strings.
 - [ ] 2.5 Add size, count and string bounds for every action and provenance record plus rejection fixtures at each boundary.
@@ -44,6 +44,11 @@
 - [ ] 5.5 Implement startup classification of unfinished attempts without automatic rerun by a different process, boot or attempt.
 - [ ] 5.6 Add explicit verified recovery for untouched, exactly-owned applied and uncertain target states; route uncertainty only to target-local `safe_mode`.
 - [ ] 5.7 Add crash-point, duplicate-worker, competing-claim, expiry-during-sleep, reboot and journal-tamper tests.
+- [ ] 5.8 Add a domain-local operation-session checkpoint store with manifest digest, contract/runtime versions, checkpoint sequence, parent checkpoint digest, policy/control/snapshot bindings and child action references.
+- [ ] 5.9 Implement operation-session lifecycle transitions for `running`, `suspended`, `cancelled`, `failed` and `completed` without granting authorization or minting leases.
+- [ ] 5.10 Implement explicit resume validation that rejects manifest drift, generation drift, missing ancestry, sequence gaps, child action ambiguity and owner-attempt mismatch before any proposal or adapter step.
+- [ ] 5.11 Add replay-gated continuation records for future human approval flows, including rejection, timeout and changed-plan outcomes that leave action state unchanged.
+- [ ] 5.12 Add checkpoint-store failure, manifest-mismatch, competing-resume, suspended-resume, approval-rejection and approval-timeout tests.
 
 ## 6. Synthetic Diff And Rehydration Adapters
 
@@ -83,9 +88,9 @@
 
 ## 10. Qualification, Documentation And Rollback
 
-- [ ] 10.1 Build canonical synthetic traces for no-op, all acknowledgement classes, expiry, cancellation before/after apply, compensation and generation changes.
+- [ ] 10.1 Build canonical synthetic traces for no-op, all acknowledgement classes, operation-session resume/reject paths, expiry, cancellation before/after apply, compensation and generation changes.
 - [ ] 10.2 Add crash-after-claim/apply, verification mismatch, missing-state rehydration, foreign conflict, retained telemetry gap and unrecoverable-gap traces.
-- [ ] 10.3 Add a replay harness proving identical canonical plans, transitions, outcomes and provenance from every mandatory trace.
+- [ ] 10.3 Add a replay harness proving identical canonical sessions, checkpoints, plans, transitions, outcomes and provenance from every mandatory trace.
 - [ ] 10.4 Run unit, race, fuzz, crash-recovery, replay, IPC, schema-boundary, secret-canary and capability-leak test suites before enabling the synthetic runtime gate.
 - [ ] 10.5 Document readiness interpretation, acknowledgement semantics, crash/cancel recovery, telemetry gap repair and the absence of production adapters.
 - [ ] 10.6 Document that every real capability adapter, live shadow qualification and ownership cutover requires a separate grill session, OpenSpec change and independently executable rollback.

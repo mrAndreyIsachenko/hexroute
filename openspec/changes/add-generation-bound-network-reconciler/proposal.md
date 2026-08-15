@@ -22,6 +22,9 @@ into imperative event handlers, opaque retries or blind process restarts.
   plans; missing state is never repaired by an unscoped restart.
 - Add explicit cancel/disconnect cleanup for temporary helpers, files and
   credential leases plus verified compensation of transaction-owned state.
+- Add checkpointed operation-session envelopes for long-running local control
+  workflows, binding manifest, policy, snapshot, child-action and attempt
+  evidence before any resume, suspend, cancel, fail or replay-gated continuation.
 - Carry a minimal typed provenance header across proposal, lease, execution
   attempt, step result, compensation, outcome and incident records without
   introducing a generic polymorphic evidence body.
@@ -69,10 +72,11 @@ is needed because this change performs no production mutation.
 ## Impact
 
 - Adds provider-neutral Go packages for action state, readiness evaluation,
-  proposal translation, execution coordination, compensation and replay.
+  proposal translation, operation-session checkpointing, execution
+  coordination, compensation and replay.
 - Extends strict local schemas and journals with action attempts, typed outcomes,
-  provenance links and bounded cancellation state; credential values remain
-  prohibited.
+  operation-session checkpoints, provenance links and bounded cancellation
+  state; credential values remain prohibited.
 - Adds only synthetic capability adapters and capability-leak tests. No package
   may import production route, DNS, process, VPN or Keychain mutation paths.
 - Extends signed ingestion acknowledgements and the local uploader with bounded

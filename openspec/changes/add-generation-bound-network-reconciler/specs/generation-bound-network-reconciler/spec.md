@@ -128,6 +128,35 @@ Execution outcome and telemetry delivery state SHALL be independent.
 - **THEN** the attempt becomes `expired`
 - **AND** no adapter step is invoked
 
+### Requirement: Checkpointed operation session envelopes
+
+Long-running reconciliation workflows SHALL persist local operation-session
+checkpoint envelopes before any resume, suspend, cancel, fail or replay-gated
+continuation. Each envelope SHALL bind session identity, workflow kind, contract
+and runtime versions, manifest digest, active policy/control/snapshot
+generations, reducer and adapter digests, checkpoint sequence, parent checkpoint
+digest, child action identities, applicable attempt identities, lifecycle state
+and bounded evidence digests. Operation sessions SHALL NOT authorize actions or
+mint leases.
+
+#### Scenario: Session is resumed from a matching checkpoint
+
+- **WHEN** an explicit resume request references the latest checkpoint with matching manifest, generation, sequence, parent digest, child outcome and owner-attempt bindings
+- **THEN** the workflow may continue from the checkpointed cursor
+- **AND** child action execution still requires a fresh valid one-time lease before any side effect
+
+#### Scenario: Manifest or generation binding drifts before resume
+
+- **WHEN** the stored checkpoint manifest digest, active policy generation, control generation, snapshot generation or reducer binding no longer matches current validated state
+- **THEN** resume is denied with a bounded `resume_denied` reason
+- **AND** no proposal, lease, action attempt or adapter step is created from that checkpoint
+
+#### Scenario: Human replay gate rejects or times out
+
+- **WHEN** a replay-gated continuation requires operator approval and approval is rejected, times out or refers to a different deterministic plan digest
+- **THEN** the operation session becomes `suspended`, `cancelled` or `failed` according to policy
+- **AND** local connectivity and action state remain unchanged
+
 ### Requirement: Fail-closed crash and claim recovery
 
 An executor SHALL durably claim a pending lease with one attempt ID before any
@@ -201,12 +230,13 @@ terminal path.
 
 ### Requirement: Typed end-to-end action provenance
 
-Proposal, readiness, lease, attempt, step, compensation, outcome and incident
-records SHALL share a minimal canonical provenance header containing schema and
-record identity, strict record kind, parent and root action identity,
-producer/domain, boot identity, exact policy/control/snapshot generations,
-source/input/output digests and applicable wall and monotonic time. Each record
-kind SHALL retain a separate bounded payload and canonical digest.
+Operation session, checkpoint, proposal, readiness, lease, attempt, step,
+compensation, outcome and incident records SHALL share a minimal canonical
+provenance header containing schema and record identity, strict record kind,
+parent and root action identity, producer/domain, boot identity, exact
+policy/control/snapshot generations, source/input/output digests and applicable
+wall and monotonic time. Each record kind SHALL retain a separate bounded
+payload and canonical digest.
 
 #### Scenario: Action history is replayed
 

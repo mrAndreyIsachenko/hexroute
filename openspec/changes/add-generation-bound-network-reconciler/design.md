@@ -19,9 +19,11 @@ state and independent reporting from `wenet-ec/edge-core`, typed command
 acknowledgements from PX4, diff-based interface rehydration from
 `DefGuard/gateway`, cancel-safe cleanup from QGroundControl, range-gap recovery
 from the MAVLink companion log service, provisional/finalized separation from
-reorg-safe materializers, and provenance envelopes from LangGraph/OpenLineage.
-They are design inputs only; Hexroute copies no dependency or product control
-plane.
+reorg-safe materializers, manifest-hashed checkpoint envelopes from
+`clearideas/agent-runtime`, durable child orchestration and human replay gates
+from `microsoft/agent-framework-durable-extension`, and provenance envelopes
+from LangGraph/OpenLineage. They are design inputs only; Hexroute copies no
+dependency or product control plane.
 
 ## Goals / Non-Goals
 
@@ -31,6 +33,8 @@ plane.
 - Keep action readiness separate from raw or provisional connectivity state.
 - Persist action claim, execution, verification, cancellation, compensation and
   reporting as explicit typed state.
+- Persist long-running operation sessions as manifest-bound checkpoint
+  envelopes before resume, suspend, cancel, fail or replay-gated continuation.
 - Rehydrate missing managed state only from a fresh authorized desired-state
   diff, never from an opaque restart decision.
 - Preserve root network/process and user credential/action ownership.
@@ -141,6 +145,38 @@ Reporting has an orthogonal delivery state (`pending`, `acknowledged`,
 `terminally_rejected`) and never changes the execution outcome. Cloud loss or a
 reporting retry cannot block, repeat, commit or roll back a local action.
 
+### Checkpointed operation sessions fence long-running workflows
+
+An operation session is a local parent record for workflows that outlive a
+single action attempt, such as synthetic qualification, shadow comparison,
+crash-recovery drills and later human-reviewed cutover preparations. It is not a
+second authorization mechanism and cannot mint leases. It coordinates child
+proposals, acknowledgements and action attempts that are already authorized by
+atomic policy.
+
+Each checkpoint envelope binds a session ID, workflow kind, contract version,
+runtime version, manifest digest, active bundle/domain policy generations,
+control and snapshot generations, reducer and adapter digests, checkpoint
+sequence, parent checkpoint digest, child action IDs, attempt IDs where
+applicable, lifecycle state and bounded local evidence digests. Lifecycle states
+are `running`, `suspended`, `cancelled`, `failed` and `completed`; action
+attempt terminal outcomes remain separate.
+
+Resume is explicit. Startup or an operator request may resume only when the
+latest checkpoint, manifest digest, checkpoint sequence, policy/snapshot
+bindings, child outcome chain and operation-session attempt fence all match.
+Manifest drift, generation drift, missing ancestry, sequence gaps, child action
+ambiguity or a different owner attempt rejects resume and records a bounded
+`resume_denied` incident. Hexroute never reconstructs a session from logs alone
+and never continues from a plausible but unverified checkpoint.
+
+Human approval gates, when used by later changes, approve only a replayed
+checkpoint envelope and deterministic plan digest. A rejection, timeout or
+changed replay input leaves the session `suspended`, `cancelled` or `failed`
+according to policy; it does not mutate local state or silently retry. This
+keeps operator presence attached to replayed evidence rather than to a live
+mutable snapshot.
+
 ### Acknowledgements classify acceptance and retryability
 
 Every proposal submission returns one bounded acknowledgement:
@@ -188,12 +224,13 @@ incident. Cancellation never deletes immutable action or forensic records.
 
 ### Provenance uses a minimal shared header and strict payloads
 
-Proposal, readiness, lease, attempt, step, compensation, outcome and incident
-records share a minimal `ActionProvenance` header containing schema/record ID,
-record kind, parent and root action IDs, producer/domain, boot ID, exact policy,
-control and snapshot generations, source/input/output digests, UTC observation
-time and source monotonic time where meaningful. Every record has its own strict
-bounded payload and canonical digest.
+Operation session, checkpoint, proposal, readiness, lease, attempt, step,
+compensation, outcome and incident records share a minimal `ActionProvenance`
+header containing schema/record ID, record kind, parent and root action IDs,
+producer/domain, boot ID, exact policy, control and snapshot generations,
+source/input/output digests, UTC observation time and source monotonic time
+where meaningful. Every record has its own strict bounded payload and canonical
+digest.
 
 This allows end-to-end causality without a generic evidence map. A readiness
 record cannot be decoded as an execution result, and an uploaded report cannot
@@ -257,8 +294,9 @@ qualification, guarded cutover and independently executable rollback.
    plus canonical synthetic fixtures.
 3. Implement the pure readiness and proposal-to-plan packages without daemon
    integration.
-4. Implement the durable attempt coordinator, synthetic adapters, cancellation,
-   compensation and replay under a disabled build/runtime gate.
+4. Implement checkpointed operation sessions, the durable attempt coordinator,
+   synthetic adapters, cancellation, compensation and replay under a disabled
+   build/runtime gate.
 5. Add bounded telemetry gap acknowledgements and local replay independently of
    action execution.
 6. Wire only synthetic shadow comparison into disjoint Hexroute daemons; keep
@@ -275,6 +313,6 @@ available. No failure in this change can authorize a production mutation.
 ## Open Questions
 
 Production adapter order, per-capability safety envelopes, two-domain action
-coordination and root/user ownership cutovers remain intentionally unresolved.
-Each requires its own grill session and OpenSpec change after this engine and
-its prerequisites qualify.
+coordination, operator approval UX and root/user ownership cutovers remain
+intentionally unresolved. Each requires its own grill session and OpenSpec
+change after this engine and its prerequisites qualify.
