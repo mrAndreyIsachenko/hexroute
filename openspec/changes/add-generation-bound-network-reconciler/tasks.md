@@ -61,12 +61,12 @@
 
 ## 7. Cancellation, Cleanup And Compensation
 
-- [ ] 7.1 Add durable cancellation intent and compare-and-swap handling for pending, claimed, running and verifying attempts.
-- [ ] 7.2 Prevent the next unstarted step after cancellation and finish cancel-before-apply without invoking apply or compensation.
-- [ ] 7.3 Reuse the atomic-policy verified reverse-prefix rules to compensate only exact transaction-owned applied state under a bounded cancellation-independent context.
-- [ ] 7.4 Add typed registration and terminal cleanup for synthetic helpers, private temporary files and capability-local lease fixtures.
-- [ ] 7.5 Preserve immutable forensic records while reporting cleanup uncertainty or failure as a bounded outcome and target-local incident.
-- [ ] 7.6 Add race tests for cancel-versus-claim, cancel-versus-apply, cancel-versus-commit, generation change during compensation and cleanup failure.
+- [x] 7.1 Add durable cancellation intent and compare-and-swap handling for pending, claimed, running and verifying attempts.
+- [x] 7.2 Prevent the next unstarted step after cancellation and finish cancel-before-apply without invoking apply or compensation.
+- [x] 7.3 Reuse the atomic-policy verified reverse-prefix rules to compensate only exact transaction-owned applied state under a bounded cancellation-independent context.
+- [x] 7.4 Add typed registration and terminal cleanup for synthetic helpers, private temporary files and capability-local lease fixtures.
+- [x] 7.5 Preserve immutable forensic records while reporting cleanup uncertainty or failure as a bounded outcome and target-local incident.
+- [x] 7.6 Add race tests for cancel-versus-claim, cancel-versus-apply, cancel-versus-commit, generation change during compensation and cleanup failure.
 
 ## 8. Telemetry Gap Repair And Redacted Outcomes
 

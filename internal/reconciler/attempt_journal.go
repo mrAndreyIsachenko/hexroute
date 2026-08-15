@@ -550,7 +550,7 @@ func allowedAttemptTransition(from, to AttemptState) bool {
 			to == AttemptSafeMode
 	case AttemptRunning:
 		return to == AttemptVerifying || to == AttemptCancelled ||
-			to == AttemptFailed || to == AttemptSafeMode
+			to == AttemptRolledBack || to == AttemptFailed || to == AttemptSafeMode
 	case AttemptVerifying:
 		return to == AttemptCommitted || to == AttemptCancelled ||
 			to == AttemptRolledBack || to == AttemptFailed ||
