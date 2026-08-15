@@ -1,0 +1,13 @@
+{
+  "schema": "hexroute.reconciler-action-contract-rejections.v1",
+  "canaries": [
+    "credential-reference",
+    "endpoint-203-0-113-10",
+    "keychain-account",
+    "private-path",
+    "process-output",
+    "selector-id",
+    "session-identity",
+    "topology-node"
+  ]
+}

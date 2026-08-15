@@ -9,12 +9,12 @@
 
 ## 2. Action, Acknowledgement And Provenance Contracts
 
-- [ ] 2.1 Add bounded versioned models for readiness, typed acknowledgements, action plans, operation sessions, checkpoints, attempts, steps, resources, outcomes and report-delivery state.
-- [ ] 2.2 Add the minimal `ActionProvenance` header with strict record-kind payloads, parent/root identity, domain/boot/generation bindings and source/input/output digests for operation-session and action records.
-- [ ] 2.3 Implement canonical encoding, hashing and strict decoding that rejects unknown fields, trailing data, non-canonical forms and payload-kind substitution.
-- [ ] 2.4 Define allowlisted reason, retry and terminal-outcome enums without raw runtime or adapter error strings.
-- [ ] 2.5 Add size, count and string bounds for every action and provenance record plus rejection fixtures at each boundary.
-- [ ] 2.6 Add secret-canary tests proving credentials, references, topology, endpoints, selectors, paths, process output and session identities cannot enter persisted or projected records.
+- [x] 2.1 Add bounded versioned models for readiness, typed acknowledgements, action plans, operation sessions, checkpoints, attempts, steps, resources, outcomes and report-delivery state.
+- [x] 2.2 Add the minimal `ActionProvenance` header with strict record-kind payloads, parent/root identity, domain/boot/generation bindings and source/input/output digests for operation-session and action records.
+- [x] 2.3 Implement canonical encoding, hashing and strict decoding that rejects unknown fields, trailing data, non-canonical forms and payload-kind substitution.
+- [x] 2.4 Define allowlisted reason, retry and terminal-outcome enums without raw runtime or adapter error strings.
+- [x] 2.5 Add size, count and string bounds for every action and provenance record plus rejection fixtures at each boundary.
+- [x] 2.6 Add secret-canary tests proving credentials, references, topology, endpoints, selectors, paths, process output and session identities cannot enter persisted or projected records.
 
 ## 3. Generation-Bound Readiness
 
