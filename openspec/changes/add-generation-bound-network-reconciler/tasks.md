@@ -37,18 +37,18 @@
 
 ## 5. Durable Attempt Lifecycle And Crash Recovery
 
-- [ ] 5.1 Add a domain-local crash-safe append-only action journal and generation compare-and-swap transition API.
-- [ ] 5.2 Implement `pending`, `claimed`, `running`, `verifying`, `committed`, `expired`, `denied`, `cancelled`, `rolled_back`, `failed` and `safe_mode` transition validation.
-- [ ] 5.3 Integrate the existing one-time lease and immutable nonce/execution-claim contract without creating a second authorization mechanism.
-- [ ] 5.4 Persist each transition before its following side effect and keep action, nonce, boot, attempt and plan identities immutable.
-- [ ] 5.5 Implement startup classification of unfinished attempts without automatic rerun by a different process, boot or attempt.
-- [ ] 5.6 Add explicit verified recovery for untouched, exactly-owned applied and uncertain target states; route uncertainty only to target-local `safe_mode`.
-- [ ] 5.7 Add crash-point, duplicate-worker, competing-claim, expiry-during-sleep, reboot and journal-tamper tests.
-- [ ] 5.8 Add a domain-local operation-session checkpoint store with manifest digest, contract/runtime versions, checkpoint sequence, parent checkpoint digest, policy/control/snapshot bindings and child action references.
-- [ ] 5.9 Implement operation-session lifecycle transitions for `running`, `suspended`, `cancelled`, `failed` and `completed` without granting authorization or minting leases.
-- [ ] 5.10 Implement explicit resume validation that rejects manifest drift, generation drift, missing ancestry, sequence gaps, child action ambiguity and owner-attempt mismatch before any proposal or adapter step.
-- [ ] 5.11 Add replay-gated continuation records for future human approval flows, including rejection, timeout and changed-plan outcomes that leave action state unchanged.
-- [ ] 5.12 Add checkpoint-store failure, manifest-mismatch, competing-resume, suspended-resume, approval-rejection and approval-timeout tests.
+- [x] 5.1 Add a domain-local crash-safe append-only action journal and generation compare-and-swap transition API.
+- [x] 5.2 Implement `pending`, `claimed`, `running`, `verifying`, `committed`, `expired`, `denied`, `cancelled`, `rolled_back`, `failed` and `safe_mode` transition validation.
+- [x] 5.3 Integrate the existing one-time lease and immutable nonce/execution-claim contract without creating a second authorization mechanism.
+- [x] 5.4 Persist each transition before its following side effect and keep action, nonce, boot, attempt and plan identities immutable.
+- [x] 5.5 Implement startup classification of unfinished attempts without automatic rerun by a different process, boot or attempt.
+- [x] 5.6 Add explicit verified recovery for untouched, exactly-owned applied and uncertain target states; route uncertainty only to target-local `safe_mode`.
+- [x] 5.7 Add crash-point, duplicate-worker, competing-claim, expiry-during-sleep, reboot and journal-tamper tests.
+- [x] 5.8 Add a domain-local operation-session checkpoint store with manifest digest, contract/runtime versions, checkpoint sequence, parent checkpoint digest, policy/control/snapshot bindings and child action references.
+- [x] 5.9 Implement operation-session lifecycle transitions for `running`, `suspended`, `cancelled`, `failed` and `completed` without granting authorization or minting leases.
+- [x] 5.10 Implement explicit resume validation that rejects manifest drift, generation drift, missing ancestry, sequence gaps, child action ambiguity and owner-attempt mismatch before any proposal or adapter step.
+- [x] 5.11 Add replay-gated continuation records for future human approval flows, including rejection, timeout and changed-plan outcomes that leave action state unchanged.
+- [x] 5.12 Add checkpoint-store failure, manifest-mismatch, competing-resume, suspended-resume, approval-rejection and approval-timeout tests.
 
 ## 6. Synthetic Diff And Rehydration Adapters
 
