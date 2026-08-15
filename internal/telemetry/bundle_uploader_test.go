@@ -232,6 +232,44 @@ func TestUploaderReplaysRetainedGapExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestUploaderCanDisableGapRepairWithoutDisablingBaseUpload(t *testing.T) {
+	journal := newJournal(t)
+	appendObservation(t, journal)
+	appendTransition(t, journal)
+	appendObservation(t, journal)
+	key := uploaderKey(t)
+	transport := &gapReplayTransport{}
+	uploader, err := NewUploader(
+		journal,
+		key,
+		transport,
+		bytes.NewReader(repeatedBytes(32)),
+		func() time.Time {
+			return time.Date(2026, time.August, 15, 13, 15, 0, 0, time.UTC)
+		},
+		WithGapRepairEnabled(false),
+	)
+	if err != nil {
+		t.Fatalf("NewUploader() error = %v", err)
+	}
+
+	if err := uploader.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if len(transport.batches) != 1 {
+		t.Fatalf("uploads = %d, want 1", len(transport.batches))
+	}
+	remaining, err := journal.Entries()
+	if err != nil {
+		t.Fatalf("Entries(after disabled gap repair) error = %v", err)
+	}
+	if len(remaining) != 2 ||
+		remaining[0].Sequence != 1 ||
+		remaining[1].Sequence != 2 {
+		t.Fatalf("remaining entries = %+v", remaining)
+	}
+}
+
 func TestUploaderReportsExpiredGapAndAllowsNewUploads(t *testing.T) {
 	journal := newJournal(t)
 	appendObservation(t, journal)

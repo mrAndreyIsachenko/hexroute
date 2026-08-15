@@ -23,7 +23,17 @@ for term in \
   'Twilight stays the production owner' \
   'separate grill session' \
   'OpenSpec change' \
-  'independently executable rollback'; do
+  'independently executable rollback' \
+  'Readiness is not raw health' \
+  '`ready`, `temporarily_blocked` and `denied`' \
+  'semantic no-op was proven' \
+  'Telemetry gap repair is upload-only' \
+  '`telemetry_gap_unrecoverable`' \
+  'WithGapRepairEnabled(false)' \
+  'TestUploaderCanDisableGapRepairWithoutDisablingBaseUpload' \
+  'TestStartupSurfaceRequiresExplicitSyntheticFeatureGate' \
+  'TestShadowCloudLossAndEngineFailureDoNotMutateProtectedState' \
+  'rollback does not stop, restart or reconfigure production networking'; do
   grep -Fq "$term" "$doc"
 done
 

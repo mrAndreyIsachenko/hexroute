@@ -92,9 +92,9 @@
 - [x] 10.2 Add crash-after-claim/apply, verification mismatch, missing-state rehydration, foreign conflict, retained telemetry gap and unrecoverable-gap traces.
 - [x] 10.3 Add a replay harness proving identical canonical sessions, checkpoints, plans, transitions, outcomes and provenance from every mandatory trace.
 - [x] 10.4 Run unit, race, fuzz, crash-recovery, replay, IPC, schema-boundary, secret-canary and capability-leak test suites before enabling the synthetic runtime gate.
-- [ ] 10.5 Document readiness interpretation, acknowledgement semantics, crash/cancel recovery, telemetry gap repair and the absence of production adapters.
-- [ ] 10.6 Document that every real capability adapter, live shadow qualification and ownership cutover requires a separate grill session, OpenSpec change and independently executable rollback.
-- [ ] 10.7 Capture rollback evidence showing the engine and gap-repair uploader can be disabled while existing observe-only telemetry and all production paths remain unchanged.
-- [ ] 10.8 Run `make check` and resolve every static, race, formatting, repository-boundary and secret-leak failure.
-- [ ] 10.9 Run `openspec validate add-generation-bound-network-reconciler --strict` and keep proposal, design, specs and tasks synchronized.
+- [x] 10.5 Document readiness interpretation, acknowledgement semantics, crash/cancel recovery, telemetry gap repair and the absence of production adapters.
+- [x] 10.6 Document that every real capability adapter, live shadow qualification and ownership cutover requires a separate grill session, OpenSpec change and independently executable rollback.
+- [x] 10.7 Capture rollback evidence showing the engine and gap-repair uploader can be disabled while existing observe-only telemetry and all production paths remain unchanged.
+- [x] 10.8 Run `make check` and resolve every static, race, formatting, repository-boundary and secret-leak failure.
+- [x] 10.9 Run `openspec validate add-generation-bound-network-reconciler --strict` and keep proposal, design, specs and tasks synchronized.
 - [ ] 10.10 Synchronize validated delta requirements into baseline specs only after synthetic implementation and qualification are complete; do not claim production mutation readiness.

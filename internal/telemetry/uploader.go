@@ -21,13 +21,22 @@ type Transport interface {
 }
 
 type Uploader struct {
-	mu        sync.Mutex
-	journal   *spool.Spool
-	key       signing.Key
-	transport Transport
-	random    io.Reader
-	now       func() time.Time
-	gaps      GapUnrecoverableReporter
+	mu               sync.Mutex
+	journal          *spool.Spool
+	key              signing.Key
+	transport        Transport
+	random           io.Reader
+	now              func() time.Time
+	gaps             GapUnrecoverableReporter
+	gapRepairEnabled bool
+}
+
+type UploaderOption func(*Uploader)
+
+func WithGapRepairEnabled(enabled bool) UploaderOption {
+	return func(uploader *Uploader) {
+		uploader.gapRepairEnabled = enabled
+	}
 }
 
 var (
@@ -41,6 +50,7 @@ func NewUploader(
 	transport Transport,
 	random io.Reader,
 	now func() time.Time,
+	options ...UploaderOption,
 ) (*Uploader, error) {
 	if journal == nil || transport == nil || len(key.PublicKey()) == 0 {
 		return nil, ErrUploaderMisconfigured
@@ -48,13 +58,20 @@ func NewUploader(
 	if now == nil {
 		now = time.Now
 	}
-	return &Uploader{
-		journal:   journal,
-		key:       key,
-		transport: transport,
-		random:    random,
-		now:       now,
-	}, nil
+	uploader := &Uploader{
+		journal:          journal,
+		key:              key,
+		transport:        transport,
+		random:           random,
+		now:              now,
+		gapRepairEnabled: true,
+	}
+	for _, option := range options {
+		if option != nil {
+			option(uploader)
+		}
+	}
+	return uploader, nil
 }
 
 func (uploader *Uploader) RunOnce(ctx context.Context) error {
@@ -101,6 +118,9 @@ func (uploader *Uploader) RunOnce(ctx context.Context) error {
 	)
 	if err != nil {
 		return err
+	}
+	if !uploader.gapRepairEnabled {
+		return nil
 	}
 	return uploader.replayMissingSequences(ctx, acknowledgement)
 }
