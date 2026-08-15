@@ -1,11 +1,11 @@
 ## 1. Prerequisite And Capability Boundaries
 
-- [ ] 1.1 Record the exact completed atomic-policy and observable-connectivity qualification artifacts and synchronized baseline revisions required before daemon integration.
-- [ ] 1.2 Add a prerequisite gate that fails closed when either change is incomplete, invalid, generation-mismatched or not synchronized.
-- [ ] 1.3 Define the static reconciliation capability registry with synthetic capability identifiers only and no production adapter identifiers.
-- [ ] 1.4 Add repository dependency/import checks rejecting route, DNS, firewall, process, tunnel, Pritunl, Keychain, credential and undeclared network mutation paths.
-- [ ] 1.5 Add build and startup tests proving the engine packages may exist while proposal translation and execution IPC remain absent until the prerequisite gate passes.
-- [ ] 1.6 Add synthetic fixtures with no live endpoint, route, selector, process, session or credential values.
+- [x] 1.1 Record the exact completed atomic-policy and observable-connectivity qualification artifacts and synchronized baseline revisions required before daemon integration.
+- [x] 1.2 Add a prerequisite gate that fails closed when either change is incomplete, invalid, generation-mismatched or not synchronized.
+- [x] 1.3 Define the static reconciliation capability registry with synthetic capability identifiers only and no production adapter identifiers.
+- [x] 1.4 Add repository dependency/import checks rejecting route, DNS, firewall, process, tunnel, Pritunl, Keychain, credential and undeclared network mutation paths.
+- [x] 1.5 Add build and startup tests proving the engine packages may exist while proposal translation and execution IPC remain absent until the prerequisite gate passes.
+- [x] 1.6 Add synthetic fixtures with no live endpoint, route, selector, process, session or credential values.
 
 ## 2. Action, Acknowledgement And Provenance Contracts
 

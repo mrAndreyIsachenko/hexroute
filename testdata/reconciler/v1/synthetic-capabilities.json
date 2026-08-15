@@ -1,0 +1,20 @@
+{
+  "schema": "hexroute.synthetic-reconciler-capabilities.v1",
+  "capabilities": [
+    {
+      "id": "synthetic.reconciler.noop",
+      "adapter_id": "synthetic.adapter.noop",
+      "operation_class": "synthetic_noop"
+    },
+    {
+      "id": "synthetic.reconciler.memory",
+      "adapter_id": "synthetic.adapter.memory",
+      "operation_class": "synthetic_state"
+    },
+    {
+      "id": "synthetic.reconciler.crash_fixture",
+      "adapter_id": "synthetic.adapter.crash_fixture",
+      "operation_class": "synthetic_crash_fixture"
+    }
+  ]
+}

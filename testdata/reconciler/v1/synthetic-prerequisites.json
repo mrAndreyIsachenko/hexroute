@@ -1,0 +1,41 @@
+{
+  "schema": "hexroute.reconciler-prerequisites.v1",
+  "expected_binding": {
+    "bundle_generation": 2,
+    "root_policy_generation": 2,
+    "user_policy_generation": 1,
+    "manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "evidence": [
+    {
+      "id": "add-atomic-policy-generations",
+      "status": "complete",
+      "valid": true,
+      "baseline_synchronized": true,
+      "binding": {
+        "bundle_generation": 2,
+        "root_policy_generation": 2,
+        "user_policy_generation": 1,
+        "manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "baseline_revision_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "qualification_artifact_ref": "synthetic-artifact"
+    },
+    {
+      "id": "add-observable-connectivity-state-machine",
+      "status": "collecting",
+      "valid": true,
+      "baseline_synchronized": false,
+      "binding": {
+        "bundle_generation": 2,
+        "root_policy_generation": 2,
+        "user_policy_generation": 1,
+        "manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "evidence_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "baseline_revision_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "qualification_artifact_ref": "synthetic-artifact"
+    }
+  ]
+}
