@@ -88,7 +88,7 @@
 
 ## 10. Qualification, Documentation And Rollback
 
-- [ ] 10.1 Build canonical synthetic traces for no-op, all acknowledgement classes, operation-session resume/reject paths, expiry, cancellation before/after apply, compensation and generation changes.
+- [x] 10.1 Build canonical synthetic traces for no-op, all acknowledgement classes, operation-session resume/reject paths, expiry, cancellation before/after apply, compensation and generation changes.
 - [ ] 10.2 Add crash-after-claim/apply, verification mismatch, missing-state rehydration, foreign conflict, retained telemetry gap and unrecoverable-gap traces.
 - [ ] 10.3 Add a replay harness proving identical canonical sessions, checkpoints, plans, transitions, outcomes and provenance from every mandatory trace.
 - [ ] 10.4 Run unit, race, fuzz, crash-recovery, replay, IPC, schema-boundary, secret-canary and capability-leak test suites before enabling the synthetic runtime gate.
