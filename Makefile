@@ -100,7 +100,7 @@ terraform-state-test:
 	tests/terraform_state_policy_test.sh
 
 shell-test: build-observe-root build-observe-user build-policy-installer build-policy-qualification
-	bash -n scripts/baseline/*.sh scripts/macos/*.sh scripts/*.sh tests/*.sh
+	bash -n scripts/baseline/*.sh scripts/macos/*.sh scripts/ops/*.sh scripts/*.sh tests/*.sh
 	tests/baseline_archives_test.sh
 	tests/emergency_restore_test.sh
 	tests/container_contract_test.sh
@@ -111,6 +111,7 @@ shell-test: build-observe-root build-observe-user build-policy-installer build-p
 	tests/policy_installer_boundary_test.sh
 	tests/policy_qualification_launchd_test.sh
 	tests/policy_cloud_independence_test.sh
+	tests/operational_acceptance_drill_test.sh
 	bash tests/reconciler_shadow_integration_test.sh
 	tests/reconciler_qualification_documentation_test.sh
 	tests/policy_documentation_test.sh

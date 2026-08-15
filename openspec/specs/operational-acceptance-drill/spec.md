@@ -1,0 +1,120 @@
+# Operational Acceptance Drill Specification
+
+## Purpose
+
+Define the non-mutating, user-visible acceptance gate that proves the operator
+can still work before Hexroute proceeds with future runtime ownership, cutover
+or failover-enabling changes.
+
+## Requirements
+
+### Requirement: User-visible operational acceptance gate
+
+Hexroute SHALL provide an operational acceptance drill that verifies
+user-visible work paths before future runtime cutover, production adapter
+activation, ownership transfer or failover enablement. The gate SHALL cover
+Codex/ChatGPT reachability, ordinary Internet access, GitLab web access, Git
+transport, Pritunl connectivity, AdGuard coexistence, Telegram/monitoring
+visibility and fallback path availability.
+
+#### Scenario: Core work paths pass
+
+- **WHEN** the operator runs the operational acceptance drill for a candidate runtime state
+- **THEN** every required core work path is recorded as passing with bounded redacted evidence
+- **AND** the candidate may proceed to its next non-production qualification step
+
+#### Scenario: A core work path fails
+
+- **WHEN** Codex/ChatGPT, ordinary Internet, GitLab, Git transport, Pritunl, AdGuard coexistence or fallback visibility fails the drill
+- **THEN** the next runtime cutover or mutation-enabling step is blocked
+- **AND** the failure remains visible until fixed or explicitly waived with owner, reason and expiry
+
+### Requirement: Non-mutating smoke probes
+
+The drill SHALL include a read-only smoke script that collects bounded status
+for configured target labels without stopping, starting, restarting,
+reconfiguring or assuming ownership of Twilight, AdGuard, Pritunl, sing-box,
+routes, DNS, launchd services, provider resources or cloud services.
+
+#### Scenario: Smoke script runs
+
+- **WHEN** the smoke script is executed with its default mode
+- **THEN** it performs only read-only probes and status collection
+- **AND** it does not invoke service-control, route-mutation, DNS-mutation, provider-mutation or credential-access commands
+
+#### Scenario: Required target is absent
+
+- **WHEN** a private target label is not configured
+- **THEN** the script reports the related check as `not_configured`
+- **AND** it does not substitute a guessed endpoint or inspect private configuration outside the allowed input file
+
+### Requirement: Manual checkpoints are explicit evidence
+
+The drill SHALL distinguish automated read-only probes from manual checkpoints
+for browser session behavior, ChatGPT/Codex message send, Pritunl OTP fallback,
+sleep/wake, reboot and network-loss recovery. Manual checkpoints SHALL require
+explicit operator confirmation or be recorded as incomplete.
+
+#### Scenario: Manual checkpoint is not confirmed
+
+- **WHEN** a browser, OTP, sleep/wake, reboot or network-loss checkpoint lacks explicit operator confirmation
+- **THEN** the drill records that checkpoint as incomplete
+- **AND** it cannot be counted as a passing acceptance result
+
+#### Scenario: Post-sleep checkpoint runs
+
+- **WHEN** the operator resumes the machine after sleep and reruns the drill
+- **THEN** the evidence identifies the phase as post-sleep
+- **AND** Codex/ChatGPT, GitLab/Git, Pritunl and fallback checks are evaluated again rather than inherited from the baseline phase
+
+### Requirement: Redacted evidence bundle
+
+The drill SHALL emit a local evidence bundle containing only redacted target
+labels, pass/fail classes, timing buckets, exit classes, phase identity,
+timestamp, tool versions and bounded diagnostic codes. The bundle SHALL NOT
+contain raw private hostnames, IP addresses, URLs with tokens, Git remotes,
+session identifiers, cookies, OTP/PIN values, credentials, command stdout that
+may include secrets or raw logs.
+
+#### Scenario: Evidence is written
+
+- **WHEN** a drill run completes
+- **THEN** a redacted evidence bundle is written outside tracked source by default
+- **AND** the public repository contains only schemas, scripts, docs and tests for the evidence shape
+
+#### Scenario: Protected value reaches evidence candidate
+
+- **WHEN** a known protected value canary appears in an evidence candidate
+- **THEN** evidence serialization or its test gate fails
+- **AND** the value is not persisted or printed by the drill
+
+### Requirement: Phase-specific recovery coverage
+
+The drill SHALL define baseline, post-Twilight/Hexroute activation,
+post-sleep, post-reboot and post-network-loss phases. A phase SHALL pass only
+when its own fresh probes and manual checkpoints pass; passing evidence from a
+prior phase SHALL NOT be reused as proof for a later phase.
+
+#### Scenario: Reboot phase is evaluated
+
+- **WHEN** the operator runs the drill after a reboot
+- **THEN** the reboot phase records fresh work-path evidence
+- **AND** prior baseline evidence is linked only as context, not as a pass
+
+#### Scenario: Network-loss recovery phase is evaluated
+
+- **WHEN** the operator runs the drill after losing and restoring network access
+- **THEN** the network-loss phase records whether fallback access and primary paths recovered
+- **AND** the result does not trigger any automatic repair action
+
+### Requirement: Acceptance result is independent from production authority
+
+Passing the operational acceptance drill SHALL NOT grant production mutation
+authority, enable a production adapter, cut ownership from Twilight, change
+policy generation, alter cloud authority or waive future safety requirements.
+
+#### Scenario: Drill passes before a cutover proposal
+
+- **WHEN** every acceptance phase required by a later cutover change has passed
+- **THEN** that later change may cite the acceptance evidence as a prerequisite
+- **AND** it still requires its own OpenSpec change, safety envelope, rollback and approval

@@ -1,6 +1,6 @@
 # Hexroute Roadmap
 
-Status date: 2026-08-09.
+Status date: 2026-08-15.
 
 ## Current Baseline
 
@@ -14,6 +14,9 @@ Status date: 2026-08-09.
   and a higher-deny successor have passed a live local activation and rollback
   safety check while both Codex paths, Twilight and AdGuard remained available;
   private artifacts and evidence remain outside public Git.
+- Atomic policy generations and the generation-bound network reconciler are
+  synced into baseline specs. They remain pre-cutover and grant no production
+  mutation authority.
 - Deterministic lifecycle policy, typed peer-authenticated IPC, bounded local
   journals, signed ingestion and redacted diagnostics are implemented and
   covered by synthetic tests.
@@ -34,28 +37,26 @@ Status date: 2026-08-09.
   fact claims a workload is deployed, qualified, inventory-admitted or
   failover-enabled. See
   [`docs/architecture/provider-b-ingress.md`](architecture/provider-b-ingress.md).
+- The immediate next gate is the operational acceptance drill in
+  [`docs/testing/operational-acceptance.md`](testing/operational-acceptance.md):
+  it proves the operator-visible work path before any further runtime or
+  cutover step.
 
 ## Active Changes
 
-`add-atomic-policy-generations` is in shadow qualification. The implementation,
-live side-by-side install and higher-deny safety check are complete; the
-user-owned durable qualification recorder and its fail-closed operational
-workflow are implemented and its disjoint LaunchAgent is collecting a valid
-generation-bound live session. The four controlled fault outcomes are present
-without failed evidence, and post-install checks preserved Twilight, AdGuard and
-both Codex paths. The continuous 72-hour duration, two armed sleep/wake cycles,
-one reboot and final baseline-spec synchronization remain gates before policy
-enforcement can be considered complete.
+`add-operational-acceptance-drill` is active. It defines and implements the
+user-visible operational acceptance drill before further runtime/cutover work.
+It is non-mutating and writes only redacted local evidence.
 
 `add-observable-connectivity-state-machine` is planned next. It will normalize
 peer, relay, DNS, SSH and session state and drive only observe-only proposed
 mutations until its own qualification gates pass. It cannot absorb the current
-policy qualification or take ownership from Twilight.
+operational acceptance drill or take ownership from Twilight.
 
 ## Ordered Changes
 
-1. Complete the atomic-policy 72-hour shadow chain, required lifecycle cycles
-   and fault evidence, then synchronize and archive the validated change.
+1. Complete and run the operational acceptance drill for the current working
+   path, including baseline and recovery evidence.
 2. Implement and qualify the observable connectivity state machine without
    enabling production mutations.
 3. Complete root observe-only soak and resolve every materially divergent
