@@ -169,6 +169,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err := validateRootSocketPath(*socketPath, config.OperatorUID); err != nil {
 			return rejected(errorLog, logging.ReasonInvalidConfiguration)
 		}
+		if err := ensureRootSocketDirectory(filepath.Dir(*socketPath)); err != nil {
+			return rejected(errorLog, logging.ReasonInvalidConfiguration)
+		}
 		broker, err := operator.NewBroker(runCtx)
 		if err != nil {
 			return 1
@@ -257,6 +260,27 @@ func validateRootSocketPath(path string, operatorUID int) error {
 		path != ipc.RootSocketPath ||
 		filepath.Clean(path) != path {
 		return ErrInvalidConfig
+	}
+	return nil
+}
+
+func ensureRootSocketDirectory(path string) error {
+	if err := os.MkdirAll(path, 0o711); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return ErrInvalidConfig
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != os.Geteuid() || info.Mode().Perm()&0o022 != 0 {
+		return ErrInvalidConfig
+	}
+	if info.Mode().Perm() != 0o711 {
+		return os.Chmod(path, 0o711)
 	}
 	return nil
 }

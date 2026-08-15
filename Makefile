@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-arm-sleep postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
+.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-summary policy-qualification-arm-sleep postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
 
 build:
 	go build ./cmd/...
@@ -39,6 +39,9 @@ uninstall-policy-qualification:
 
 policy-qualification-status:
 	scripts/macos/policy-qualification-launchd.sh status
+
+policy-qualification-summary:
+	bash scripts/macos/policy-qualification-summary.sh
 
 policy-qualification-arm-sleep:
 	scripts/macos/policy-qualification-launchd.sh arm-sleep

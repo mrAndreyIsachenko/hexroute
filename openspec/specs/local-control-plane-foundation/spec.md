@@ -41,11 +41,24 @@ windows and cooldowns.
 
 Local daemons SHALL expose only versioned allowlisted requests with bounded
 payloads and SHALL authenticate the peer UID before accepting a request.
+Root IPC SHALL recreate its fixed volatile socket parent on daemon start and
+SHALL reject group- or world-writable socket parents before binding.
 
 #### Scenario: Unauthorized request reaches a socket
 
 - **WHEN** a peer with the wrong UID sends a validly encoded request
 - **THEN** the daemon rejects it without executing an action
+
+#### Scenario: Mac reboots before root observe starts
+
+- **WHEN** macOS removes `/var/run/hexroute-observe` during reboot
+- **THEN** `hexrouted` recreates the root-owned non-writable socket parent before binding
+- **AND** the typed root status socket becomes available without manual directory repair
+
+#### Scenario: Socket parent is unsafe
+
+- **WHEN** the root socket parent is group- or world-writable
+- **THEN** `hexrouted` rejects startup instead of binding a privileged local IPC socket
 
 #### Scenario: Arbitrary command is requested
 

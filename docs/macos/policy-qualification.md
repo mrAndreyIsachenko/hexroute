@@ -70,12 +70,24 @@ the agent revalidates the complete chain and source store, records the boot UUID
 transition and begins a new eligible segment. Reboot downtime is accounted for
 but is not added to `eligible_seconds`.
 
+If reboot remains missing after the Mac has actually restarted, do not restart
+the qualification session. First verify that the root observe socket exists at
+`/var/run/hexroute-observe/hexrouted.sock` and that
+`com.hexroute.observe.hexrouted` is running. The socket parent is volatile across
+macOS reboot and `hexrouted` is responsible for recreating it on daemon start.
+
 ## Interpret And Recover
 
 ```sh
 make policy-qualification-status
+make policy-qualification-summary
 make logs-policy-qualification
 ```
+
+`policy-qualification-summary` prints the gate checklist, elapsed eligible
+time, missing sleep/wake, reboot and fault criteria, and the next operator
+actions. Use it before restarting a session; `restart-session` discards all
+elapsed qualification time from the current session.
 
 | Lifecycle | Meaning |
 |---|---|

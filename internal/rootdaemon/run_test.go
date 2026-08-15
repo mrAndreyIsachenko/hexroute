@@ -155,3 +155,32 @@ func TestRootDaemonProvidesFailClosedPolicyStatusWithoutStaticTrust(t *testing.T
 		t.Fatalf("policy status = %+v", response)
 	}
 }
+
+func TestEnsureRootSocketDirectoryCreatesVolatileParent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "var-run", "hexroute-observe")
+
+	if err := ensureRootSocketDirectory(path); err != nil {
+		t.Fatalf("ensureRootSocketDirectory() error: %v", err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("Lstat() error: %v", err)
+	}
+	if !info.IsDir() || info.Mode().Perm() != 0o711 {
+		t.Fatalf("socket directory mode = %v %o", info.Mode(), info.Mode().Perm())
+	}
+}
+
+func TestEnsureRootSocketDirectoryRejectsWritableParent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hexroute-observe")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatalf("Mkdir() error: %v", err)
+	}
+	if err := os.Chmod(path, 0o777); err != nil {
+		t.Fatalf("Chmod() error: %v", err)
+	}
+
+	if err := ensureRootSocketDirectory(path); err != ErrInvalidConfig {
+		t.Fatalf("ensureRootSocketDirectory() error = %v, want %v", err, ErrInvalidConfig)
+	}
+}
