@@ -18,12 +18,12 @@
 
 ## 3. Generation-Bound Readiness
 
-- [ ] 3.1 Implement a pure readiness evaluator over a fresh canonical snapshot, exact policy/control generations, boot/source watermarks and bounded lifecycle state.
-- [ ] 3.2 Implement policy-defined consecutive/duration thresholds, action budgets, backoff and cooldown without caller-supplied readiness flags.
-- [ ] 3.3 Classify readiness as `ready`, `temporarily_blocked` or `denied` with bounded retry-after only for temporary conditions.
-- [ ] 3.4 Invalidate readiness on relevant source gap/conflict/staleness, boot change, policy/control generation change, suspension or target ownership change.
-- [ ] 3.5 Add deterministic tests for single transient failure, stable failure, cooldown, exhausted budget, missing baseline, source gap/conflict and policy change.
-- [ ] 3.6 Add status rendering tests proving raw component state and action readiness remain separately visible and cannot be flattened into one healthy/actionable flag.
+- [x] 3.1 Implement a pure readiness evaluator over a fresh canonical snapshot, exact policy/control generations, boot/source watermarks and bounded lifecycle state.
+- [x] 3.2 Implement policy-defined consecutive/duration thresholds, action budgets, backoff and cooldown without caller-supplied readiness flags.
+- [x] 3.3 Classify readiness as `ready`, `temporarily_blocked` or `denied` with bounded retry-after only for temporary conditions.
+- [x] 3.4 Invalidate readiness on relevant source gap/conflict/staleness, boot change, policy/control generation change, suspension or target ownership change.
+- [x] 3.5 Add deterministic tests for single transient failure, stable failure, cooldown, exhausted budget, missing baseline, source gap/conflict and policy change.
+- [x] 3.6 Add status rendering tests proving raw component state and action readiness remain separately visible and cannot be flattened into one healthy/actionable flag.
 
 ## 4. Proposal Translation And Acknowledgements
 
