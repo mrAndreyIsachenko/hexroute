@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -60,6 +61,51 @@ func TestCanonicalGapRepairTracesCoverRetainedAndUnrecoverableTask102Scenarios(t
 		if trace.TraceSHA256 != traces[index].TraceSHA256 {
 			t.Fatalf("%s trace digest changed: %s != %s", trace.Scenario, trace.TraceSHA256, traces[index].TraceSHA256)
 		}
+	}
+}
+
+func TestReplayGapRepairTracesRebuildsCanonicalReplayEvidence(t *testing.T) {
+	traces, err := CanonicalGapRepairTraces()
+	if err != nil {
+		t.Fatalf("CanonicalGapRepairTraces() error = %v", err)
+	}
+	for _, trace := range traces {
+		t.Run(string(trace.Scenario), func(t *testing.T) {
+			first, err := ReplayGapRepairTrace(trace)
+			if err != nil {
+				t.Fatalf("ReplayGapRepairTrace() error = %v", err)
+			}
+			second, err := ReplayGapRepairTrace(trace)
+			if err != nil {
+				t.Fatalf("ReplayGapRepairTrace(second) error = %v", err)
+			}
+			if first.ReplaySHA256 != second.ReplaySHA256 ||
+				first.TraceSHA256 != trace.TraceSHA256 ||
+				first.Expected != trace.Expected ||
+				first.HighWatermark != trace.Acknowledgement.HighWatermark {
+				t.Fatalf("unstable gap replay:\nfirst=%+v\nsecond=%+v\ntrace=%+v", first, second, trace)
+			}
+		})
+	}
+}
+
+func TestReplayGapRepairTraceRejectsTamperedLineage(t *testing.T) {
+	trace, err := BuildCanonicalGapRepairTrace(GapTraceRetainedRange)
+	if err != nil {
+		t.Fatalf("BuildCanonicalGapRepairTrace() error = %v", err)
+	}
+	trace.RetainedSequences = []uint64{1, 3}
+	if _, err := ReplayGapRepairTrace(trace); !errors.Is(err, ErrGapRepairTraceReplay) {
+		t.Fatalf("ReplayGapRepairTrace(tampered retained range) error = %v, want %v", err, ErrGapRepairTraceReplay)
+	}
+
+	trace, err = BuildCanonicalGapRepairTrace(GapTraceUnrecoverableGap)
+	if err != nil {
+		t.Fatalf("BuildCanonicalGapRepairTrace(unrecoverable) error = %v", err)
+	}
+	trace.Expected.Replay = true
+	if _, err := ReplayGapRepairTrace(trace); !errors.Is(err, ErrGapRepairTraceReplay) {
+		t.Fatalf("ReplayGapRepairTrace(tampered expectation) error = %v, want %v", err, ErrGapRepairTraceReplay)
 	}
 }
 
