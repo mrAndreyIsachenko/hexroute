@@ -48,6 +48,12 @@ routes, DNS, launchd services, provider resources or cloud services.
 - **THEN** the script reports the related check as `not_configured`
 - **AND** it does not substitute a guessed endpoint or inspect private configuration outside the allowed input file
 
+#### Scenario: HTTP target returns an authentication or challenge response
+
+- **WHEN** an HTTP smoke target returns a `2xx`, `3xx` or `4xx` response
+- **THEN** the script records the target as reachable
+- **AND** browser login or message-send usability remains a separate manual checkpoint
+
 ### Requirement: Manual checkpoints are explicit evidence
 
 The drill SHALL distinguish automated read-only probes from manual checkpoints

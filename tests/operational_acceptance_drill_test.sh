@@ -5,7 +5,15 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 script="$repo_root/scripts/ops/acceptance-smoke.sh"
 doc="$repo_root/docs/testing/operational-acceptance.md"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/hexroute-acceptance.XXXXXX")"
-trap 'rm -rf "$tmp"' EXIT
+http_server_pid=""
+cleanup() {
+  if [[ -n "$http_server_pid" ]]; then
+    kill "$http_server_pid" 2>/dev/null || true
+    wait "$http_server_pid" 2>/dev/null || true
+  fi
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
 
 test -x "$script"
 test -s "$doc"
@@ -84,6 +92,41 @@ if rg -Fq "$canary" "$evidence"; then
   printf 'acceptance evidence leaked protected canary\n' >&2
   exit 1
 fi
+
+port_file="$tmp/http-port"
+ruby -rsocket -e '
+server = TCPServer.new("127.0.0.1", 0)
+File.write(ARGV.fetch(0), server.addr.fetch(1).to_s)
+loop do
+  client = server.accept
+  client.gets
+  while (line = client.gets)
+    break if line == "\r\n"
+  end
+  client.write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+  client.close
+end
+' "$port_file" &
+http_server_pid=$!
+for _ in 1 2 3 4 5; do
+  [[ -s "$port_file" ]] && break
+  sleep 0.1
+done
+test -s "$port_file"
+port="$(cat "$port_file")"
+
+set +e
+HEXROUTE_ACCEPTANCE_OUT_DIR="$tmp/http-out" \
+HEXROUTE_ACCEPTANCE_TARGETS="$tmp/missing-targets.env" \
+HEXROUTE_ACCEPTANCE_URL_INTERNET="http://127.0.0.1:$port/" \
+"$script" --phase baseline >/tmp/hexroute-acceptance-http.out
+http_probe_status=$?
+set -e
+test "$http_probe_status" -eq 1
+http_evidence="$(find "$tmp/http-out" -type f -name 'operational-acceptance-baseline-*.json' | head -n 1)"
+test -s "$http_evidence"
+rg -Fq '"label":"ordinary_internet","kind":"http","status":"pass"' "$http_evidence"
+rg -Fq '"exit_class":"http_4xx"' "$http_evidence"
 
 rg -Fq 'docs/testing/operational-acceptance.md' "$repo_root/README.md"
 rg -Fq 'add-operational-acceptance-drill' "$repo_root/docs/roadmap.md"

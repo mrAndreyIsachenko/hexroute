@@ -120,7 +120,7 @@ record_manual() {
 http_check() {
   local label="$1" var_name="$2"
   local url="${!var_name:-}"
-  local start finish elapsed status exit_class
+  local start finish elapsed status exit_class http_code curl_status
   if ((dry_run)); then
     record_check "$label" "http" "dry_run" "not_measured" "dry_run"
     return
@@ -134,16 +134,32 @@ http_check() {
     return
   fi
   start="$(date +%s)"
-  if curl -fsS -L --max-time "${HEXROUTE_ACCEPTANCE_HTTP_TIMEOUT_SECONDS:-8}" -o /dev/null "$url" >/dev/null 2>&1; then
+  http_code="$(
+    curl -sS -L \
+      --max-time "${HEXROUTE_ACCEPTANCE_HTTP_TIMEOUT_SECONDS:-8}" \
+      -o /dev/null \
+      -w '%{http_code}' \
+      "$url" 2>/dev/null
+  )"
+  curl_status=$?
+  if ((curl_status == 0)) && [[ "$http_code" =~ ^[0-9][0-9][0-9]$ ]] &&
+    ((10#$http_code >= 200 && 10#$http_code < 500)); then
     status="pass"
-    exit_class="ok"
+    exit_class="http_${http_code:0:1}xx"
   else
-    case "$?" in
+    case "$curl_status" in
       6) exit_class="dns_error" ;;
       7) exit_class="connect_error" ;;
-      22) exit_class="http_error" ;;
       28) exit_class="timeout" ;;
-      *) exit_class="probe_error" ;;
+      *)
+        if [[ "$http_code" =~ ^5[0-9][0-9]$ ]]; then
+          exit_class="http_5xx"
+        elif [[ "$http_code" == "000" ]]; then
+          exit_class="http_no_response"
+        else
+          exit_class="probe_error"
+        fi
+        ;;
     esac
     status="fail"
   fi

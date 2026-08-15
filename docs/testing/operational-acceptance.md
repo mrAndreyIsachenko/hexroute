@@ -121,6 +121,12 @@ ignored by Git. The bundle contains only:
 - check labels, kinds, pass/fail classes, timing buckets and exit classes;
 - manual checkpoint labels and statuses.
 
+HTTP smoke probes treat a received `2xx`, `3xx` or `4xx` response as reachable:
+login pages, redirects, auth challenges and bot-gates still prove that DNS,
+routing and TLS reached the target. `5xx`, DNS errors, connect errors, timeouts
+and missing responses remain failures. User-visible login or message-send
+behavior stays in the manual checkpoints.
+
 It must not contain raw private hostnames, IP addresses, URLs with tokens, Git
 remotes, session identifiers, cookies, OTP/PIN values, credentials, command
 stdout that may include secrets or raw logs.
