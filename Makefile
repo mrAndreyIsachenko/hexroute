@@ -108,6 +108,7 @@ shell-test: build-observe-root build-observe-user build-policy-installer build-p
 	tests/policy_installer_boundary_test.sh
 	tests/policy_qualification_launchd_test.sh
 	tests/policy_cloud_independence_test.sh
+	bash tests/reconciler_shadow_integration_test.sh
 	tests/policy_documentation_test.sh
 	tests/operator_resume_boundary_test.sh
 	tests/policy_signer_profile_host_test.sh
