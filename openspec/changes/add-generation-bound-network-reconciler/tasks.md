@@ -97,4 +97,4 @@
 - [x] 10.7 Capture rollback evidence showing the engine and gap-repair uploader can be disabled while existing observe-only telemetry and all production paths remain unchanged.
 - [x] 10.8 Run `make check` and resolve every static, race, formatting, repository-boundary and secret-leak failure.
 - [x] 10.9 Run `openspec validate add-generation-bound-network-reconciler --strict` and keep proposal, design, specs and tasks synchronized.
-- [ ] 10.10 Synchronize validated delta requirements into baseline specs only after synthetic implementation and qualification are complete; do not claim production mutation readiness.
+- [x] 10.10 Synchronize validated delta requirements into baseline specs only after synthetic implementation and qualification are complete; do not claim production mutation readiness.
