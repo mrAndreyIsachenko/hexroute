@@ -4,6 +4,8 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 )
 
 func TestTranslateProposalIsDeterministicAndBindsPlan(t *testing.T) {
@@ -50,6 +52,13 @@ func TestTranslateProposalRejectsStaleWrongOwnerAndUndeclaredCapability(t *testi
 		reason Reason
 	}{
 		{
+			name: "cross-domain proposal",
+			mutate: func(input *TranslationInput) {
+				input.Proposal.Domain = "user"
+			},
+			reason: ReasonOwnership,
+		},
+		{
 			name: "stale binding",
 			mutate: func(input *TranslationInput) {
 				input.CurrentSnapshotBinding.ControlGeneration = 99
@@ -86,6 +95,47 @@ func TestTranslateProposalRejectsStaleWrongOwnerAndUndeclaredCapability(t *testi
 				t.Fatalf("result = %+v", result)
 			}
 		})
+	}
+}
+
+func TestTranslateProposalRejectsDomainOwnedOperationClasses(t *testing.T) {
+	registry, err := NewRegistry([]CapabilityDescriptor{
+		{
+			ID:             "synthetic.reconciler.user_access",
+			AdapterID:      "synthetic.adapter.user_access",
+			OperationClass: OperationSyntheticUserAccess,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	input := translationInput()
+	input.Registry = registry
+	input.Adapter = AdapterMetadata{
+		ID: "synthetic.adapter.user_access", Version: "v1.0.0", SHA256: testDigest("user-access-adapter"),
+	}
+	input.Proposal.CapabilityID = "synthetic.reconciler.user_access"
+	input.Steps[0].Operation = OperationSyntheticUserAccess
+	result, err := TranslateProposal(input)
+	if err != nil {
+		t.Fatalf("TranslateProposal(root user-access) error = %v", err)
+	}
+	if result.Plan != nil ||
+		result.Acknowledgement.Class != AckDenied ||
+		result.Acknowledgement.Reason != ReasonOwnership {
+		t.Fatalf("root user-access result = %+v", result)
+	}
+
+	input.DaemonDomain = "user"
+	input.Proposal.Domain = "user"
+	result, err = TranslateProposal(input)
+	if err != nil {
+		t.Fatalf("TranslateProposal(user user-access) error = %v", err)
+	}
+	if result.Plan == nil ||
+		result.Acknowledgement.Class != AckAccepted ||
+		result.Acknowledgement.ActionID != input.Proposal.ActionID {
+		t.Fatalf("user user-access result = %+v", result)
 	}
 }
 
@@ -182,6 +232,7 @@ func translationInput() TranslationInput {
 		SourceWatermark:        10,
 	}
 	return TranslationInput{
+		DaemonDomain: policy.DomainRoot,
 		Proposal: ProposalBinding{
 			RequestID:       testRequestID,
 			ActionID:        testActionID,

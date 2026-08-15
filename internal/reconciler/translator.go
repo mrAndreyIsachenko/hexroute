@@ -37,6 +37,7 @@ type TranslationStep struct {
 }
 
 type TranslationInput struct {
+	DaemonDomain           policy.Domain     `json:"daemon_domain"`
 	Proposal               ProposalBinding   `json:"proposal"`
 	CurrentSnapshotBinding SnapshotBinding   `json:"current_snapshot_binding"`
 	Readiness              ReadinessRecord   `json:"readiness"`
@@ -57,9 +58,15 @@ func TranslateProposal(input TranslationInput) (TranslationResult, error) {
 	if input.validateCommon() != nil {
 		return TranslationResult{}, ErrInvalidTranslationInput
 	}
+	if input.Proposal.Domain != input.DaemonDomain {
+		return denied(input.Proposal.RequestID, ReasonOwnership), nil
+	}
 	descriptor, exists := input.Registry.Lookup(input.Proposal.CapabilityID)
 	if !exists {
 		return denied(input.Proposal.RequestID, ReasonCapability), nil
+	}
+	if !operationAllowedForDomain(input.DaemonDomain, descriptor.OperationClass) {
+		return denied(input.Proposal.RequestID, ReasonOwnership), nil
 	}
 	if descriptor.AdapterID != input.Adapter.ID ||
 		(!input.SemanticNoop && descriptor.OperationClass != input.operationClass()) {
@@ -166,6 +173,7 @@ func actionPlanDigest(plan ActionPlanRecord) (string, error) {
 
 func (input TranslationInput) validateCommon() error {
 	if input.Proposal.validate() != nil ||
+		!input.DaemonDomain.Valid() ||
 		input.CurrentSnapshotBinding.validate() != nil ||
 		input.Readiness.Validate() != nil ||
 		input.Adapter.validate() != nil ||
@@ -173,6 +181,25 @@ func (input TranslationInput) validateCommon() error {
 		return ErrInvalidTranslationInput
 	}
 	return nil
+}
+
+func operationAllowedForDomain(domain policy.Domain, class OperationClass) bool {
+	switch class {
+	case OperationSyntheticNoop,
+		OperationSyntheticState,
+		OperationSyntheticCrashFixture:
+		return domain.Valid()
+	case OperationSyntheticTunnelInterface,
+		OperationSyntheticScopedRoute,
+		OperationSyntheticDNS,
+		OperationSyntheticFirewall,
+		OperationSyntheticProcess:
+		return domain == policy.DomainRoot
+	case OperationSyntheticUserAccess:
+		return domain == policy.DomainUser
+	default:
+		return false
+	}
 }
 
 func (proposal ProposalBinding) validate() error {
