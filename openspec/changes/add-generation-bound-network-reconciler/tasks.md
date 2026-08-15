@@ -52,12 +52,12 @@
 
 ## 6. Synthetic Diff And Rehydration Adapters
 
-- [ ] 6.1 Define a closed typed synthetic adapter interface for observe, semantic compare, apply, verify, compensate and cleanup.
-- [ ] 6.2 Implement in-memory and crash-fixture synthetic adapters with canonical current/desired state and deterministic fault injection.
-- [ ] 6.3 Keep interface/tunnel, scoped route, DNS, firewall, process and user-access operation classes separate in the synthetic plan model.
-- [ ] 6.4 Implement missing-state reconstruction only from fresh authorized desired state and exact ownership metadata, with unchanged classes omitted.
-- [ ] 6.5 Reject foreign, ambiguous, protected or unexpectedly changed state without purge, adoption, restart or compensation.
-- [ ] 6.6 Add no-op, missing-state rehydration, partial divergence, foreign conflict and verification-mismatch tests proving no generic restart path exists.
+- [x] 6.1 Define a closed typed synthetic adapter interface for observe, semantic compare, apply, verify, compensate and cleanup.
+- [x] 6.2 Implement in-memory and crash-fixture synthetic adapters with canonical current/desired state and deterministic fault injection.
+- [x] 6.3 Keep interface/tunnel, scoped route, DNS, firewall, process and user-access operation classes separate in the synthetic plan model.
+- [x] 6.4 Implement missing-state reconstruction only from fresh authorized desired state and exact ownership metadata, with unchanged classes omitted.
+- [x] 6.5 Reject foreign, ambiguous, protected or unexpectedly changed state without purge, adoption, restart or compensation.
+- [x] 6.6 Add no-op, missing-state rehydration, partial divergence, foreign conflict and verification-mismatch tests proving no generic restart path exists.
 
 ## 7. Cancellation, Cleanup And Compensation
 

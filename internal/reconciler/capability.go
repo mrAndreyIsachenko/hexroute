@@ -18,9 +18,15 @@ const (
 type OperationClass string
 
 const (
-	OperationSyntheticNoop         OperationClass = "synthetic_noop"
-	OperationSyntheticState        OperationClass = "synthetic_state"
-	OperationSyntheticCrashFixture OperationClass = "synthetic_crash_fixture"
+	OperationSyntheticNoop            OperationClass = "synthetic_noop"
+	OperationSyntheticState           OperationClass = "synthetic_state"
+	OperationSyntheticCrashFixture    OperationClass = "synthetic_crash_fixture"
+	OperationSyntheticTunnelInterface OperationClass = "synthetic_tunnel_interface"
+	OperationSyntheticScopedRoute     OperationClass = "synthetic_scoped_route"
+	OperationSyntheticDNS             OperationClass = "synthetic_dns"
+	OperationSyntheticFirewall        OperationClass = "synthetic_firewall"
+	OperationSyntheticProcess         OperationClass = "synthetic_process"
+	OperationSyntheticUserAccess      OperationClass = "synthetic_user_access"
 )
 
 type CapabilityDescriptor struct {
@@ -120,7 +126,13 @@ func (descriptor CapabilityDescriptor) validate() error {
 func (class OperationClass) valid() bool {
 	return class == OperationSyntheticNoop ||
 		class == OperationSyntheticState ||
-		class == OperationSyntheticCrashFixture
+		class == OperationSyntheticCrashFixture ||
+		class == OperationSyntheticTunnelInterface ||
+		class == OperationSyntheticScopedRoute ||
+		class == OperationSyntheticDNS ||
+		class == OperationSyntheticFirewall ||
+		class == OperationSyntheticProcess ||
+		class == OperationSyntheticUserAccess
 }
 
 func hasProductionFragment(value string) bool {
