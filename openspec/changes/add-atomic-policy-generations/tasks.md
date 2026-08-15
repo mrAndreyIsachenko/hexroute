@@ -82,11 +82,11 @@
 - [x] 10.7 Implement a separate user-owned `hexroute-policy-qualification` agent and CLI that reads only redacted daemon policy status, persists bounded source artifacts and appends generation-bound eligible, lifecycle, fault and safety evidence without mutation authority.
 - [x] 10.8 Add fail-closed session persistence, restart/reboot recovery, explicit sleep arming with dark-wake deferral, sampling-gap detection, fail-fast invalid-session serving, source-integrity replay and capability-boundary regression tests; document install, status, lifecycle and rollback operations.
 - [x] 10.9 Install the disjoint user LaunchAgent, start a session bound to the active root/user generation, import the four controlled fault outcomes and verify replay reports incomplete rather than invalid while Twilight, AdGuard and both Codex paths remain unchanged.
-- [ ] 10.10 Complete one gap-free 72-hour live session with two explicitly armed sleep/wake cycles and one reboot, then retain the private replay result as shadow-qualification evidence.
+- [x] 10.10 Complete one gap-free 72-hour live session with two explicitly armed sleep/wake cycles and one reboot, then retain the private replay result as shadow-qualification evidence.
 
 ## 11. Verification And Spec Synchronization
 
 - [x] 11.1 Run focused unit, race, crash-recovery, replay, secret-canary and macOS integration tests for all affected packages, including a safety-envelope-derived capability-leak firewall for every executable capability.
 - [x] 11.2 Run `make check` and resolve every static, race, formatting and secret-leak failure.
 - [x] 11.3 Run `openspec validate add-atomic-policy-generations --strict` and keep proposal, design, specs and tasks synchronized with the implementation.
-- [ ] 11.4 Sync the validated delta requirements into baseline specs only when implementation and shadow qualification for this change are complete.
+- [x] 11.4 Sync the validated delta requirements into baseline specs only when implementation and shadow qualification for this change are complete.
