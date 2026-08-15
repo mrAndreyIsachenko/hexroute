@@ -80,7 +80,7 @@
 
 ## 9. Privilege-Separated Shadow Integration
 
-- [ ] 9.1 Add root and user domain-local synthetic action stores with disjoint paths, ownership and peer-authenticated typed IPC.
+- [x] 9.1 Add root and user domain-local synthetic action stores with disjoint paths, ownership and peer-authenticated typed IPC.
 - [ ] 9.2 Reject cross-domain proposals and keep root unable to forward or execute user actions or credential-backed operations.
 - [ ] 9.3 Wire synthetic proposal comparison and replay behind a disabled feature gate without adding production capability IDs or adapters.
 - [ ] 9.4 Prove missing root/user peer state disables cross-domain reconciliation while preserving observe-only status and the available domain.

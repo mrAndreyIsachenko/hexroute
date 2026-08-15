@@ -12,6 +12,10 @@ import (
 // the daemon domain, so callers cannot select a different policy namespace.
 type PolicyStatusRequest struct{}
 
+// ReconcilerShadowStatusRequest is intentionally empty. The authenticated
+// socket fixes the daemon domain; callers cannot select a peer namespace.
+type ReconcilerShadowStatusRequest struct{}
+
 // PolicyTransactionIdentity binds every activation operation to one complete
 // signed bundle. It contains no caller-controlled path or policy content.
 type PolicyTransactionIdentity struct {
@@ -50,6 +54,17 @@ type PolicyStatusResult struct {
 	Status                  policy.Status                  `json:"status"`
 	AuthorizationSuspension policy.AuthorizationSuspension `json:"authorization_suspension"`
 	ExistingState           *policy.ExistingStateStatus    `json:"existing_state,omitempty"`
+}
+
+type ReconcilerShadowStatusResult struct {
+	Domain              policy.Domain `json:"domain"`
+	Role                DaemonRole    `json:"role"`
+	StoreSHA256         string        `json:"store_sha256"`
+	ShadowIPC           bool          `json:"shadow_ipc"`
+	SyntheticOnly       bool          `json:"synthetic_only"`
+	ProposalTranslation bool          `json:"proposal_translation"`
+	ExecutionIPC        bool          `json:"execution_ipc"`
+	CapabilityIDs       []string      `json:"capability_ids"`
 }
 
 // PreparePolicyResult is the bounded receipt returned after independent local
@@ -117,6 +132,32 @@ func (result PolicyStatusResult) Validate() error {
 	return nil
 }
 
+func (result ReconcilerShadowStatusResult) Validate() error {
+	if !result.Domain.Valid() ||
+		!validRole(result.Role) ||
+		policyDomainForRole(result.Role) != result.Domain ||
+		!validPolicyDigest(result.StoreSHA256) ||
+		!result.ShadowIPC ||
+		!result.SyntheticOnly ||
+		result.ProposalTranslation ||
+		result.ExecutionIPC ||
+		len(result.CapabilityIDs) == 0 ||
+		len(result.CapabilityIDs) > 16 {
+		return ErrInvalidReconcilerMessage
+	}
+	seen := make(map[string]struct{}, len(result.CapabilityIDs))
+	for _, id := range result.CapabilityIDs {
+		if !validReconcilerCapabilityID(id) {
+			return ErrInvalidReconcilerMessage
+		}
+		if _, exists := seen[id]; exists {
+			return ErrInvalidReconcilerMessage
+		}
+		seen[id] = struct{}{}
+	}
+	return nil
+}
+
 func (result PreparePolicyResult) Validate() error {
 	if !validTransactionID(result.TransactionID) ||
 		!result.Domain.Valid() ||
@@ -165,4 +206,22 @@ func validPolicyDigest(value string) bool {
 	}
 	decoded, err := hex.DecodeString(value)
 	return err == nil && len(decoded) == 32
+}
+
+func validReconcilerCapabilityID(value string) bool {
+	if len(value) == 0 || len(value) > 96 ||
+		!strings.HasPrefix(value, "synthetic.reconciler.") ||
+		strings.ContainsAny(value, " \t\r\n/\\") ||
+		strings.ToLower(value) != value {
+		return false
+	}
+	for _, fragment := range []string{
+		"adguard", "credential", "keychain", "mtg", "pritunl",
+		"reality", "sing-box", "twilight", "vless", "vpn", "xray",
+	} {
+		if strings.Contains(value, fragment) {
+			return false
+		}
+	}
+	return true
 }
