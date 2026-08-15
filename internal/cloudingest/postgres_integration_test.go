@@ -75,6 +75,12 @@ func TestPostgresStorePersistsDeduplicatesAndTracksSequenceGaps(t *testing.T) {
 	if len(acknowledgement.AcceptedEventIDs) != 2 {
 		t.Fatalf("first acknowledgement = %+v", acknowledgement)
 	}
+	if acknowledgement.HighWatermark != 3 ||
+		len(acknowledgement.MissingSequences) != 1 ||
+		acknowledgement.MissingSequences[0].First != 2 ||
+		acknowledgement.MissingSequences[0].Last != 2 {
+		t.Fatalf("first gap acknowledgement = %+v", acknowledgement)
+	}
 	assertCount(t, ctx, adminPool, "events", 2)
 	assertCount(t, ctx, adminPool, "batches", 1)
 	assertOpenGap(t, ctx, adminPool, 2, 2)

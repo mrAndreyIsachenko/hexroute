@@ -27,6 +27,8 @@ func TestHTTPTransportAndHandlerRoundTripBoundedSignedBatch(t *testing.T) {
 		Version:          telemetry.ProtocolVersion,
 		BatchID:          cloudBatchID,
 		NodeID:           cloudNodeID,
+		RequestID:        cloudRequestID,
+		HighWatermark:    7,
 		AcceptedEventIDs: []metadata.UUID{cloudEventID},
 	}
 	acceptor := &httpAcceptorFixture{acknowledgement: acknowledgement}

@@ -167,9 +167,10 @@ type ConfigVersion struct {
 type DiagnosticCode string
 
 const (
-	DiagnosticAdapterSampled DiagnosticCode = "adapter_sampled"
-	DiagnosticRetryScheduled DiagnosticCode = "retry_scheduled"
-	DiagnosticUploadDeferred DiagnosticCode = "upload_deferred"
+	DiagnosticAdapterSampled            DiagnosticCode = "adapter_sampled"
+	DiagnosticRetryScheduled            DiagnosticCode = "retry_scheduled"
+	DiagnosticTelemetryGapUnrecoverable DiagnosticCode = "telemetry_gap_unrecoverable"
+	DiagnosticUploadDeferred            DiagnosticCode = "upload_deferred"
 )
 
 type Diagnostic struct {
@@ -552,7 +553,8 @@ func validConfigStatus(value ConfigStatus) bool {
 
 func validDiagnosticCode(value DiagnosticCode) bool {
 	switch value {
-	case DiagnosticAdapterSampled, DiagnosticRetryScheduled, DiagnosticUploadDeferred:
+	case DiagnosticAdapterSampled, DiagnosticRetryScheduled,
+		DiagnosticTelemetryGapUnrecoverable, DiagnosticUploadDeferred:
 		return true
 	default:
 		return false

@@ -205,7 +205,7 @@ type recoveringTransport struct {
 
 func (transport *recoveringTransport) Upload(
 	_ context.Context,
-	_ signing.SignedEnvelope,
+	envelope signing.SignedEnvelope,
 	body []byte,
 ) (Acknowledgement, error) {
 	transport.attempts++
@@ -226,6 +226,8 @@ func (transport *recoveringTransport) Upload(
 		Version:          ProtocolVersion,
 		BatchID:          batch.BatchID,
 		NodeID:           batch.NodeID,
+		RequestID:        envelope.Envelope.RequestID,
+		HighWatermark:    batch.LastSequence,
 		AcceptedEventIDs: eventIDs,
 	}, nil
 }

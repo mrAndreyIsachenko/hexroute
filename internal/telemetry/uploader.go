@@ -95,6 +95,7 @@ func (uploader *Uploader) RunOnce(ctx context.Context) error {
 		uploader.journal,
 		batchID,
 		uploader.key.NodeID,
+		requestID,
 		acknowledgement,
 	)
 	return err

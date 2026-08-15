@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/signing"
+	"github.com/mrAndreyIsachenko/hexroute/internal/telemetry"
 )
 
 type Database interface {
@@ -103,10 +104,10 @@ func (store *PostgresStore) LookupKey(
 func (store *PostgresStore) AcceptBatch(
 	ctx context.Context,
 	request BatchRequest,
-) (err error) {
+) (result AcceptResult, err error) {
 	transaction, err := store.database.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return err
+		return AcceptResult{}, err
 	}
 	defer func() {
 		rollbackErr := transaction.Rollback(ctx)
@@ -116,19 +117,19 @@ func (store *PostgresStore) AcceptBatch(
 	}()
 
 	if err = insertBatch(ctx, transaction, request); err != nil {
-		return fmt.Errorf("insert batch: %w", err)
+		return AcceptResult{}, fmt.Errorf("insert batch: %w", err)
 	}
 	if err = lockSessions(ctx, transaction, request); err != nil {
-		return fmt.Errorf("lock sessions: %w", err)
+		return AcceptResult{}, fmt.Errorf("lock sessions: %w", err)
 	}
 	for _, item := range request.Events {
 		inserted, insertErr := insertEvent(ctx, transaction, request, item)
 		if insertErr != nil {
-			return fmt.Errorf("insert event: %w", insertErr)
+			return AcceptResult{}, fmt.Errorf("insert event: %w", insertErr)
 		}
 		if inserted {
 			if err = store.advanceSequence(ctx, transaction, request, item); err != nil {
-				return fmt.Errorf("advance sequence: %w", err)
+				return AcceptResult{}, fmt.Errorf("advance sequence: %w", err)
 			}
 		}
 	}
@@ -142,12 +143,16 @@ func (store *PostgresStore) AcceptBatch(
 		    updated_at = $2
 		WHERE node_id = $1
 	`, string(request.NodeID), request.ReceivedAt); err != nil {
-		return fmt.Errorf("update node receipt: %w", err)
+		return AcceptResult{}, fmt.Errorf("update node receipt: %w", err)
+	}
+	result, err = readAcceptResult(ctx, transaction, request)
+	if err != nil {
+		return AcceptResult{}, fmt.Errorf("read accept result: %w", err)
 	}
 	if err = transaction.Commit(ctx); err != nil {
-		return err
+		return AcceptResult{}, err
 	}
-	return nil
+	return result, nil
 }
 
 func (store *PostgresStore) RecordAudit(
@@ -558,6 +563,95 @@ func (store *PostgresStore) fillSequenceGap(
 		}
 	}
 	return nil
+}
+
+func readAcceptResult(
+	ctx context.Context,
+	transaction pgx.Tx,
+	request BatchRequest,
+) (AcceptResult, error) {
+	var highest int64
+	err := transaction.QueryRow(ctx, `
+		SELECT COALESCE(MAX(highest_sequence), 0)
+		FROM node_sequence_cursors
+		WHERE node_id = $1
+	`, string(request.NodeID)).Scan(&highest)
+	if err != nil {
+		return AcceptResult{}, err
+	}
+
+	rows, err := transaction.Query(ctx, `
+		SELECT first_sequence, last_sequence
+		FROM sequence_gaps
+		WHERE node_id = $1
+		  AND resolved_at IS NULL
+		ORDER BY first_sequence, last_sequence
+		LIMIT $2
+	`, string(request.NodeID), telemetry.MaxMissingRanges)
+	if err != nil {
+		return AcceptResult{}, err
+	}
+	defer rows.Close()
+
+	ranges := make([]telemetry.SequenceRange, 0, telemetry.MaxMissingRanges)
+	for rows.Next() {
+		var first, last int64
+		if err := rows.Scan(&first, &last); err != nil {
+			return AcceptResult{}, err
+		}
+		if first < 1 || last < first {
+			return AcceptResult{}, ErrInvalidRequest
+		}
+		ranges = append(ranges, telemetry.SequenceRange{
+			First: uint64(first),
+			Last:  uint64(last),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return AcceptResult{}, err
+	}
+	return AcceptResult{
+		HighWatermark:    uint64(highest),
+		MissingSequences: boundedMissingRanges(mergeMissingRanges(ranges)),
+	}, nil
+}
+
+func mergeMissingRanges(ranges []telemetry.SequenceRange) []telemetry.SequenceRange {
+	if len(ranges) < 2 {
+		return ranges
+	}
+	merged := make([]telemetry.SequenceRange, 0, len(ranges))
+	for _, item := range ranges {
+		if len(merged) == 0 || item.First > merged[len(merged)-1].Last+1 {
+			merged = append(merged, item)
+			continue
+		}
+		if item.Last > merged[len(merged)-1].Last {
+			merged[len(merged)-1].Last = item.Last
+		}
+	}
+	return merged
+}
+
+func boundedMissingRanges(ranges []telemetry.SequenceRange) []telemetry.SequenceRange {
+	bounded := make([]telemetry.SequenceRange, 0, telemetry.MaxMissingRanges)
+	for _, item := range ranges {
+		for first := item.First; first <= item.Last; {
+			if len(bounded) == telemetry.MaxMissingRanges {
+				return bounded
+			}
+			last := first + telemetry.MaxMissingRangeWidth - 1
+			if last < first || last > item.Last {
+				last = item.Last
+			}
+			bounded = append(bounded, telemetry.SequenceRange{First: first, Last: last})
+			if last == item.Last || last == ^uint64(0) {
+				break
+			}
+			first = last + 1
+		}
+	}
+	return bounded
 }
 
 func classifyPostgresConflict(err error) error {

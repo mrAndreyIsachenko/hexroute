@@ -21,6 +21,9 @@ const (
 	MaxBatchEvents            = 256
 	MaxBatchCompressedBytes   = 1024 * 1024
 	MaxBatchUncompressedBytes = 3 * 1024 * 1024
+	MaxAcknowledgementBytes   = 64 * 1024
+	MaxMissingRanges          = 8
+	MaxMissingRangeWidth      = 512
 )
 
 type BatchEvent struct {
@@ -43,7 +46,10 @@ type Acknowledgement struct {
 	Version          uint16          `json:"version"`
 	BatchID          metadata.UUID   `json:"batch_id"`
 	NodeID           metadata.UUID   `json:"node_id"`
+	RequestID        metadata.UUID   `json:"request_id"`
+	HighWatermark    uint64          `json:"high_watermark"`
 	AcceptedEventIDs []metadata.UUID `json:"accepted_event_ids"`
+	MissingSequences []SequenceRange `json:"missing_sequences,omitempty"`
 }
 
 type SequenceRange struct {
@@ -130,6 +136,9 @@ func EncodeAcknowledgement(acknowledgement Acknowledgement) ([]byte, error) {
 }
 
 func DecodeAcknowledgement(encoded []byte) (Acknowledgement, error) {
+	if len(encoded) == 0 || len(encoded) > MaxAcknowledgementBytes {
+		return Acknowledgement{}, ErrInvalidAcknowledgement
+	}
 	var acknowledgement Acknowledgement
 	if err := decodeStrict(encoded, &acknowledgement); err != nil {
 		return Acknowledgement{}, ErrInvalidAcknowledgement
@@ -144,11 +153,13 @@ func ApplyAcknowledgement(
 	journal *spool.Spool,
 	expectedBatchID metadata.UUID,
 	expectedNodeID metadata.UUID,
+	expectedRequestID metadata.UUID,
 	acknowledgement Acknowledgement,
 ) (int, error) {
 	if journal == nil ||
 		acknowledgement.BatchID != expectedBatchID ||
-		acknowledgement.NodeID != expectedNodeID {
+		acknowledgement.NodeID != expectedNodeID ||
+		acknowledgement.RequestID != expectedRequestID {
 		return 0, ErrAcknowledgementMismatch
 	}
 	if err := validateAcknowledgement(acknowledgement); err != nil {
@@ -224,10 +235,16 @@ func validateBatch(batch Batch) error {
 func validateAcknowledgement(acknowledgement Acknowledgement) error {
 	if acknowledgement.Schema != AcknowledgementSchema ||
 		acknowledgement.Version != ProtocolVersion ||
-		len(acknowledgement.AcceptedEventIDs) > MaxBatchEvents {
+		len(acknowledgement.AcceptedEventIDs) > MaxBatchEvents ||
+		acknowledgement.HighWatermark == 0 ||
+		len(acknowledgement.MissingSequences) > MaxMissingRanges {
 		return ErrInvalidAcknowledgement
 	}
-	for _, id := range []metadata.UUID{acknowledgement.BatchID, acknowledgement.NodeID} {
+	for _, id := range []metadata.UUID{
+		acknowledgement.BatchID,
+		acknowledgement.NodeID,
+		acknowledgement.RequestID,
+	} {
 		if _, err := metadata.ParseUUID(string(id)); err != nil {
 			return ErrInvalidAcknowledgement
 		}
@@ -241,6 +258,14 @@ func validateAcknowledgement(acknowledgement Acknowledgement) error {
 			return ErrInvalidAcknowledgement
 		}
 		seen[eventID] = struct{}{}
+	}
+	if len(acknowledgement.MissingSequences) > 0 {
+		if err := validateMissingRanges(
+			acknowledgement.MissingSequences,
+			acknowledgement.HighWatermark,
+		); err != nil {
+			return err
+		}
 	}
 	return nil
 }

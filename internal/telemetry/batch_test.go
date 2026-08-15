@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	testBatchID = metadata.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
-	testNodeID  = metadata.UUID("11111111-1111-4111-8111-111111111111")
+	testBatchID   = metadata.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+	testNodeID    = metadata.UUID("11111111-1111-4111-8111-111111111111")
+	testRequestID = metadata.UUID("22222222-2222-4222-8222-222222222222")
 )
 
 func TestBatchEncodingIsCanonicalAndRoundTrips(t *testing.T) {
@@ -102,6 +103,8 @@ func TestAcknowledgementDeletesOnlyExplicitEventIDs(t *testing.T) {
 		Version:          ProtocolVersion,
 		BatchID:          testBatchID,
 		NodeID:           testNodeID,
+		RequestID:        testRequestID,
+		HighWatermark:    2,
 		AcceptedEventIDs: []metadata.UUID{entries[0].Metadata.EventID},
 	}
 	encoded, err := EncodeAcknowledgement(acknowledgement)
@@ -112,7 +115,7 @@ func TestAcknowledgementDeletesOnlyExplicitEventIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeAcknowledgement() error = %v", err)
 	}
-	removed, err := ApplyAcknowledgement(journal, testBatchID, testNodeID, decoded)
+	removed, err := ApplyAcknowledgement(journal, testBatchID, testNodeID, testRequestID, decoded)
 	if err != nil || removed != 1 {
 		t.Fatalf("ApplyAcknowledgement() = %d, %v; want 1, nil", removed, err)
 	}
@@ -125,7 +128,7 @@ func TestAcknowledgementDeletesOnlyExplicitEventIDs(t *testing.T) {
 		t.Fatalf("remaining entries = %+v", remaining)
 	}
 
-	removed, err = ApplyAcknowledgement(journal, testBatchID, testNodeID, decoded)
+	removed, err = ApplyAcknowledgement(journal, testBatchID, testNodeID, testRequestID, decoded)
 	if err != nil || removed != 0 {
 		t.Fatalf("duplicate acknowledgement = %d, %v; want 0, nil", removed, err)
 	}
@@ -143,12 +146,15 @@ func TestMismatchedAcknowledgementCannotDeleteSpoolRecords(t *testing.T) {
 		Version:          ProtocolVersion,
 		BatchID:          metadata.UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
 		NodeID:           testNodeID,
+		RequestID:        testRequestID,
+		HighWatermark:    entries[0].Sequence,
 		AcceptedEventIDs: []metadata.UUID{entries[0].Metadata.EventID},
 	}
 	if _, err := ApplyAcknowledgement(
 		journal,
 		testBatchID,
 		testNodeID,
+		testRequestID,
 		acknowledgement,
 	); !errors.Is(err, ErrAcknowledgementMismatch) {
 		t.Fatalf("ApplyAcknowledgement() error = %v, want %v", err, ErrAcknowledgementMismatch)
@@ -156,6 +162,60 @@ func TestMismatchedAcknowledgementCannotDeleteSpoolRecords(t *testing.T) {
 	remaining, err := journal.Entries()
 	if err != nil || len(remaining) != 1 {
 		t.Fatalf("remaining entries = %d, %v; want 1, nil", len(remaining), err)
+	}
+}
+
+func TestAcknowledgementValidatesRequestBindingWatermarkAndMissingRanges(t *testing.T) {
+	valid := Acknowledgement{
+		Schema:        AcknowledgementSchema,
+		Version:       ProtocolVersion,
+		BatchID:       testBatchID,
+		NodeID:        testNodeID,
+		RequestID:     testRequestID,
+		HighWatermark: 10,
+		MissingSequences: []SequenceRange{
+			{First: 2, Last: 3},
+			{First: 7, Last: 7},
+		},
+	}
+	if _, err := EncodeAcknowledgement(valid); err != nil {
+		t.Fatalf("EncodeAcknowledgement(valid) error = %v", err)
+	}
+
+	tests := []Acknowledgement{
+		{Schema: AcknowledgementSchema, Version: ProtocolVersion, BatchID: testBatchID, NodeID: testNodeID, HighWatermark: 1},
+		func() Acknowledgement {
+			value := valid
+			value.HighWatermark = 0
+			return value
+		}(),
+		func() Acknowledgement {
+			value := valid
+			value.MissingSequences = []SequenceRange{{First: 4, Last: 6}, {First: 6, Last: 7}}
+			return value
+		}(),
+		func() Acknowledgement {
+			value := valid
+			value.MissingSequences = []SequenceRange{{First: 2, Last: 11}}
+			return value
+		}(),
+		func() Acknowledgement {
+			value := valid
+			value.MissingSequences = []SequenceRange{{First: 1, Last: MaxMissingRangeWidth + 1}}
+			return value
+		}(),
+	}
+	for index, test := range tests {
+		if _, err := EncodeAcknowledgement(test); !errors.Is(err, ErrInvalidAcknowledgement) {
+			t.Fatalf("EncodeAcknowledgement(invalid %d) error = %v", index, err)
+		}
+	}
+}
+
+func TestAcknowledgementStrictlyRejectsActionLikeFields(t *testing.T) {
+	encoded := []byte(`{"schema":"hexroute.ingest-ack.v1","version":1,"batch_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","node_id":"11111111-1111-4111-8111-111111111111","request_id":"22222222-2222-4222-8222-222222222222","high_watermark":1,"accepted_event_ids":[],"command":"restart"}`)
+	if _, err := DecodeAcknowledgement(encoded); !errors.Is(err, ErrInvalidAcknowledgement) {
+		t.Fatalf("DecodeAcknowledgement(action-like field) error = %v", err)
 	}
 }
 

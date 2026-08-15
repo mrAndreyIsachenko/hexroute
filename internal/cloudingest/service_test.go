@@ -38,6 +38,8 @@ func TestServiceAcceptsAuthenticatedAllowlistedBatch(t *testing.T) {
 	}
 	if acknowledgement.BatchID != cloudBatchID ||
 		acknowledgement.NodeID != cloudNodeID ||
+		acknowledgement.RequestID != cloudRequestID ||
+		acknowledgement.HighWatermark != 1 ||
 		len(acknowledgement.AcceptedEventIDs) != 1 {
 		t.Fatalf("Accept() acknowledgement = %+v", acknowledgement)
 	}
@@ -55,6 +57,55 @@ func TestServiceAcceptsAuthenticatedAllowlistedBatch(t *testing.T) {
 	if request.Events[0].Schema != event.SchemaObservation ||
 		request.Events[0].Priority != event.PriorityOperational {
 		t.Fatalf("stored event = %+v", request.Events[0])
+	}
+}
+
+func TestServiceAcknowledgementIncludesBoundedGapRepairState(t *testing.T) {
+	now := time.Date(2026, time.July, 24, 18, 0, 0, 0, time.UTC)
+	key := cloudSigningKey(t)
+	store := &fakeStore{
+		key: keyRecord(key, now),
+		result: AcceptResult{
+			HighWatermark: 3,
+			MissingSequences: []telemetry.SequenceRange{
+				{First: 2, Last: 2},
+			},
+		},
+	}
+	service := newTestService(t, store, now)
+	body := encodedTestBatch(t, cloudBatchID, testEntry(t, 3, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))
+	signed := signedTestBatch(t, key, cloudRequestID, now, body)
+
+	acknowledgement, err := service.Accept(context.Background(), signed, body)
+	if err != nil {
+		t.Fatalf("Accept() error = %v", err)
+	}
+	if acknowledgement.RequestID != cloudRequestID ||
+		acknowledgement.HighWatermark != 3 ||
+		len(acknowledgement.MissingSequences) != 1 ||
+		acknowledgement.MissingSequences[0] != (telemetry.SequenceRange{First: 2, Last: 2}) {
+		t.Fatalf("acknowledgement = %+v", acknowledgement)
+	}
+}
+
+func TestServiceRejectsInvalidStoreGapResponse(t *testing.T) {
+	now := time.Date(2026, time.July, 24, 18, 0, 0, 0, time.UTC)
+	key := cloudSigningKey(t)
+	store := &fakeStore{
+		key: keyRecord(key, now),
+		result: AcceptResult{
+			HighWatermark: 3,
+			MissingSequences: []telemetry.SequenceRange{
+				{First: 2, Last: 4},
+			},
+		},
+	}
+	service := newTestService(t, store, now)
+	body := encodedTestBatch(t, cloudBatchID, testEntry(t, 3, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))
+	signed := signedTestBatch(t, key, cloudRequestID, now, body)
+
+	if _, err := service.Accept(context.Background(), signed, body); !errors.Is(err, telemetry.ErrInvalidAcknowledgement) {
+		t.Fatalf("Accept(invalid gap response) error = %v", err)
 	}
 }
 
@@ -175,6 +226,7 @@ type fakeStore struct {
 	key       KeyRecord
 	lookupErr error
 	acceptErr error
+	result    AcceptResult
 	auditErr  error
 	accepted  []BatchRequest
 	audits    []AuditRecord
@@ -191,9 +243,12 @@ func (store *fakeStore) LookupKey(
 func (store *fakeStore) AcceptBatch(
 	_ context.Context,
 	request BatchRequest,
-) error {
+) (AcceptResult, error) {
 	store.accepted = append(store.accepted, request)
-	return store.acceptErr
+	if store.result.HighWatermark == 0 {
+		store.result.HighWatermark = request.LastSequence
+	}
+	return store.result, store.acceptErr
 }
 
 func (store *fakeStore) RecordAudit(

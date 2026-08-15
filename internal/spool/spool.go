@@ -47,6 +47,11 @@ type Entry struct {
 	Size     int64
 }
 
+type SequenceRange struct {
+	First uint64
+	Last  uint64
+}
+
 type ownerMarker struct {
 	Schema string `json:"schema"`
 	Owner  Owner  `json:"owner"`
@@ -205,6 +210,44 @@ func (spool *Spool) Entries() ([]Entry, error) {
 	spool.mu.Lock()
 	defer spool.mu.Unlock()
 	return spool.scanStable()
+}
+
+func (spool *Spool) EntriesBySequenceRanges(
+	ranges []SequenceRange,
+	maxEntries int,
+) ([]Entry, bool, error) {
+	if len(ranges) == 0 || maxEntries < 1 {
+		return nil, false, ErrCorruptSpool
+	}
+
+	spool.mu.Lock()
+	defer spool.mu.Unlock()
+
+	entries := make([]Entry, 0)
+	complete := true
+	for _, item := range ranges {
+		if item.First == 0 || item.Last < item.First {
+			return nil, false, ErrCorruptSpool
+		}
+		for sequence := item.First; sequence <= item.Last; sequence++ {
+			if len(entries) == maxEntries {
+				return nil, false, ErrCorruptSpool
+			}
+			entry, err := readEntry(spool.stablePath(sequence))
+			if errors.Is(err, os.ErrNotExist) {
+				complete = false
+				continue
+			}
+			if err != nil {
+				return nil, false, err
+			}
+			entries = append(entries, entry)
+			if sequence == ^uint64(0) {
+				break
+			}
+		}
+	}
+	return entries, complete, nil
 }
 
 func (spool *Spool) Size() (int64, error) {

@@ -59,6 +59,11 @@ type BatchRequest struct {
 	Events          []StoredEvent
 }
 
+type AcceptResult struct {
+	HighWatermark    uint64
+	MissingSequences []telemetry.SequenceRange
+}
+
 type AuditRecord struct {
 	AuditRecordID metadata.UUID
 	NodeID        metadata.UUID
@@ -70,7 +75,7 @@ type AuditRecord struct {
 
 type Store interface {
 	LookupKey(context.Context, metadata.UUID, metadata.UUID) (KeyRecord, error)
-	AcceptBatch(context.Context, BatchRequest) error
+	AcceptBatch(context.Context, BatchRequest) (AcceptResult, error)
 	RecordAudit(context.Context, AuditRecord) error
 }
 
@@ -214,7 +219,8 @@ func (service *Service) Accept(
 		ReceivedAt:      now,
 		Events:          events,
 	}
-	if err := service.store.AcceptBatch(ctx, request); err != nil {
+	result, err := service.store.AcceptBatch(ctx, request)
+	if err != nil {
 		switch {
 		case errors.Is(err, ErrReplay):
 			service.audit(ctx, nodeID, requestID, AuditReplay, "request_reused", now)
@@ -237,13 +243,24 @@ func (service *Service) Accept(
 	for _, item := range batch.Events {
 		accepted = append(accepted, item.Metadata.EventID)
 	}
-	return telemetry.Acknowledgement{
+	highWatermark := result.HighWatermark
+	if highWatermark == 0 || highWatermark < batch.LastSequence {
+		highWatermark = batch.LastSequence
+	}
+	acknowledgement := telemetry.Acknowledgement{
 		Schema:           telemetry.AcknowledgementSchema,
 		Version:          telemetry.ProtocolVersion,
 		BatchID:          batch.BatchID,
 		NodeID:           batch.NodeID,
+		RequestID:        signed.Envelope.RequestID,
+		HighWatermark:    highWatermark,
 		AcceptedEventIDs: accepted,
-	}, nil
+		MissingSequences: result.MissingSequences,
+	}
+	if _, err := telemetry.EncodeAcknowledgement(acknowledgement); err != nil {
+		return telemetry.Acknowledgement{}, errors.Join(ErrRejected, err)
+	}
+	return acknowledgement, nil
 }
 
 func prepareEvents(batch telemetry.Batch) ([]StoredEvent, error) {

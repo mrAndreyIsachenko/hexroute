@@ -22,8 +22,7 @@ const (
 	IngestContentType = "application/vnd.hexroute.ingest-batch+gzip"
 	EnvelopeHeader    = "X-Hexroute-Signed-Envelope"
 
-	maxEnvelopeHeaderBytes  = 4096
-	maxAcknowledgementBytes = 64 * 1024
+	maxEnvelopeHeaderBytes = 4096
 )
 
 type Acceptor interface {
@@ -176,7 +175,7 @@ func (transport *HTTPTransport) Upload(
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(
 			io.Discard,
-			io.LimitReader(response.Body, maxAcknowledgementBytes),
+			io.LimitReader(response.Body, telemetry.MaxAcknowledgementBytes),
 		)
 		if response.StatusCode >= http.StatusInternalServerError {
 			return telemetry.Acknowledgement{}, ErrHTTPUnavailable
@@ -184,9 +183,9 @@ func (transport *HTTPTransport) Upload(
 		return telemetry.Acknowledgement{}, ErrHTTPRejected
 	}
 	encoded, err := io.ReadAll(
-		io.LimitReader(response.Body, maxAcknowledgementBytes+1),
+		io.LimitReader(response.Body, telemetry.MaxAcknowledgementBytes+1),
 	)
-	if err != nil || len(encoded) > maxAcknowledgementBytes {
+	if err != nil || len(encoded) > telemetry.MaxAcknowledgementBytes {
 		return telemetry.Acknowledgement{}, ErrHTTPUnavailable
 	}
 	acknowledgement, err := telemetry.DecodeAcknowledgement(encoded)
