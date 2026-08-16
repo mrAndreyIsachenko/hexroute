@@ -135,6 +135,7 @@ type faultSource struct {
 var (
 	ErrInvalidConfig       = errors.New("invalid qualification agent configuration")
 	ErrInvalidState        = errors.New("invalid qualification agent state")
+	ErrSessionComplete     = errors.New("qualification session is complete")
 	ErrSessionInvalid      = errors.New("qualification session is invalid")
 	ErrStatusUnavailable   = errors.New("policy status unavailable")
 	ErrUnsupportedPlatform = errors.New("qualification platform is unsupported")

@@ -95,6 +95,12 @@ elapsed qualification time from the current session.
 | `invalid` | Binding, timing, source, clock or chain validation failed; no elapsed time from this session can authorize enforcement |
 | `complete` | Durable replay passed all criteria, including 72 eligible hours, two armed sleep/wake cycles, one reboot and four fault outcomes |
 
+When the lifecycle reaches `complete`, the LaunchAgent process exits
+successfully and launchd does not restart it. The private evidence and
+`policy-qualification-status` remain available. A non-zero exit is still
+restarted by launchd so collection failures stay visible during active
+qualification.
+
 Correct the cause of an invalid session, then explicitly begin a new one:
 
 ```sh

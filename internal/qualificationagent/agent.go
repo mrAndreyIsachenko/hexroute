@@ -103,9 +103,15 @@ func (agent *Agent) Serve(ctx context.Context) error {
 		return err
 	}
 	if err := agent.attachRun(runID); err != nil {
+		if errors.Is(err, ErrSessionComplete) {
+			return nil
+		}
 		return err
 	}
 	if err := agent.sampleForRun(ctx, runID); err != nil {
+		if errors.Is(err, ErrSessionComplete) {
+			return nil
+		}
 		return err
 	}
 	ticker := time.NewTicker(agent.config.SampleInterval)
@@ -116,6 +122,9 @@ func (agent *Agent) Serve(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			if err := agent.sampleForRun(ctx, runID); err != nil {
+				if errors.Is(err, ErrSessionComplete) {
+					return nil
+				}
 				return err
 			}
 		}
@@ -144,6 +153,9 @@ func (agent *Agent) attachRun(runID metadata.UUID) error {
 		return err
 	}
 	if state.Lifecycle != LifecycleCollecting {
+		if state.Lifecycle == LifecycleComplete {
+			return ErrSessionComplete
+		}
 		return ErrSessionInvalid
 	}
 	state.AgentRunID = runID
@@ -160,6 +172,9 @@ func (agent *Agent) Sample(ctx context.Context, runID metadata.UUID) error {
 	state, err := agent.store.readState()
 	if err != nil {
 		return err
+	}
+	if state.Lifecycle == LifecycleComplete {
+		return ErrSessionComplete
 	}
 	if state.Lifecycle != LifecycleCollecting || state.AgentRunID != runID {
 		return ErrSessionInvalid

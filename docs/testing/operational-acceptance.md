@@ -31,6 +31,8 @@ The acceptance gate covers these paths:
 - `gitlab_web`: GitLab web reachability.
 - `git_transport`: `git ls-remote` with prompts disabled.
 - `pritunl_process`: local Pritunl process visibility.
+- `pritunl_profile`: read-only Pritunl profile connection state; a running
+  Pritunl service alone is not accepted as a connected corporate tunnel.
 - `adguard_process`: local AdGuard process visibility.
 - `twilight_status`: read-only Twilight status, when a Twilight directory is
   configured.
@@ -56,6 +58,8 @@ HEXROUTE_ACCEPTANCE_URL_INTERNET=https://example.invalid/
 HEXROUTE_ACCEPTANCE_URL_CODEX=https://example.invalid/
 HEXROUTE_ACCEPTANCE_URL_GITLAB=https://example.invalid/
 HEXROUTE_ACCEPTANCE_GIT_REMOTE=git@example.invalid:group/repo.git
+HEXROUTE_ACCEPTANCE_PRITUNL_PROFILE_ID=profile-id
+HEXROUTE_ACCEPTANCE_PRITUNL_CLI=/Applications/Pritunl.app/Contents/Resources/pritunl-client
 HEXROUTE_ACCEPTANCE_TWILIGHT_DIR=/path/to/twilight
 HEXROUTE_ACCEPTANCE_URL_MONITORING=https://example.invalid/
 HEXROUTE_ACCEPTANCE_URL_FALLBACK=https://example.invalid/
@@ -64,6 +68,10 @@ HEXROUTE_ACCEPTANCE_URL_FALLBACK=https://example.invalid/
 The script parses this file as `KEY=VALUE` data and does not execute it as a
 shell script. If a target is missing, the related check is `not_configured`;
 the script does not guess endpoints or inspect other private configuration.
+The Pritunl profile probe runs `pritunl-client list` only when
+`HEXROUTE_ACCEPTANCE_PRITUNL_PROFILE_ID` is configured. It stores only bounded
+result classes such as `connected`, `not_connected` or `profile_not_found`; raw
+Pritunl output, profile names and client addresses are not written to evidence.
 
 ## Manual Checkpoints
 

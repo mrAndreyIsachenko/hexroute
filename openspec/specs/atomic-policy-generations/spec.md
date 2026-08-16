@@ -574,6 +574,13 @@ NOT use that metadata to count a later cycle.
 - **AND** status continues to expose the invalid lifecycle and reason until an explicit restart creates a new session
 - **AND** no elapsed time from the invalid session is carried into the replacement session
 
+#### Scenario: Operational recorder session is complete while serving
+
+- **WHEN** durable replay marks the qualification session complete
+- **THEN** the service exits successfully without recording `session_invalid`
+- **AND** launchd does not respawn the completed recorder solely because of normal successful exit
+- **AND** status continues to expose the complete lifecycle and replay-derived progress
+
 #### Scenario: Armed sleep includes an intermediate dark wake
 
 - **WHEN** macOS runs the qualification agent during dark wake before the lid is opened

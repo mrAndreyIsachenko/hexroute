@@ -137,6 +137,28 @@ func TestServeExitsWhenCurrentSessionIsInvalid(t *testing.T) {
 	}
 }
 
+func TestServeExitsSuccessfullyWhenCurrentSessionIsComplete(t *testing.T) {
+	base := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	agent := newTestAgent(t, &fakeStatusReader{snapshots: []PolicySnapshot{activeSnapshot()}}, &fakePlatform{
+		samples: []PlatformSample{testSample(testBootOne, base, 0)},
+	})
+	snapshot := activeSnapshot()
+	binding, err := snapshot.activeBinding("44444444-4444-4444-8444-444444444444")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.store.writeState(State{
+		Schema: stateSchema, Lifecycle: LifecycleComplete, Reason: ReasonNone,
+		Binding: binding, CurrentBootID: testBootOne,
+		LastObservedAt: canonicalUTC(base), LastMonotonicNS: 0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.Serve(context.Background()); err != nil {
+		t.Fatalf("Serve() complete session error = %v, want nil", err)
+	}
+}
+
 func TestServeExitsWhenSamplingInvalidatesSession(t *testing.T) {
 	base := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
 	agent := newTestAgent(t, &fakeStatusReader{snapshots: []PolicySnapshot{activeSnapshot()}}, &fakePlatform{

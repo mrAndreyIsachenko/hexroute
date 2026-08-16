@@ -14,8 +14,9 @@ Hexroute SHALL provide an operational acceptance drill that verifies
 user-visible work paths before future runtime cutover, production adapter
 activation, ownership transfer or failover enablement. The gate SHALL cover
 Codex/ChatGPT reachability, ordinary Internet access, GitLab web access, Git
-transport, Pritunl connectivity, AdGuard coexistence, Telegram/monitoring
-visibility and fallback path availability.
+transport, Pritunl process visibility plus read-only profile connectivity,
+AdGuard coexistence, Telegram/monitoring visibility and fallback path
+availability.
 
 #### Scenario: Core work paths pass
 
@@ -53,6 +54,13 @@ routes, DNS, launchd services, provider resources or cloud services.
 - **WHEN** an HTTP smoke target returns a `2xx`, `3xx` or `4xx` response
 - **THEN** the script records the target as reachable
 - **AND** browser login or message-send usability remains a separate manual checkpoint
+
+#### Scenario: Pritunl process is running but the profile is not connected
+
+- **WHEN** the Pritunl service process exists but the configured profile is not `Active` with a client address
+- **THEN** the process probe MAY pass
+- **BUT** the Pritunl profile probe fails with a bounded result class
+- **AND** the drill cannot pass on process visibility alone
 
 ### Requirement: Manual checkpoints are explicit evidence
 

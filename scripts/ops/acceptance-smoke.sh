@@ -212,7 +212,10 @@ process_check() {
   if pgrep -if "$pattern" >/dev/null 2>&1; then
     record_check "$label" "process" "pass" "lt_1s" "ok"
   else
-    record_check "$label" "process" "fail" "lt_1s" "not_running"
+    case "$?" in
+      1) record_check "$label" "process" "fail" "lt_1s" "not_running" ;;
+      *) record_check "$label" "process" "fail" "lt_1s" "tool_error" ;;
+    esac
   fi
 }
 
@@ -244,6 +247,76 @@ twilight_status_check() {
   record_check "twilight_status" "local_status" "$status" "$(timing_bucket "$elapsed")" "$exit_class"
 }
 
+pritunl_profile_check() {
+  local label="pritunl_profile"
+  local profile="${HEXROUTE_ACCEPTANCE_PRITUNL_PROFILE_ID:-}"
+  local cli="${HEXROUTE_ACCEPTANCE_PRITUNL_CLI:-/Applications/Pritunl.app/Contents/Resources/pritunl-client}"
+  local start finish elapsed status exit_class output
+  if ((dry_run)); then
+    record_check "$label" "local_status" "dry_run" "not_measured" "dry_run"
+    return
+  fi
+  if [[ -z "$profile" ]]; then
+    record_check "$label" "local_status" "not_configured" "not_measured" "not_configured"
+    return
+  fi
+  if [[ ! "$profile" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+    record_check "$label" "local_status" "fail" "not_measured" "invalid_profile_id"
+    return
+  fi
+  if [[ ! -x "$cli" || "$(basename "$cli")" != "pritunl-client" ]]; then
+    record_check "$label" "local_status" "fail" "not_measured" "tool_missing"
+    return
+  fi
+  start="$(date +%s)"
+  if ! output="$("$cli" list 2>/dev/null)"; then
+    finish="$(date +%s)"
+    elapsed=$((finish - start))
+    record_check "$label" "local_status" "fail" "$(timing_bucket "$elapsed")" "command_error"
+    return
+  fi
+  if awk -v profile="$profile" '
+    BEGIN { found = 0; connected = 0 }
+    {
+      field_count = split($0, fields, /\|/)
+      for (field_index = 1; field_index <= field_count; field_index++) {
+        value = fields[field_index]
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+        if (value != profile) {
+          continue
+        }
+        found = 1
+        state = fields[field_index + 2]
+        online = fields[field_index + 4]
+        address = fields[field_index + 6]
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", state)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", online)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", address)
+        if (state == "Active" && online != "Connecting" && address != "" && address != "-") {
+          connected = 1
+        }
+      }
+    }
+    END {
+      if (!found) exit 2
+      if (!connected) exit 1
+      exit 0
+    }
+  ' <<<"$output"; then
+    status="pass"
+    exit_class="connected"
+  else
+    case "$?" in
+      2) exit_class="profile_not_found" ;;
+      *) exit_class="not_connected" ;;
+    esac
+    status="fail"
+  fi
+  finish="$(date +%s)"
+  elapsed=$((finish - start))
+  record_check "$label" "local_status" "$status" "$(timing_bucket "$elapsed")" "$exit_class"
+}
+
 manual_checkpoint() {
   local label="$1" var_name="$2"
   local value="${!var_name:-}"
@@ -264,6 +337,7 @@ http_check "codex_chatgpt_http" "HEXROUTE_ACCEPTANCE_URL_CODEX"
 http_check "gitlab_web" "HEXROUTE_ACCEPTANCE_URL_GITLAB"
 git_check
 process_check "pritunl_process" "Pritunl|pritunl-client|pritunl-service"
+pritunl_profile_check
 process_check "adguard_process" "AdGuard|com.adguard"
 twilight_status_check
 http_check "telegram_monitoring" "HEXROUTE_ACCEPTANCE_URL_MONITORING"
