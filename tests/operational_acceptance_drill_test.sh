@@ -37,6 +37,7 @@ for term in \
   'private/acceptance-targets.env' \
   'not_configured' \
   'Manual Checkpoints' \
+  'HEXROUTE_ACCEPTANCE_MANUAL_NO_EXTERNAL_RESCUE' \
   'Waivers' \
   'does not enable a production adapter'; do
   rg -Fq "$term" "$doc"
@@ -84,9 +85,26 @@ for term in \
   '"overall": "dry_run"' \
   '"label":"codex_chatgpt_http"' \
   '"label":"git_transport"' \
-  '"label":"sleep_wake_completed"'; do
+  '"label":"sleep_wake_completed"' \
+  '"label":"no_external_rescue_used"'; do
   rg -Fq "$term" "$evidence"
 done
+
+set +e
+HEXROUTE_ACCEPTANCE_OUT_DIR="$tmp/reboot-out" \
+HEXROUTE_ACCEPTANCE_URL_INTERNET="http://127.0.0.1:1/" \
+HEXROUTE_ACCEPTANCE_MANUAL_CHATGPT_BROWSER=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_CODEX_MESSAGE=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_GIT_WRITE=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_PRITUNL_OTP=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_REBOOT=pass \
+"$script" --phase post-reboot >/tmp/hexroute-acceptance-reboot.out
+reboot_probe_status=$?
+set -e
+test "$reboot_probe_status" -eq 1
+reboot_evidence="$(find "$tmp/reboot-out" -type f -name 'operational-acceptance-post-reboot-*.json' | head -n 1)"
+test -s "$reboot_evidence"
+rg -Fq '"label":"no_external_rescue_used","status":"incomplete"' "$reboot_evidence"
 
 if rg -Fq "$canary" "$evidence"; then
   printf 'acceptance evidence leaked protected canary\n' >&2

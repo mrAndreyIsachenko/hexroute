@@ -79,6 +79,10 @@ behavior, not just an HTTP response:
 - The post-reboot phase followed a real reboot.
 - The post-network-loss phase followed real loss and restoration of network
   access.
+- For `post-sleep`, `post-reboot` and `post-network-loss`, no out-of-band
+  manual rescue path had to be enabled before the drill. If the operator had to
+  enable an external VPN such as Amnezia to regain access, the phase is not a
+  self-recovery pass.
 
 Manual checkpoints are confirmed with environment variables:
 
@@ -90,10 +94,17 @@ HEXROUTE_ACCEPTANCE_MANUAL_PRITUNL_OTP=pass
 HEXROUTE_ACCEPTANCE_MANUAL_SLEEP_WAKE=pass
 HEXROUTE_ACCEPTANCE_MANUAL_REBOOT=pass
 HEXROUTE_ACCEPTANCE_MANUAL_NETWORK_LOSS=pass
+HEXROUTE_ACCEPTANCE_MANUAL_NO_EXTERNAL_RESCUE=pass
 ```
 
 Allowed values are `pass` and `fail`. Missing values are recorded as
 `incomplete` and cannot be counted as a passing drill.
+
+Use `HEXROUTE_ACCEPTANCE_MANUAL_NO_EXTERNAL_RESCUE=pass` only when the tested
+state recovered without enabling an out-of-band rescue path. If manual Amnezia
+or another external fallback had to be enabled first, omit the variable or set
+it to `fail`; the resulting evidence can still document operator recovery, but
+it cannot be cited as Hexroute/Twilight self-recovery.
 
 ## Evidence
 

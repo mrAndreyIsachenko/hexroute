@@ -277,12 +277,15 @@ manual_checkpoint "pritunl_otp_fallback" "HEXROUTE_ACCEPTANCE_MANUAL_PRITUNL_OTP
 case "$phase" in
   post-sleep)
     manual_checkpoint "sleep_wake_completed" "HEXROUTE_ACCEPTANCE_MANUAL_SLEEP_WAKE"
+    manual_checkpoint "no_external_rescue_used" "HEXROUTE_ACCEPTANCE_MANUAL_NO_EXTERNAL_RESCUE"
     ;;
   post-reboot)
     manual_checkpoint "reboot_completed" "HEXROUTE_ACCEPTANCE_MANUAL_REBOOT"
+    manual_checkpoint "no_external_rescue_used" "HEXROUTE_ACCEPTANCE_MANUAL_NO_EXTERNAL_RESCUE"
     ;;
   post-network-loss)
     manual_checkpoint "network_loss_recovered" "HEXROUTE_ACCEPTANCE_MANUAL_NETWORK_LOSS"
+    manual_checkpoint "no_external_rescue_used" "HEXROUTE_ACCEPTANCE_MANUAL_NO_EXTERNAL_RESCUE"
     ;;
 esac
 
