@@ -134,6 +134,7 @@ http_check() {
     return
   fi
   start="$(date +%s)"
+  set +e
   http_code="$(
     curl -sS -L \
       --max-time "${HEXROUTE_ACCEPTANCE_HTTP_TIMEOUT_SECONDS:-8}" \
@@ -142,6 +143,7 @@ http_check() {
       "$url" 2>/dev/null
   )"
   curl_status=$?
+  set -e
   if ((curl_status == 0)) && [[ "$http_code" =~ ^[0-9][0-9][0-9]$ ]] &&
     ((10#$http_code >= 200 && 10#$http_code < 500)); then
     status="pass"
@@ -326,6 +328,7 @@ manual_checkpoint() {
   fi
   case "$value" in
     pass|fail) record_manual "$label" "$value" ;;
+    failure|failed) record_manual "$label" "fail" ;;
     *) record_manual "$label" "incomplete" ;;
   esac
 }
