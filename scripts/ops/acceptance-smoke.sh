@@ -249,6 +249,34 @@ twilight_status_check() {
   record_check "twilight_status" "local_status" "$status" "$(timing_bucket "$elapsed")" "$exit_class"
 }
 
+twilight_carrier_check() {
+  local dir="${HEXROUTE_ACCEPTANCE_TWILIGHT_DIR:-}"
+  local start finish elapsed status exit_class
+  if ((dry_run)); then
+    record_check "twilight_carrier" "local_status" "dry_run" "not_measured" "dry_run"
+    return
+  fi
+  if [[ -z "$dir" ]]; then
+    record_check "twilight_carrier" "local_status" "not_configured" "not_measured" "not_configured"
+    return
+  fi
+  if [[ ! -d "$dir" ]]; then
+    record_check "twilight_carrier" "local_status" "fail" "not_measured" "missing_directory"
+    return
+  fi
+  start="$(date +%s)"
+  if make -C "$dir" carrier-status >/dev/null 2>&1; then
+    status="pass"
+    exit_class="self_contained"
+  else
+    status="fail"
+    exit_class="external_rescue_dependency"
+  fi
+  finish="$(date +%s)"
+  elapsed=$((finish - start))
+  record_check "twilight_carrier" "local_status" "$status" "$(timing_bucket "$elapsed")" "$exit_class"
+}
+
 pritunl_profile_check() {
   local label="pritunl_profile"
   local profile="${HEXROUTE_ACCEPTANCE_PRITUNL_PROFILE_ID:-}"
@@ -343,6 +371,7 @@ process_check "pritunl_process" "Pritunl|pritunl-client|pritunl-service"
 pritunl_profile_check
 process_check "adguard_process" "AdGuard|com.adguard"
 twilight_status_check
+twilight_carrier_check
 http_check "telegram_monitoring" "HEXROUTE_ACCEPTANCE_URL_MONITORING"
 http_check "fallback_path" "HEXROUTE_ACCEPTANCE_URL_FALLBACK"
 

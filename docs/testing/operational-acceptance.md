@@ -36,6 +36,10 @@ The acceptance gate covers these paths:
 - `adguard_process`: local AdGuard process visibility.
 - `twilight_status`: read-only Twilight status, when a Twilight directory is
   configured.
+- `twilight_carrier`: read-only Twilight self-containment status. When a
+  Twilight directory is configured, the drill requires `make carrier-status` to
+  prove that at least one active ingress works through the physical carrier
+  instead of depending on an out-of-band VPN.
 - `telegram_monitoring`: monitoring or Telegram alert surface reachability.
 - `fallback_path`: independent fallback path reachability.
 
@@ -113,6 +117,11 @@ state recovered without enabling an out-of-band rescue path. If manual Amnezia
 or another external fallback had to be enabled first, omit the variable or set
 it to `fail`; the resulting evidence can still document operator recovery, but
 it cannot be cited as Hexroute/Twilight self-recovery.
+
+`NO_EXTERNAL_RESCUE=pass` is not enough by itself. When
+`HEXROUTE_ACCEPTANCE_TWILIGHT_DIR` is set, `twilight_carrier` must also pass; a
+working Twilight ingress routed over a non-Twilight `utun` is recorded as an
+external-rescue dependency.
 
 ## Evidence
 

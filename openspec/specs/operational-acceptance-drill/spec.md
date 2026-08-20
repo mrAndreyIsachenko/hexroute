@@ -17,6 +17,9 @@ Codex/ChatGPT reachability, ordinary Internet access, GitLab web access, Git
 transport, Pritunl process visibility plus read-only profile connectivity,
 AdGuard coexistence, Telegram/monitoring visibility and fallback path
 availability.
+When a Twilight directory is configured, the gate SHALL also verify Twilight
+self-containment with the read-only carrier status check so an out-of-band VPN
+carrier cannot be counted as Hexroute/Twilight self-recovery.
 
 #### Scenario: Core work paths pass
 
@@ -86,6 +89,13 @@ explicit operator confirmation or be recorded as incomplete.
 - **WHEN** a post-sleep, post-reboot or post-network-loss phase required the operator to enable an out-of-band rescue path before the drill could pass
 - **THEN** the drill records missing or failed `no_external_rescue_used` evidence
 - **AND** the phase cannot be counted as a self-recovery pass
+
+#### Scenario: Twilight carrier still depends on an external VPN
+
+- **WHEN** a Twilight directory is configured
+- **AND** Twilight reports that no active ingress is self-contained on the physical carrier
+- **THEN** the drill records `twilight_carrier` as failed with an external-rescue result class
+- **AND** the phase cannot be counted as a self-recovery pass even if manual checkpoints are set to pass
 
 ### Requirement: Redacted evidence bundle
 

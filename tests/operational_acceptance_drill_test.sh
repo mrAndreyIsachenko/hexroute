@@ -33,6 +33,7 @@ for term in \
   'pritunl_profile' \
   'adguard_process' \
   'twilight_status' \
+  'twilight_carrier' \
   'telegram_monitoring' \
   'fallback_path' \
   'private/acceptance-targets.env' \
@@ -88,10 +89,41 @@ for term in \
   '"label":"codex_chatgpt_http"' \
   '"label":"git_transport"' \
   '"label":"pritunl_profile"' \
+  '"label":"twilight_carrier"' \
   '"label":"sleep_wake_completed"' \
   '"label":"no_external_rescue_used"'; do
   rg -Fq "$term" "$evidence"
 done
+
+mkdir -p "$tmp/twilight-blocked"
+cat > "$tmp/twilight-blocked/Makefile" <<'EOF'
+routes-status:
+	@exit 0
+
+carrier-status:
+	@exit 1
+EOF
+
+set +e
+HEXROUTE_ACCEPTANCE_OUT_DIR="$tmp/carrier-out" \
+HEXROUTE_ACCEPTANCE_TARGETS="$tmp/missing-targets.env" \
+HEXROUTE_ACCEPTANCE_TWILIGHT_DIR="$tmp/twilight-blocked" \
+HEXROUTE_ACCEPTANCE_MANUAL_CHATGPT_BROWSER=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_CODEX_MESSAGE=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_GIT_WRITE=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_PRITUNL_OTP=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_REBOOT=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_NO_EXTERNAL_RESCUE=pass \
+"$script" --phase post-reboot >/tmp/hexroute-acceptance-carrier.out
+carrier_probe_status=$?
+set -e
+test "$carrier_probe_status" -eq 1
+carrier_evidence="$(find "$tmp/carrier-out" -type f -name 'operational-acceptance-post-reboot-*.json' | head -n 1)"
+test -s "$carrier_evidence"
+rg -Fq '"label":"twilight_status","kind":"local_status","status":"pass"' "$carrier_evidence"
+rg -Fq '"label":"twilight_carrier","kind":"local_status","status":"fail"' "$carrier_evidence"
+rg -Fq '"exit_class":"external_rescue_dependency"' "$carrier_evidence"
+rg -Fq '"label":"no_external_rescue_used","status":"pass"' "$carrier_evidence"
 
 set +e
 HEXROUTE_ACCEPTANCE_OUT_DIR="$tmp/reboot-out" \
