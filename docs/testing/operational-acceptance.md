@@ -91,10 +91,10 @@ behavior, not just an HTTP response:
 - The post-reboot phase followed a real reboot.
 - The post-network-loss phase followed real loss and restoration of network
   access.
-- For `post-sleep`, `post-reboot` and `post-network-loss`, no out-of-band
-  manual rescue path had to be enabled before the drill. If the operator had to
-  enable an external VPN such as Amnezia to regain access, the phase is not a
-  self-recovery pass.
+- For `post-activation`, `post-sleep`, `post-reboot` and `post-network-loss`,
+  no out-of-band manual rescue path had to be enabled before the drill. If the
+  operator had to enable an external VPN such as Amnezia to regain access, the
+  phase is not a self-recovery pass.
 
 Manual checkpoints are confirmed with environment variables:
 

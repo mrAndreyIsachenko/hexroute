@@ -381,6 +381,9 @@ manual_checkpoint "git_push_or_write_verified" "HEXROUTE_ACCEPTANCE_MANUAL_GIT_W
 manual_checkpoint "pritunl_otp_fallback" "HEXROUTE_ACCEPTANCE_MANUAL_PRITUNL_OTP"
 
 case "$phase" in
+  post-activation)
+    manual_checkpoint "no_external_rescue_used" "HEXROUTE_ACCEPTANCE_MANUAL_NO_EXTERNAL_RESCUE"
+    ;;
   post-sleep)
     manual_checkpoint "sleep_wake_completed" "HEXROUTE_ACCEPTANCE_MANUAL_SLEEP_WAKE"
     manual_checkpoint "no_external_rescue_used" "HEXROUTE_ACCEPTANCE_MANUAL_NO_EXTERNAL_RESCUE"

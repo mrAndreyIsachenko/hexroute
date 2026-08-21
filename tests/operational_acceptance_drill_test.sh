@@ -126,6 +126,22 @@ rg -Fq '"exit_class":"external_rescue_dependency"' "$carrier_evidence"
 rg -Fq '"label":"no_external_rescue_used","status":"pass"' "$carrier_evidence"
 
 set +e
+HEXROUTE_ACCEPTANCE_OUT_DIR="$tmp/activation-out" \
+HEXROUTE_ACCEPTANCE_TARGETS="$tmp/missing-targets.env" \
+HEXROUTE_ACCEPTANCE_TWILIGHT_DIR="$tmp/twilight-blocked" \
+HEXROUTE_ACCEPTANCE_MANUAL_CHATGPT_BROWSER=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_CODEX_MESSAGE=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_GIT_WRITE=pass \
+HEXROUTE_ACCEPTANCE_MANUAL_PRITUNL_OTP=pass \
+"$script" --phase post-activation >/tmp/hexroute-acceptance-activation.out
+activation_probe_status=$?
+set -e
+test "$activation_probe_status" -eq 1
+activation_evidence="$(find "$tmp/activation-out" -type f -name 'operational-acceptance-post-activation-*.json' | head -n 1)"
+test -s "$activation_evidence"
+rg -Fq '"label":"no_external_rescue_used","status":"incomplete"' "$activation_evidence"
+
+set +e
 HEXROUTE_ACCEPTANCE_OUT_DIR="$tmp/reboot-out" \
 HEXROUTE_ACCEPTANCE_URL_INTERNET="http://127.0.0.1:1/" \
 HEXROUTE_ACCEPTANCE_MANUAL_CHATGPT_BROWSER=pass \

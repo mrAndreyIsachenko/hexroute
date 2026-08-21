@@ -84,9 +84,9 @@ explicit operator confirmation or be recorded as incomplete.
 - **THEN** the evidence identifies the phase as post-sleep
 - **AND** Codex/ChatGPT, GitLab/Git, Pritunl and fallback checks are evaluated again rather than inherited from the baseline phase
 
-#### Scenario: Recovery needed external manual rescue
+#### Scenario: Activation or recovery needed external manual rescue
 
-- **WHEN** a post-sleep, post-reboot or post-network-loss phase required the operator to enable an out-of-band rescue path before the drill could pass
+- **WHEN** a post-activation, post-sleep, post-reboot or post-network-loss phase required the operator to enable an out-of-band rescue path before the drill could pass
 - **THEN** the drill records missing or failed `no_external_rescue_used` evidence
 - **AND** the phase cannot be counted as a self-recovery pass
 
