@@ -58,6 +58,15 @@ routes, DNS, launchd services, provider resources or cloud services.
 - **THEN** the script records the target as reachable
 - **AND** browser login or message-send usability remains a separate manual checkpoint
 
+#### Scenario: Fallback HTTP target uses an explicit local proxy
+
+- **WHEN** a smoke target is configured with an explicit per-check proxy
+- **THEN** the script probes that target through the configured proxy
+- **AND** records only the bounded pass/fail class, not the proxy URL or target
+  URL
+- **AND** checks without an explicit proxy continue to use the normal direct
+  path
+
 #### Scenario: Pritunl process is running but the profile is not connected
 
 - **WHEN** the Pritunl service process exists but the configured profile is not `Active` with a client address

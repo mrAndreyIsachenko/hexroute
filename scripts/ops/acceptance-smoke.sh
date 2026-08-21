@@ -118,9 +118,11 @@ record_manual() {
 }
 
 http_check() {
-  local label="$1" var_name="$2"
+  local label="$1" var_name="$2" proxy_var_name="${3:-}"
   local url="${!var_name:-}"
+  local proxy="${!proxy_var_name:-}"
   local start finish elapsed status exit_class http_code curl_status
+  local curl_args=()
   if ((dry_run)); then
     record_check "$label" "http" "dry_run" "not_measured" "dry_run"
     return
@@ -134,13 +136,19 @@ http_check() {
     return
   fi
   start="$(date +%s)"
+  curl_args=(
+    -sS
+    -L
+    --max-time "${HEXROUTE_ACCEPTANCE_HTTP_TIMEOUT_SECONDS:-8}"
+    -o /dev/null
+    -w '%{http_code}'
+  )
+  if [[ -n "$proxy" ]]; then
+    curl_args+=(--proxy "$proxy")
+  fi
   set +e
   http_code="$(
-    curl -sS -L \
-      --max-time "${HEXROUTE_ACCEPTANCE_HTTP_TIMEOUT_SECONDS:-8}" \
-      -o /dev/null \
-      -w '%{http_code}' \
-      "$url" 2>/dev/null
+    curl "${curl_args[@]}" "$url" 2>/dev/null
   )"
   curl_status=$?
   set -e
@@ -363,17 +371,17 @@ manual_checkpoint() {
 
 load_targets_file "$targets_file"
 
-http_check "ordinary_internet" "HEXROUTE_ACCEPTANCE_URL_INTERNET"
-http_check "codex_chatgpt_http" "HEXROUTE_ACCEPTANCE_URL_CODEX"
-http_check "gitlab_web" "HEXROUTE_ACCEPTANCE_URL_GITLAB"
+http_check "ordinary_internet" "HEXROUTE_ACCEPTANCE_URL_INTERNET" "HEXROUTE_ACCEPTANCE_INTERNET_PROXY"
+http_check "codex_chatgpt_http" "HEXROUTE_ACCEPTANCE_URL_CODEX" "HEXROUTE_ACCEPTANCE_CODEX_PROXY"
+http_check "gitlab_web" "HEXROUTE_ACCEPTANCE_URL_GITLAB" "HEXROUTE_ACCEPTANCE_GITLAB_PROXY"
 git_check
 process_check "pritunl_process" "Pritunl|pritunl-client|pritunl-service"
 pritunl_profile_check
 process_check "adguard_process" "AdGuard|com.adguard"
 twilight_status_check
 twilight_carrier_check
-http_check "telegram_monitoring" "HEXROUTE_ACCEPTANCE_URL_MONITORING"
-http_check "fallback_path" "HEXROUTE_ACCEPTANCE_URL_FALLBACK"
+http_check "telegram_monitoring" "HEXROUTE_ACCEPTANCE_URL_MONITORING" "HEXROUTE_ACCEPTANCE_MONITORING_PROXY"
+http_check "fallback_path" "HEXROUTE_ACCEPTANCE_URL_FALLBACK" "HEXROUTE_ACCEPTANCE_FALLBACK_PROXY"
 
 manual_checkpoint "browser_chatgpt_login" "HEXROUTE_ACCEPTANCE_MANUAL_CHATGPT_BROWSER"
 manual_checkpoint "codex_message_sent" "HEXROUTE_ACCEPTANCE_MANUAL_CODEX_MESSAGE"

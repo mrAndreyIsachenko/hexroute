@@ -67,11 +67,20 @@ HEXROUTE_ACCEPTANCE_PRITUNL_CLI=/Applications/Pritunl.app/Contents/Resources/pri
 HEXROUTE_ACCEPTANCE_TWILIGHT_DIR=/path/to/twilight
 HEXROUTE_ACCEPTANCE_URL_MONITORING=https://example.invalid/
 HEXROUTE_ACCEPTANCE_URL_FALLBACK=https://example.invalid/
+HEXROUTE_ACCEPTANCE_MONITORING_PROXY=socks5h://127.0.0.1:2080
+HEXROUTE_ACCEPTANCE_FALLBACK_PROXY=socks5h://127.0.0.1:2080
 ```
 
 The script parses this file as `KEY=VALUE` data and does not execute it as a
 shell script. If a target is missing, the related check is `not_configured`;
 the script does not guess endpoints or inspect other private configuration.
+HTTP checks also support optional per-check proxy variables:
+`HEXROUTE_ACCEPTANCE_INTERNET_PROXY`, `HEXROUTE_ACCEPTANCE_CODEX_PROXY`,
+`HEXROUTE_ACCEPTANCE_GITLAB_PROXY`, `HEXROUTE_ACCEPTANCE_MONITORING_PROXY` and
+`HEXROUTE_ACCEPTANCE_FALLBACK_PROXY`. Use these only when that work path is
+supposed to be proven through a configured local fallback such as Twilight
+SOCKS; ordinary Internet remains a direct-path check unless its proxy is set
+explicitly.
 The Pritunl profile probe runs `pritunl-client list` only when
 `HEXROUTE_ACCEPTANCE_PRITUNL_PROFILE_ID` is configured. It stores only bounded
 result classes such as `connected`, `not_connected` or `profile_not_found`; raw

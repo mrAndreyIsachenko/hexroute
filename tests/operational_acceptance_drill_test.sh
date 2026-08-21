@@ -41,6 +41,8 @@ for term in \
   'Manual Checkpoints' \
   'HEXROUTE_ACCEPTANCE_MANUAL_NO_EXTERNAL_RESCUE' \
   'HEXROUTE_ACCEPTANCE_PRITUNL_PROFILE_ID' \
+  'HEXROUTE_ACCEPTANCE_FALLBACK_PROXY' \
+  'HEXROUTE_ACCEPTANCE_MONITORING_PROXY' \
   'Waivers' \
   'does not enable a production adapter'; do
   rg -Fq "$term" "$doc"
@@ -213,6 +215,27 @@ http_evidence="$(find "$tmp/http-out" -type f -name 'operational-acceptance-base
 test -s "$http_evidence"
 rg -Fq '"label":"ordinary_internet","kind":"http","status":"pass"' "$http_evidence"
 rg -Fq '"exit_class":"http_4xx"' "$http_evidence"
+
+set +e
+HEXROUTE_ACCEPTANCE_OUT_DIR="$tmp/proxy-out" \
+HEXROUTE_ACCEPTANCE_TARGETS="$tmp/missing-targets.env" \
+HEXROUTE_ACCEPTANCE_URL_INTERNET="http://127.0.0.1:$port/" \
+HEXROUTE_ACCEPTANCE_URL_MONITORING="http://monitoring.invalid/" \
+HEXROUTE_ACCEPTANCE_MONITORING_PROXY="http://127.0.0.1:$port" \
+HEXROUTE_ACCEPTANCE_URL_FALLBACK="http://fallback.invalid/" \
+HEXROUTE_ACCEPTANCE_FALLBACK_PROXY="http://127.0.0.1:$port" \
+"$script" --phase baseline >/tmp/hexroute-acceptance-proxy.out
+proxy_probe_status=$?
+set -e
+test "$proxy_probe_status" -eq 1
+proxy_evidence="$(find "$tmp/proxy-out" -type f -name 'operational-acceptance-baseline-*.json' | head -n 1)"
+test -s "$proxy_evidence"
+rg -Fq '"label":"telegram_monitoring","kind":"http","status":"pass"' "$proxy_evidence"
+rg -Fq '"label":"fallback_path","kind":"http","status":"pass"' "$proxy_evidence"
+if rg -Fq '127.0.0.1' "$proxy_evidence" || rg -Fq 'fallback.invalid' "$proxy_evidence"; then
+  printf 'acceptance evidence leaked proxy or target URL\n' >&2
+  exit 1
+fi
 
 rg -Fq 'docs/testing/operational-acceptance.md' "$repo_root/README.md"
 rg -Fq 'add-operational-acceptance-drill' "$repo_root/docs/roadmap.md"
