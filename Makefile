@@ -126,5 +126,6 @@ secret-test:
 
 spec-check:
 	OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive
+	scripts/openspec-drift-check.sh
 
 check: fmt vet test race fuzz build shell-test secret-test spec-check

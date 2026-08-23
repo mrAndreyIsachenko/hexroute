@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "out=$(\"$CLAUDE_PROJECT_DIR\"/scripts/openspec-drift-check.sh \"$CLAUDE_PROJECT_DIR\" 2>&1) || echo \"$out\"",
+            "timeout": 15,
+            "statusMessage": "Checking OpenSpec drift"
+          }
+        ]
+      }
+    ]
+  }
+}
