@@ -50,13 +50,13 @@
 
 ## 7. Privilege-Separated Daemon Integration
 
-- [ ] 7.1 Gate daemon integration on completed atomic-policy startup, domain-mismatch, suspension and redacted-status contracts; document the exact prerequisite task evidence.
+- [x] 7.1 Gate daemon integration on completed atomic-policy startup, domain-mismatch, suspension and redacted-status contracts; document the exact prerequisite task evidence.
 - [x] 7.2 Adapt existing root network, DNS, scoped-route, transport and relay observations into complete root-owned facts without adding new mutation calls.
 - [x] 7.3 Adapt existing user Pritunl and session observations into complete user-owned facts without reading or serializing PIN, TOTP, OTP or Keychain references.
 - [x] 7.4 Extend authenticated bounded IPC with user-fact publication and exact peer-UID/domain/size validation, without adding an action request.
 - [x] 7.5 Integrate host acceptance sequencing, pure reduction, checkpointing and normalized local status into `hexrouted` behind an observe-only feature gate.
 - [x] 7.6 Mark absent or stale user IPC as unknown/stale without impersonation, credential access or reconnect attempts.
-- [ ] 7.7 Add integration tests proving root/user ownership, daemon restart convergence, Twilight namespace coexistence and unchanged AdGuard and Codex paths.
+- [x] 7.7 Add integration tests proving root/user ownership, daemon restart convergence, Twilight namespace coexistence and unchanged AdGuard and Codex paths.
 
 ## 8. Redacted Status And Cloud Projection
 

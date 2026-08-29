@@ -27,6 +27,7 @@ var (
 	ErrDisabled      = errors.New("connectivity read model is disabled")
 	ErrMisconfigured = errors.New("connectivity runtime is misconfigured")
 	ErrUnknownDomain = errors.New("connectivity domain has no journal")
+	ErrPrecondition  = errors.New("connectivity read model precondition is not met")
 )
 
 // UserLinkState is what the root aggregate knows about the user daemon.
@@ -42,15 +43,51 @@ const (
 	UserLinkAbsent    UserLinkState = "absent"
 )
 
+// Preconditions are the policy-foundation contracts the read model depends on.
+//
+// They are passed in as explicit claims rather than probed, so enabling the
+// read model is a decision someone made and recorded, not something that
+// happens because a check happened to pass at startup. Every field must be
+// true; a false one names exactly which contract is missing.
+type Preconditions struct {
+	// AtomicPolicyStartup: startup revalidates the active policy generation
+	// before anything reads it.
+	AtomicPolicyStartup bool
+	// DomainMismatch: a domain mismatch is refused rather than resolved.
+	DomainMismatch bool
+	// Suspension: an authorization suspension is honoured by every consumer.
+	Suspension bool
+	// RedactedStatus: local status output is already bounded and redacted.
+	RedactedStatus bool
+}
+
+// Missing names the first unmet precondition, or an empty string.
+func (preconditions Preconditions) Missing() string {
+	switch {
+	case !preconditions.AtomicPolicyStartup:
+		return "atomic policy startup revalidation"
+	case !preconditions.DomainMismatch:
+		return "domain mismatch handling"
+	case !preconditions.Suspension:
+		return "authorization suspension handling"
+	case !preconditions.RedactedStatus:
+		return "redacted local status"
+	default:
+		return ""
+	}
+}
+
 // Options configures the runtime.
 type Options struct {
 	// Enabled is the observe-only feature gate.
-	Enabled     bool
-	BootID      string
-	Checkpoints *connectivitycheckpoint.Store
-	RootJournal *connectivityjournal.Journal
-	UserJournal *connectivityjournal.Journal
-	Random      io.Reader
+	Enabled bool
+	// Preconditions must all hold before the gate may be opened.
+	Preconditions Preconditions
+	BootID        string
+	Checkpoints   *connectivitycheckpoint.Store
+	RootJournal   *connectivityjournal.Journal
+	UserJournal   *connectivityjournal.Journal
+	Random        io.Reader
 }
 
 // Runtime owns the host's read model.
@@ -94,6 +131,9 @@ func New(options Options) (*Runtime, error) {
 	}
 	if !options.Enabled {
 		return runtime, nil
+	}
+	if missing := options.Preconditions.Missing(); missing != "" {
+		return nil, fmt.Errorf("%w: %s is not established", ErrPrecondition, missing)
 	}
 	if options.BootID == "" || options.Checkpoints == nil ||
 		options.RootJournal == nil || options.Random == nil {

@@ -52,7 +52,13 @@ func newHarness(t *testing.T, enabled bool) *harness {
 
 func openHarness(t *testing.T, base string, enabled bool) *harness {
 	t.Helper()
-	options := Options{Enabled: enabled, BootID: connectivity.FixtureBootID, Random: rand.Reader}
+	options := Options{
+		Enabled: enabled, BootID: connectivity.FixtureBootID, Random: rand.Reader,
+		Preconditions: Preconditions{
+			AtomicPolicyStartup: true, DomainMismatch: true,
+			Suspension: true, RedactedStatus: true,
+		},
+	}
 	if enabled {
 		store, err := connectivitycheckpoint.Open(filepath.Join(base, "readmodel"),
 			connectivitycheckpoint.Options{})
@@ -289,7 +295,60 @@ func TestUnknownDomainIsRefused(t *testing.T) {
 }
 
 func TestEnabledRuntimeNeedsItsStores(t *testing.T) {
-	if _, err := New(Options{Enabled: true, BootID: connectivity.FixtureBootID}); !errors.Is(err, ErrMisconfigured) {
+	options := Options{
+		Enabled: true, BootID: connectivity.FixtureBootID,
+		Preconditions: Preconditions{
+			AtomicPolicyStartup: true, DomainMismatch: true,
+			Suspension: true, RedactedStatus: true,
+		},
+	}
+	if _, err := New(options); !errors.Is(err, ErrMisconfigured) {
 		t.Fatalf("got %v, want %v", err, ErrMisconfigured)
+	}
+}
+
+// The gate may not open on a foundation that is not finished, and the refusal
+// has to name which part is missing rather than fail generically.
+func TestGateRefusesAnUnestablishedFoundation(t *testing.T) {
+	complete := Preconditions{
+		AtomicPolicyStartup: true, DomainMismatch: true,
+		Suspension: true, RedactedStatus: true,
+	}
+	tests := []struct {
+		name   string
+		mutate func(*Preconditions)
+		want   string
+	}{
+		{"policy startup", func(p *Preconditions) { p.AtomicPolicyStartup = false },
+			"atomic policy startup revalidation"},
+		{"domain mismatch", func(p *Preconditions) { p.DomainMismatch = false },
+			"domain mismatch handling"},
+		{"suspension", func(p *Preconditions) { p.Suspension = false },
+			"authorization suspension handling"},
+		{"redacted status", func(p *Preconditions) { p.RedactedStatus = false },
+			"redacted local status"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			preconditions := complete
+			test.mutate(&preconditions)
+			if missing := preconditions.Missing(); missing != test.want {
+				t.Fatalf("missing %q, want %q", missing, test.want)
+			}
+			_, err := New(Options{
+				Enabled: true, BootID: connectivity.FixtureBootID,
+				Random: rand.Reader, Preconditions: preconditions,
+			})
+			if !errors.Is(err, ErrPrecondition) {
+				t.Fatalf("got %v, want %v", err, ErrPrecondition)
+			}
+		})
+	}
+}
+
+// A disabled runtime asks nothing of the foundation, because it does nothing.
+func TestDisabledGateIgnoresPreconditions(t *testing.T) {
+	if _, err := New(Options{Enabled: false}); err != nil {
+		t.Fatalf("a disabled runtime demanded preconditions: %v", err)
 	}
 }
