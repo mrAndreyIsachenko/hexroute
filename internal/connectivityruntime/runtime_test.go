@@ -1,0 +1,295 @@
+package connectivityruntime
+
+import (
+	"crypto/rand"
+	"errors"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivitycheckpoint"
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityjournal"
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityreduce"
+	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+)
+
+const tick = control.Tick(1100)
+
+type advancingClock struct{ step int64 }
+
+func (clock *advancingClock) WallNow() time.Time {
+	clock.step++
+	return time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC).
+		Add(time.Duration(clock.step) * time.Millisecond)
+}
+
+func (clock *advancingClock) MonotonicNow() time.Duration {
+	return time.Duration(clock.step) * time.Millisecond
+}
+
+func activePolicy() connectivityreduce.PolicyDescriptor {
+	return connectivityreduce.PolicyDescriptor{
+		Present: true, Valid: true,
+		BundleGeneration: 7, RootGeneration: 3, UserGeneration: 2,
+		ManifestDigest: "b8f1c0d2e3a4956677889900aabbccddeeff00112233445566778899aabbccdd",
+	}
+}
+
+type harness struct {
+	runtime *Runtime
+	root    string
+	t       *testing.T
+}
+
+func newHarness(t *testing.T, enabled bool) *harness {
+	t.Helper()
+	base := t.TempDir()
+	return openHarness(t, base, enabled)
+}
+
+func openHarness(t *testing.T, base string, enabled bool) *harness {
+	t.Helper()
+	options := Options{Enabled: enabled, BootID: connectivity.FixtureBootID, Random: rand.Reader}
+	if enabled {
+		store, err := connectivitycheckpoint.Open(filepath.Join(base, "readmodel"),
+			connectivitycheckpoint.Options{})
+		if err != nil {
+			t.Fatalf("checkpoints: %v", err)
+		}
+		rootJournal, err := connectivityjournal.Open(filepath.Join(base, "root"),
+			policy.DomainRoot, connectivityjournal.Options{
+				NodeID: metadata.UUID("33333333-3333-4333-8333-333333333333"),
+				Clock:  &advancingClock{},
+			})
+		if err != nil {
+			t.Fatalf("root journal: %v", err)
+		}
+		userJournal, err := connectivityjournal.Open(filepath.Join(base, "user"),
+			policy.DomainUser, connectivityjournal.Options{
+				NodeID: metadata.UUID("44444444-4444-4444-8444-444444444444"),
+				Clock:  &advancingClock{},
+			})
+		if err != nil {
+			t.Fatalf("user journal: %v", err)
+		}
+		options.Checkpoints = store
+		options.RootJournal = rootJournal
+		options.UserJournal = userJournal
+	}
+	runtime, err := New(options)
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	return &harness{runtime: runtime, root: base, t: t}
+}
+
+func rootFacts() []connectivity.Fact {
+	facts := make([]connectivity.Fact, 0)
+	for _, fact := range connectivity.FixtureBaselineSet() {
+		if fact.Domain == policy.DomainRoot {
+			facts = append(facts, fact)
+		}
+	}
+	return facts
+}
+
+func userFacts() []connectivity.Fact {
+	facts := make([]connectivity.Fact, 0)
+	for _, fact := range connectivity.FixtureBaselineSet() {
+		if fact.Domain == policy.DomainUser {
+			facts = append(facts, fact)
+		}
+	}
+	return facts
+}
+
+// The gate is the whole point: with it off, the path that exists today is
+// untouched and no store is opened.
+func TestDisabledRuntimeDoesNothing(t *testing.T) {
+	runtime, err := New(Options{Enabled: false})
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	if runtime.Enabled() {
+		t.Fatal("a disabled runtime reports itself enabled")
+	}
+	if _, err := runtime.Publish(rootFacts(), policy.DomainRoot); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("got %v, want %v", err, ErrDisabled)
+	}
+	if _, err := runtime.Tick(TickInput{Policy: activePolicy(), EvaluationTick: tick}); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("got %v, want %v", err, ErrDisabled)
+	}
+	if runtime.Snapshot() != nil {
+		t.Fatal("a disabled runtime produced a snapshot")
+	}
+}
+
+func TestPublishAndReduce(t *testing.T) {
+	h := newHarness(t, true)
+	report, err := h.runtime.Publish(rootFacts(), policy.DomainRoot)
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if int(report.Accepted) != len(rootFacts()) {
+		t.Fatalf("accepted %d, want %d", report.Accepted, len(rootFacts()))
+	}
+	output, err := h.runtime.Tick(TickInput{Policy: activePolicy(), EvaluationTick: tick})
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if !output.Changed || output.Snapshot.Generation != 1 {
+		t.Fatalf("changed=%v generation=%d", output.Changed, output.Snapshot.Generation)
+	}
+	if len(output.Snapshot.Components) != len(connectivity.Components()) {
+		t.Fatal("the snapshot lost components")
+	}
+}
+
+// Each domain publishes into its own journal, and neither may use the other's.
+func TestDomainsAreSeparate(t *testing.T) {
+	h := newHarness(t, true)
+	if _, err := h.runtime.Publish(userFacts(), policy.DomainUser); err != nil {
+		t.Fatalf("user publish: %v", err)
+	}
+	report, err := h.runtime.Publish(userFacts(), policy.DomainRoot)
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if report.Accepted != 0 || report.Rejected == 0 {
+		t.Fatalf("user facts on the root channel were accepted: %+v", report)
+	}
+}
+
+// A reduction that changes nothing must not add a link to the lineage.
+func TestNoOpDoesNotCheckpoint(t *testing.T) {
+	h := newHarness(t, true)
+	if _, err := h.runtime.Publish(rootFacts(), policy.DomainRoot); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if _, err := h.runtime.Tick(TickInput{Policy: activePolicy(), EvaluationTick: tick}); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	store, err := connectivitycheckpoint.Open(filepath.Join(h.root, "readmodel"),
+		connectivitycheckpoint.Options{})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	first, err := store.Index()
+	if err != nil {
+		t.Fatalf("index: %v", err)
+	}
+
+	output, err := h.runtime.Tick(TickInput{Policy: activePolicy(), EvaluationTick: tick})
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if output.Changed {
+		t.Fatal("an empty batch counted as a change")
+	}
+	second, err := store.Index()
+	if err != nil {
+		t.Fatalf("index: %v", err)
+	}
+	if len(second) != len(first) {
+		t.Fatalf("lineage grew from %d to %d on a no-op", len(first), len(second))
+	}
+}
+
+// A restart must land on the same read model, not a fresh one.
+func TestRestartResumesTheReadModel(t *testing.T) {
+	base := t.TempDir()
+	h := openHarness(t, base, true)
+	if _, err := h.runtime.Publish(rootFacts(), policy.DomainRoot); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	first, err := h.runtime.Tick(TickInput{Policy: activePolicy(), EvaluationTick: tick})
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	before, err := first.Snapshot.Digest()
+	if err != nil {
+		t.Fatalf("digest: %v", err)
+	}
+
+	restarted := openHarness(t, base, true)
+	resume := restarted.runtime.Resume()
+	if !resume.Usable() {
+		t.Fatalf("restart could not resume: %s", resume)
+	}
+	snapshot := restarted.runtime.Snapshot()
+	if snapshot == nil {
+		t.Fatal("restart produced no snapshot")
+	}
+	after, err := snapshot.Digest()
+	if err != nil {
+		t.Fatalf("digest: %v", err)
+	}
+	if before != after {
+		t.Fatal("the restart landed on a different read model")
+	}
+
+	// The resumed acceptor must continue the host order, not restart it.
+	next := connectivity.FixtureBaseline(connectivity.ComponentDNS, 50)
+	report, err := restarted.runtime.Publish([]connectivity.Fact{next}, policy.DomainRoot)
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if report.Watermark != first.Snapshot.ConsumedHostSequence+1 {
+		t.Fatalf("watermark %d, want %d",
+			report.Watermark, first.Snapshot.ConsumedHostSequence+1)
+	}
+}
+
+// When the user daemon is not there, root records that fact about the link and
+// answers nothing on the user's behalf.
+func TestAbsentUserLinkLeavesUserComponentsToGoStale(t *testing.T) {
+	h := newHarness(t, true)
+	if _, err := h.runtime.Publish(rootFacts(), policy.DomainRoot); err != nil {
+		t.Fatalf("root publish: %v", err)
+	}
+	if _, err := h.runtime.Publish(userFacts(), policy.DomainUser); err != nil {
+		t.Fatalf("user publish: %v", err)
+	}
+	if _, err := h.runtime.Tick(TickInput{Policy: activePolicy(), EvaluationTick: tick}); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+
+	h.runtime.SetUserLink(UserLinkAbsent)
+	if h.runtime.UserLink() != UserLinkAbsent {
+		t.Fatal("the link state was not recorded")
+	}
+
+	// Time passes and the user domain says nothing. Root does not fill in.
+	output, err := h.runtime.Tick(TickInput{Policy: activePolicy(), EvaluationTick: tick + 400})
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	for _, record := range output.Snapshot.Components {
+		if record.Domain != policy.DomainUser {
+			continue
+		}
+		if record.State != connectivityreduce.StateStale {
+			t.Fatalf("%s is %q, want stale", record.Component, record.State)
+		}
+		// What the user last said is retained; nothing was invented over it.
+		if record.Source == "" {
+			t.Fatalf("%s lost its owner", record.Component)
+		}
+	}
+}
+
+func TestUnknownDomainIsRefused(t *testing.T) {
+	h := newHarness(t, true)
+	if _, err := h.runtime.Publish(rootFacts(), policy.Domain("other")); !errors.Is(err, ErrUnknownDomain) {
+		t.Fatalf("got %v, want %v", err, ErrUnknownDomain)
+	}
+}
+
+func TestEnabledRuntimeNeedsItsStores(t *testing.T) {
+	if _, err := New(Options{Enabled: true, BootID: connectivity.FixtureBootID}); !errors.Is(err, ErrMisconfigured) {
+		t.Fatalf("got %v, want %v", err, ErrMisconfigured)
+	}
+}

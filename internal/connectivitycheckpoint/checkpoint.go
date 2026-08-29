@@ -135,7 +135,11 @@ func (checkpoint Checkpoint) Validate() error {
 		checkpoint.ReducerVersion != connectivityreduce.ReducerVersion {
 		return fmt.Errorf("%w: reducer identity", ErrInvalidCheckpoint)
 	}
-	if checkpoint.ConsumedTo < checkpoint.ConsumedFrom {
+	// A reduction can be effective without consuming anything: a component
+	// passing its freshness deadline changes the read model on its own. Such
+	// a checkpoint folded no facts, and says so with an absent range rather
+	// than an inverted one.
+	if checkpoint.ConsumedFrom != 0 && checkpoint.ConsumedTo < checkpoint.ConsumedFrom {
 		return fmt.Errorf("%w: consumed range", ErrInvalidCheckpoint)
 	}
 	if err := checkpoint.Snapshot.Validate(); err != nil {
