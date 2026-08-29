@@ -1,10 +1,10 @@
 ## 1. Fact And Ownership Contracts
 
-- [ ] 1.1 Add bounded typed connectivity fact models, component tagged payloads, lifecycle states, source identity, boot identity, sequence, freshness and reason enums.
-- [ ] 1.2 Add strict canonical encoding and decoding that rejects unknown fields, trailing data, invalid bounds and non-canonical persisted facts.
-- [ ] 1.3 Add static root/user component ownership and authoritative/corroborating source declarations inside the compiled safety envelope.
-- [ ] 1.4 Add validation tests proving cross-domain facts, second authoritative owners, commands, arbitrary paths and protected credential classes are rejected.
-- [ ] 1.5 Add synthetic public fixtures for every component class without live endpoints, selectors, routes, session identities or credentials.
+- [x] 1.1 Add bounded typed connectivity fact models, component tagged payloads, lifecycle states, source identity, boot identity, sequence, freshness and reason enums.
+- [x] 1.2 Add strict canonical encoding and decoding that rejects unknown fields, trailing data, invalid bounds and non-canonical persisted facts.
+- [x] 1.3 Add static root/user component ownership and authoritative/corroborating source declarations inside the compiled safety envelope.
+- [x] 1.4 Add validation tests proving cross-domain facts, second authoritative owners, commands, arbitrary paths and protected credential classes are rejected.
+- [x] 1.5 Add synthetic public fixtures for every component class without live endpoints, selectors, routes, session identities or credentials.
 
 ## 2. Ordered Idempotent Acceptance
 
