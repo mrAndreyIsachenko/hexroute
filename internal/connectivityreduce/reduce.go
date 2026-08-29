@@ -35,6 +35,17 @@ type Input struct {
 	// rather than read so that reduction stays pure and replayable.
 	BootID         string
 	EvaluationTick control.Tick
+	// Wake, when set, reports that the host resumed from sleep since the
+	// prior reduction. It carries no state of its own: what it does is
+	// withdraw the assumption that anything observed before it still holds.
+	Wake *Wake
+}
+
+// Wake is a full-wake transition.
+type Wake struct {
+	// Tick is the monotonic tick the wake was observed at, in the same boot
+	// as the reduction that carries it.
+	Tick control.Tick
 }
 
 // Output is the result of one reduction.
@@ -61,6 +72,7 @@ func Reduce(input Input) (Output, error) {
 
 	components := newComponentTable(input.Prior)
 	sources := newSourceTable(input.Prior)
+	markRebaseline(components, input)
 	conflicts := newConflictTable(input.Prior)
 	consumed := uint64(0)
 	generation := uint64(0)
@@ -143,9 +155,20 @@ func validateInput(input Input) error {
 	if input.BootID == "" || input.EvaluationTick <= 0 {
 		return fmt.Errorf("%w: time context", ErrInvalidInput)
 	}
+	if input.Wake != nil && input.Wake.Tick <= 0 {
+		return fmt.Errorf("%w: wake tick", ErrInvalidInput)
+	}
 	if input.Prior != nil {
 		if err := input.Prior.Validate(); err != nil {
 			return fmt.Errorf("%w: prior snapshot", ErrInvalidInput)
+		}
+		// Monotonic time is only comparable inside one boot. Within a boot it
+		// may not run backwards: a deadline measured against a tick that
+		// regressed would make a stale component look fresh again.
+		if input.Prior.BootID == input.BootID &&
+			input.EvaluationTick < input.Prior.EvaluationTick {
+			return fmt.Errorf("%w: monotonic tick moved backwards within one boot",
+				ErrInvalidInput)
 		}
 	}
 	for _, event := range input.Events {
@@ -278,6 +301,7 @@ func applyAccepted(components componentTable, sources sourceTable, event Event) 
 	record.HostSequence = event.Acceptance.HostSequence
 	if event.Fact.Baseline {
 		record.HasBaseline = true
+		record.RebaselineRequired = false
 	}
 }
 
@@ -357,6 +381,12 @@ func deriveState(record ComponentRecord, input Input) ComponentState {
 	}
 	// A deadline is only meaningful inside the boot that issued it.
 	if record.BootID != input.BootID {
+		return StateStale
+	}
+	// Sleep is not evidence of health. Until the owner restates the component
+	// in full, what was observed before the wake describes a host that was
+	// not running.
+	if record.RebaselineRequired {
 		return StateStale
 	}
 	if input.EvaluationTick > record.FreshnessDeadline {
@@ -509,14 +539,15 @@ type semantic struct {
 }
 
 type semanticComponent struct {
-	Component      connectivity.Component  `json:"component"`
-	State          ComponentState          `json:"state"`
-	Observed       connectivity.Lifecycle  `json:"observed"`
-	Reason         connectivity.Reason     `json:"reason"`
-	Payload        connectivity.Payload    `json:"payload"`
-	HasBaseline    bool                    `json:"has_baseline"`
-	Conflicts      uint32                  `json:"conflicts"`
-	Corroborations []semanticCorroboration `json:"corroborations,omitempty"`
+	Component          connectivity.Component  `json:"component"`
+	State              ComponentState          `json:"state"`
+	Observed           connectivity.Lifecycle  `json:"observed"`
+	Reason             connectivity.Reason     `json:"reason"`
+	Payload            connectivity.Payload    `json:"payload"`
+	HasBaseline        bool                    `json:"has_baseline"`
+	RebaselineRequired bool                    `json:"rebaseline_required"`
+	Conflicts          uint32                  `json:"conflicts"`
+	Corroborations     []semanticCorroboration `json:"corroborations,omitempty"`
 }
 
 type semanticCorroboration struct {
@@ -545,13 +576,14 @@ func project(snapshot Snapshot) semantic {
 	}
 	for _, record := range snapshot.Components {
 		component := semanticComponent{
-			Component:   record.Component,
-			State:       record.State,
-			Observed:    record.Observed,
-			Reason:      record.Reason,
-			Payload:     record.Payload,
-			HasBaseline: record.HasBaseline,
-			Conflicts:   record.Conflicts,
+			Component:          record.Component,
+			State:              record.State,
+			Observed:           record.Observed,
+			Reason:             record.Reason,
+			Payload:            record.Payload,
+			HasBaseline:        record.HasBaseline,
+			RebaselineRequired: record.RebaselineRequired,
+			Conflicts:          record.Conflicts,
 		}
 		for _, entry := range record.Corroborations {
 			component.Corroborations = append(component.Corroborations, semanticCorroboration{
@@ -596,4 +628,27 @@ func effective(prior *Snapshot, next Snapshot) (bool, error) {
 		return false, err
 	}
 	return before != after, nil
+}
+
+// markRebaseline withdraws the assumption that time-sensitive observations
+// survived a sleep or a reboot.
+//
+// It runs before the batch is applied, so a baseline that arrives in the same
+// batch as the wake clears the requirement it just raised. That is the point:
+// a component whose owner has already restated it needs nothing further.
+func markRebaseline(components componentTable, input Input) {
+	rebooted := input.Prior != nil && input.Prior.BootID != input.BootID
+	if input.Wake == nil && !rebooted {
+		return
+	}
+	for component, record := range components {
+		if !component.TimeSensitive() {
+			continue
+		}
+		if record.HostSequence == 0 {
+			// Never observed: already unknown, and nothing to withdraw.
+			continue
+		}
+		record.RebaselineRequired = true
+	}
 }

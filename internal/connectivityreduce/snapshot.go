@@ -91,9 +91,14 @@ type ComponentRecord struct {
 
 	// HasBaseline records whether the owner has ever restated this component
 	// in full. Without one, a derived ready state rests on a partial stream.
-	HasBaseline    bool            `json:"has_baseline"`
-	Conflicts      uint32          `json:"conflicts"`
-	Corroborations []Corroboration `json:"corroborations,omitempty"`
+	HasBaseline bool `json:"has_baseline"`
+	// RebaselineRequired is set when the host woke or rebooted. Sleep is not
+	// evidence of health, so what was true before it is held stale until the
+	// owner restates the component in full — a fresh non-baseline fact is not
+	// enough, because it describes now without accounting for the gap.
+	RebaselineRequired bool            `json:"rebaseline_required,omitempty"`
+	Conflicts          uint32          `json:"conflicts"`
+	Corroborations     []Corroboration `json:"corroborations,omitempty"`
 }
 
 // SourceWatermark is one source's position and integrity as the snapshot sees

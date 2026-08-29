@@ -63,6 +63,17 @@ func Components() []Component {
 	}
 }
 
+// TimeSensitive reports whether a component's health can be invalidated by the
+// host having been asleep.
+//
+// Scoped routes are the exception: a route table does not stop being installed
+// because the machine slept. What traverses it can, and every one of those is
+// time-sensitive, so a wake still degrades the picture without pretending the
+// route table itself became unknown.
+func (component Component) TimeSensitive() bool {
+	return component != ComponentScopedRoutes
+}
+
 // Valid reports whether the component is one this build knows about.
 func (component Component) Valid() bool {
 	switch component {

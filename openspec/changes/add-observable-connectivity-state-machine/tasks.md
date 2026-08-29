@@ -43,10 +43,10 @@
 
 ## 6. Time, Sleep And Boot Semantics
 
-- [ ] 6.1 Add wall-clock, source-monotonic and boot-ID validation with no cross-boot reuse of monotonic freshness deadlines.
-- [ ] 6.2 Add a full-wake event that marks network, DNS, tunnel, relay and session components stale until complete owner baselines arrive.
-- [ ] 6.3 Add deterministic sleep/wake, wall-clock jump, reboot, delayed-baseline and stale-session tests.
-- [ ] 6.4 Prove pre-sleep or pre-reboot proposals cannot become current without fresh reduction under current boot, snapshot and policy generations.
+- [x] 6.1 Add wall-clock, source-monotonic and boot-ID validation with no cross-boot reuse of monotonic freshness deadlines.
+- [x] 6.2 Add a full-wake event that marks network, DNS, tunnel, relay and session components stale until complete owner baselines arrive.
+- [x] 6.3 Add deterministic sleep/wake, wall-clock jump, reboot, delayed-baseline and stale-session tests.
+- [x] 6.4 Prove pre-sleep or pre-reboot proposals cannot become current without fresh reduction under current boot, snapshot and policy generations.
 
 ## 7. Privilege-Separated Daemon Integration
 
