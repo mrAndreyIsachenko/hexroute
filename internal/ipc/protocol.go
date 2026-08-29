@@ -40,19 +40,24 @@ const (
 	ActionCommitPolicy           Action = "commit_policy"
 	ActionAbortPolicy            Action = "abort_policy"
 	ActionReconcilerShadowStatus Action = "reconciler_shadow_status"
+	// ActionPublishConnectivityFacts carries observations from the user
+	// domain to the root aggregate. It is a publication, not a request to
+	// act: it names no target and its result authorizes nothing.
+	ActionPublishConnectivityFacts Action = "publish_connectivity_facts"
 )
 
 type Request struct {
-	Version                uint16                         `json:"version"`
-	RequestID              string                         `json:"request_id"`
-	Action                 Action                         `json:"action"`
-	Target                 control.Component              `json:"target,omitempty"`
-	ExpectedGeneration     uint64                         `json:"expected_generation"`
-	PolicyStatus           *PolicyStatusRequest           `json:"policy_status,omitempty"`
-	PreparePolicy          *PreparePolicyRequest          `json:"prepare_policy,omitempty"`
-	CommitPolicy           *CommitPolicyRequest           `json:"commit_policy,omitempty"`
-	AbortPolicy            *AbortPolicyRequest            `json:"abort_policy,omitempty"`
-	ReconcilerShadowStatus *ReconcilerShadowStatusRequest `json:"reconciler_shadow_status,omitempty"`
+	Version                  uint16                           `json:"version"`
+	RequestID                string                           `json:"request_id"`
+	Action                   Action                           `json:"action"`
+	Target                   control.Component                `json:"target,omitempty"`
+	ExpectedGeneration       uint64                           `json:"expected_generation"`
+	PolicyStatus             *PolicyStatusRequest             `json:"policy_status,omitempty"`
+	PreparePolicy            *PreparePolicyRequest            `json:"prepare_policy,omitempty"`
+	CommitPolicy             *CommitPolicyRequest             `json:"commit_policy,omitempty"`
+	AbortPolicy              *AbortPolicyRequest              `json:"abort_policy,omitempty"`
+	ReconcilerShadowStatus   *ReconcilerShadowStatusRequest   `json:"reconciler_shadow_status,omitempty"`
+	PublishConnectivityFacts *PublishConnectivityFactsRequest `json:"publish_connectivity_facts,omitempty"`
 }
 
 type ErrorCode string
@@ -67,18 +72,19 @@ const (
 )
 
 type Response struct {
-	Version                uint16                        `json:"version"`
-	RequestID              string                        `json:"request_id"`
-	OK                     bool                          `json:"ok"`
-	Error                  ErrorCode                     `json:"error,omitempty"`
-	Status                 *Status                       `json:"status,omitempty"`
-	Diagnostics            *Diagnostics                  `json:"diagnostics,omitempty"`
-	Resume                 *ResumeResult                 `json:"resume,omitempty"`
-	PolicyStatus           *PolicyStatusResult           `json:"policy_status,omitempty"`
-	PreparePolicy          *PreparePolicyResult          `json:"prepare_policy,omitempty"`
-	CommitPolicy           *CommitPolicyResult           `json:"commit_policy,omitempty"`
-	AbortPolicy            *AbortPolicyResult            `json:"abort_policy,omitempty"`
-	ReconcilerShadowStatus *ReconcilerShadowStatusResult `json:"reconciler_shadow_status,omitempty"`
+	Version                  uint16                          `json:"version"`
+	RequestID                string                          `json:"request_id"`
+	OK                       bool                            `json:"ok"`
+	Error                    ErrorCode                       `json:"error,omitempty"`
+	Status                   *Status                         `json:"status,omitempty"`
+	Diagnostics              *Diagnostics                    `json:"diagnostics,omitempty"`
+	Resume                   *ResumeResult                   `json:"resume,omitempty"`
+	PolicyStatus             *PolicyStatusResult             `json:"policy_status,omitempty"`
+	PreparePolicy            *PreparePolicyResult            `json:"prepare_policy,omitempty"`
+	CommitPolicy             *CommitPolicyResult             `json:"commit_policy,omitempty"`
+	AbortPolicy              *AbortPolicyResult              `json:"abort_policy,omitempty"`
+	ReconcilerShadowStatus   *ReconcilerShadowStatusResult   `json:"reconciler_shadow_status,omitempty"`
+	PublishConnectivityFacts *PublishConnectivityFactsResult `json:"publish_connectivity_facts,omitempty"`
 }
 
 type Status struct {
@@ -174,6 +180,14 @@ func (request Request) Validate() error {
 			payloads != 1 || request.ReconcilerShadowStatus == nil {
 			return ErrInvalidReconcilerMessage
 		}
+	case ActionPublishConnectivityFacts:
+		if request.Target != "" || request.ExpectedGeneration != 0 ||
+			payloads != 1 || request.PublishConnectivityFacts == nil {
+			return ErrInvalidConnectivityMessage
+		}
+		if err := request.PublishConnectivityFacts.Validate(); err != nil {
+			return err
+		}
 	default:
 		return ErrUnknownAction
 	}
@@ -253,6 +267,7 @@ func (request Request) payloadCount() int {
 		request.CommitPolicy != nil,
 		request.AbortPolicy != nil,
 		request.ReconcilerShadowStatus != nil,
+		request.PublishConnectivityFacts != nil,
 	} {
 		if present {
 			payloads++
