@@ -35,11 +35,11 @@
 ## 5. Journal, Checkpoint And Replay
 
 - [x] 5.1 Extend separate root and user crash-safe priority journals with validated connectivity-fact records and accepted host-sequence metadata.
-- [ ] 5.2 Add an atomic generation-guarded aggregate checkpoint and bounded append-only index containing checkpoint/parent identity, prior snapshot digest, consumed host sequence range and source watermarks, exact policy and reducer identity, and canonical snapshot/diff/proposal output digests.
-- [ ] 5.3 Implement startup lineage validation, bounded search for the newest fully valid retained read-model ancestor and deterministic replay of a continuous accepted-fact journal under the current active policy; never move the policy active pointer backward.
+- [x] 5.2 Add an atomic generation-guarded aggregate checkpoint and bounded append-only index containing checkpoint/parent identity, prior snapshot digest, consumed host sequence range and source watermarks, exact policy and reducer identity, and canonical snapshot/diff/proposal output digests.
+- [x] 5.3 Implement startup lineage validation, bounded search for the newest fully valid retained read-model ancestor and deterministic replay of a continuous accepted-fact journal under the current active policy; never move the policy active pointer backward.
 - [x] 5.4 Extend retention so the latest complete baseline for every configured component and critical transitions survive before diagnostic eviction.
-- [ ] 5.5 Add crash-point tests around journal/index append, checkpoint file sync, rename and directory sync plus parent-link tamper, output-digest tamper, missing ancestor, bounded-depth exhaustion, corrupted checkpoint and truncated-journal recovery.
-- [ ] 5.6 Add bounded-overflow tests proving an overflow condition is visible and no guessed healthy state is loaded.
+- [x] 5.5 Add crash-point tests around journal/index append, checkpoint file sync, rename and directory sync plus parent-link tamper, output-digest tamper, missing ancestor, bounded-depth exhaustion, corrupted checkpoint and truncated-journal recovery.
+- [x] 5.6 Add bounded-overflow tests proving an overflow condition is visible and no guessed healthy state is loaded.
 
 ## 6. Time, Sleep And Boot Semantics
 
