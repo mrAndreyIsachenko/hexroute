@@ -16,12 +16,12 @@
 
 ## 3. Normalized Snapshot And Pure Reducer
 
-- [ ] 3.1 Add the versioned `ConnectivitySnapshot` model with source watermarks, policy generations, component records, freshness, gaps, conflicts and aggregate summary.
-- [ ] 3.2 Implement a pure reducer from validated prior snapshot, ordered accepted facts and exact policy-generation descriptor with no I/O or environment access.
-- [ ] 3.3 Implement deterministic policy-aware summary derivation while retaining every configured component record in local status.
-- [ ] 3.4 Implement semantic no-op detection and exactly-once snapshot-generation advancement for effective changes.
-- [ ] 3.5 Mark desired state and proposals unauthorized when active policy is absent, invalid, suspended or generation-mismatched while preserving observations.
-- [ ] 3.6 Add canonical determinism, permutation, no-op, generation-change and partial-component-failure tests.
+- [x] 3.1 Add the versioned `ConnectivitySnapshot` model with source watermarks, policy generations, component records, freshness, gaps, conflicts and aggregate summary.
+- [x] 3.2 Implement a pure reducer from validated prior snapshot, ordered accepted facts and exact policy-generation descriptor with no I/O or environment access.
+- [x] 3.3 Implement deterministic policy-aware summary derivation while retaining every configured component record in local status.
+- [x] 3.4 Implement semantic no-op detection and exactly-once snapshot-generation advancement for effective changes.
+- [x] 3.5 Mark desired state and proposals unauthorized when active policy is absent, invalid, suspended or generation-mismatched while preserving observations.
+- [x] 3.6 Add canonical determinism, permutation, no-op, generation-change and partial-component-failure tests.
 
 ## 4. Desired State, Diff And Proposals
 
