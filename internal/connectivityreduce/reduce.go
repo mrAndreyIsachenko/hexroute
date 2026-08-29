@@ -27,6 +27,10 @@ type Input struct {
 	Prior  *Snapshot
 	Events []Event
 	Policy PolicyDescriptor
+	// PolicyComponents is what the active policy asks of each component. It
+	// is empty when policy manages nothing, which is not the same as policy
+	// being absent.
+	PolicyComponents []ComponentPolicy
 	// BootID and EvaluationTick are the time context. They are supplied
 	// rather than read so that reduction stays pure and replayable.
 	BootID         string
@@ -36,6 +40,11 @@ type Input struct {
 // Output is the result of one reduction.
 type Output struct {
 	Snapshot Snapshot
+	Desired  DesiredState
+	Diff     Diff
+	// Proposals are descriptions of divergence. Nothing in this build can
+	// execute one.
+	Proposals []Proposal
 	// Changed reports whether the reduction was semantically effective. A
 	// no-op leaves the generation where it was.
 	Changed bool
@@ -108,7 +117,26 @@ func Reduce(input Input) (Output, error) {
 	if err := snapshot.Validate(); err != nil {
 		return Output{}, err
 	}
-	return Output{Snapshot: snapshot, Changed: changed || input.Prior == nil}, nil
+
+	desired, err := Desire(EffectivePolicy{
+		Descriptor: input.Policy, Components: input.PolicyComponents,
+	})
+	if err != nil {
+		return Output{}, err
+	}
+	diff := Compare(snapshot, desired, input.Prior)
+	proposals, err := Propose(snapshot, diff)
+	if err != nil {
+		return Output{}, err
+	}
+
+	return Output{
+		Snapshot:  snapshot,
+		Desired:   desired,
+		Diff:      diff,
+		Proposals: proposals,
+		Changed:   changed || input.Prior == nil,
+	}, nil
 }
 
 func validateInput(input Input) error {

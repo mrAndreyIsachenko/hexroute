@@ -25,12 +25,12 @@
 
 ## 4. Desired State, Diff And Proposals
 
-- [ ] 4.1 Add a read-only adapter from the revalidated active effective policy to bounded per-domain desired connectivity state.
-- [ ] 4.2 Implement `converged`, `missing`, `unexpected`, `divergent`, `stale`, `unknown`, `conflict` and `grandfathered_noncompliant` diff classification.
-- [ ] 4.3 Add immutable digest-addressed `ReconciliationProposal` values bound to snapshot, bundle and owning-domain policy generations and canonical diff digest.
-- [ ] 4.4 Reject proposal construction containing commands, arguments, paths, endpoints, selectors, process details or credential references.
-- [ ] 4.5 Add tests proving established newly unauthorized state is reported but never disconnected and stale proposals cannot be resumed after state or policy changes.
-- [ ] 4.6 Add an architectural test proving no IPC operation, callback or package dependency can execute a reconciliation proposal or mint an action lease.
+- [x] 4.1 Add a read-only adapter from the revalidated active effective policy to bounded per-domain desired connectivity state.
+- [x] 4.2 Implement `converged`, `missing`, `unexpected`, `divergent`, `stale`, `unknown`, `conflict` and `grandfathered_noncompliant` diff classification.
+- [x] 4.3 Add immutable digest-addressed `ReconciliationProposal` values bound to snapshot, bundle and owning-domain policy generations and canonical diff digest.
+- [x] 4.4 Reject proposal construction containing commands, arguments, paths, endpoints, selectors, process details or credential references.
+- [x] 4.5 Add tests proving established newly unauthorized state is reported but never disconnected and stale proposals cannot be resumed after state or policy changes.
+- [x] 4.6 Add an architectural test proving no IPC operation, callback or package dependency can execute a reconciliation proposal or mint an action lease.
 
 ## 5. Journal, Checkpoint And Replay
 
