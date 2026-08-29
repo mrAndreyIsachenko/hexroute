@@ -32,6 +32,11 @@ const (
 	SchemaDiagnostic    Schema = "runtime.diagnostic"
 	SchemaSleep         Schema = "node.sleep"
 	SchemaPolicy        Schema = "policy.lifecycle"
+
+	// A baseline restates a component in full and is what clears a gap, so
+	// it is retained ahead of ordinary observations.
+	SchemaConnectivityBaseline    Schema = "connectivity.baseline"
+	SchemaConnectivityObservation Schema = "connectivity.observation"
 )
 
 type Priority string
@@ -223,21 +228,25 @@ var (
 func DefinitionFor(schema Schema) (Definition, bool) {
 	var priority Priority
 	switch schema {
-	case SchemaObservation:
+	case SchemaObservation, SchemaConnectivityObservation:
 		priority = PriorityOperational
 	case SchemaDiagnostic:
 		priority = PriorityDiagnostic
 	case SchemaTransition, SchemaAction, SchemaIncident, SchemaDeployment,
-		SchemaConfigVersion, SchemaSleep, SchemaPolicy:
+		SchemaConfigVersion, SchemaSleep, SchemaPolicy, SchemaConnectivityBaseline:
 		priority = PriorityCritical
 	default:
 		return Definition{}, false
+	}
+	maximum := MaxPayloadBytes
+	if schema == SchemaConnectivityBaseline || schema == SchemaConnectivityObservation {
+		maximum = MaxConnectivityPayloadBytes
 	}
 	return Definition{
 		Schema:          schema,
 		Version:         SchemaVersion,
 		Priority:        priority,
-		MaxPayloadBytes: MaxPayloadBytes,
+		MaxPayloadBytes: maximum,
 	}, true
 }
 
@@ -344,6 +353,8 @@ func newPayload(schema Schema) any {
 		return &Sleep{}
 	case SchemaPolicy:
 		return &PolicyLifecycle{}
+	case SchemaConnectivityBaseline, SchemaConnectivityObservation:
+		return &ConnectivityFact{}
 	default:
 		return nil
 	}
@@ -351,6 +362,10 @@ func newPayload(schema Schema) any {
 
 func validatePayload(schema Schema, payload any) error {
 	switch schema {
+	case SchemaConnectivityBaseline:
+		return validateConnectivityFact(payload, true)
+	case SchemaConnectivityObservation:
+		return validateConnectivityFact(payload, false)
 	case SchemaObservation:
 		value, ok := asObservation(payload)
 		if !ok || !validComponent(value.Component) || !validHealth(value.Health) ||
