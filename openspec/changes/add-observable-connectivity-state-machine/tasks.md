@@ -8,11 +8,11 @@
 
 ## 2. Ordered Idempotent Acceptance
 
-- [ ] 2.1 Implement canonical fact digests and source identity checks for `(source_id, boot_id, source_sequence)`.
-- [ ] 2.2 Implement durable monotonic host acceptance sequencing with exact-retry idempotency and conflicting-reuse rejection.
-- [ ] 2.3 Implement explicit source-gap tracking and clearing only through a later validated complete baseline fact.
-- [ ] 2.4 Add duplicate, reordered, delayed, conflicting and sequence-gap unit and race tests across independent sources.
-- [ ] 2.5 Prove corroborating facts remain visible as evidence but cannot replace authoritative component state.
+- [x] 2.1 Implement canonical fact digests and source identity checks for `(source_id, boot_id, source_sequence)`.
+- [x] 2.2 Implement durable monotonic host acceptance sequencing with exact-retry idempotency and conflicting-reuse rejection.
+- [x] 2.3 Implement explicit source-gap tracking and clearing only through a later validated complete baseline fact.
+- [x] 2.4 Add duplicate, reordered, delayed, conflicting and sequence-gap unit and race tests across independent sources.
+- [x] 2.5 Prove corroborating facts remain visible as evidence but cannot replace authoritative component state.
 
 ## 3. Normalized Snapshot And Pure Reducer
 
