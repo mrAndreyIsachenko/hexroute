@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt fuzz ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-summary policy-qualification-arm-sleep postgres-test race secret-test shell-test spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
+.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt fuzz ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-summary policy-qualification-arm-sleep postgres-test race secret-test shell-test shell-test-tools spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
 
 build:
 	go build ./cmd/...
@@ -99,7 +99,21 @@ terraform-test:
 terraform-state-test:
 	tests/terraform_state_policy_test.sh
 
-shell-test: build-observe-root build-observe-user build-policy-installer build-policy-qualification
+# The shell contracts reach for tools the Go gate does not. An absent one used
+# to surface as the contract it was being used to check — "missing container
+# contract pattern" when the truth was "no ripgrep" — so the dependency is
+# declared here, once, by the target that runs them.
+SHELL_TEST_TOOLS := rg terraform
+
+shell-test-tools:
+	@for tool in $(SHELL_TEST_TOOLS); do \
+		command -v "$$tool" >/dev/null 2>&1 || { \
+			printf 'shell-test requires %s, which is not installed\n' "$$tool" >&2; \
+			exit 1; \
+		}; \
+	done
+
+shell-test: shell-test-tools build-observe-root build-observe-user build-policy-installer build-policy-qualification
 	bash -n scripts/baseline/*.sh scripts/macos/*.sh scripts/ops/*.sh scripts/*.sh tests/*.sh
 	tests/baseline_archives_test.sh
 	tests/emergency_restore_test.sh
