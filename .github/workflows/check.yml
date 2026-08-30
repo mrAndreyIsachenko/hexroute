@@ -1,0 +1,102 @@
+# The repository's claim is regression evidence, and evidence nobody runs is a
+# claim rather than a fact. This runs the same gate a developer runs — the
+# `check` target itself, not a re-listing of its steps that could drift from it.
+#
+# Third-party actions are pinned to commit SHAs. A moving tag is a dependency
+# that can change under a repository whose whole argument is that nothing moves
+# without a gate.
+
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The full gate, on the platform Hexroute targets. macOS is not a preference
+  # here: `shell-test` lints launchd property lists with `plutil`, which exists
+  # nowhere else.
+  check:
+    name: make check (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # repositoryguard scans `git log --all` for forbidden artifact names.
+          # The default shallow clone would let it examine one commit and pass
+          # without having checked anything.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: '1.9.8'
+          terraform_wrapper: false
+      - name: Install the OpenSpec CLI
+        # Pinned: `spec-check` runs `openspec validate --strict`, and a
+        # validator that changes on its own would make the gate advisory.
+        run: npm install --global @fission-ai/openspec@1.10.0
+      - name: make check
+        env:
+          OPENSPEC_TELEMETRY: '0'
+        run: make check
+
+  # The same Go gate on Linux. Nothing deploys there, but `peer_linux.go` and
+  # `rename_noreplace_linux.go` exist and are otherwise never executed by
+  # anything: without this they compile in review and run nowhere.
+  linux:
+    name: go (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # repositoryguard scans `git log --all` for forbidden artifact names.
+          # The default shallow clone would let it examine one commit and pass
+          # without having checked anything.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make fmt
+      - run: make vet
+      - run: make build
+      - run: make test
+      - run: make race
+      - run: make secret-test
+
+  # `make check` cannot reach these: they need a live PostgreSQL, and the macOS
+  # runner has no container daemon. The suite behind this job is the one that
+  # most recently caught a real defect, so it is worth its own runner rather
+  # than being left to whoever remembers to run it.
+  postgres:
+    name: make postgres-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # repositoryguard scans `git log --all` for forbidden artifact names.
+          # The default shallow clone would let it examine one commit and pass
+          # without having checked anything.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make postgres-test
