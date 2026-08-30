@@ -85,8 +85,10 @@ is mid-qualification.
    [`docs/testing/operational-acceptance.md`](testing/operational-acceptance.md).
 2. Qualify the observable connectivity state machine without enabling
    production mutations. Implementation is complete and running observe-only;
-   what remains is the replay harness, the synthetic fault traces, the shadow
-   comparison recorder and the evidence chain the gate requires.
+   the replay harness, the thirteen fault traces and the shadow comparison
+   recorder exist. What remains is the evidence chain itself: 72 eligible
+   hours, two sleep/wake cycles, one reboot and every trace injected. That is
+   produced by running the host, and its evidence is retained privately.
 3. Complete root observe-only soak and resolve every materially divergent
    proposed action without enabling mutations.
 4. Run an evidence-based provider-B bake-off and deploy an independent
