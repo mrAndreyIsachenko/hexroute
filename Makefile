@@ -22,6 +22,7 @@ build-ctl:
 build-connectivity-replay:
 	mkdir -p bin
 	go build -o bin/hexroute-connectivity-replay ./cmd/hexroute-connectivity-replay
+	go build -o bin/hexroute-connectivity-qualify ./cmd/hexroute-connectivity-qualify
 
 build-policy:
 	mkdir -p bin

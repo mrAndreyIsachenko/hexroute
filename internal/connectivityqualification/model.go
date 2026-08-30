@@ -75,6 +75,11 @@ const (
 
 // Binding ties a record to the evidence it describes.
 //
+// It is per record, not per chain. A fault injection produces its own
+// checkpoint and its own outputs, and a result that named the chain's opening
+// evidence would be a result read against something it was not derived from.
+// Only the session is fixed for the whole chain.
+//
 // Every digest is required. A record that named only some of them would let a
 // result be read against evidence it was not derived from, which is the way a
 // chain stops meaning anything while still verifying.
