@@ -223,7 +223,11 @@ func Inspect(root string, binding Binding) (Progress, error) {
 		}
 		switch record.Kind {
 		case KindEligibleWindow:
-			if record.EligibleWindow != nil {
+			// A diverged window is time that passed without being eligible:
+			// the host was up and nothing was observing it, or the clocks
+			// disagreed about how long it was. Counting it would let a gate
+			// reach 72 hours on the strength of the hours it failed.
+			if record.EligibleWindow != nil && record.Result != ResultDiverged {
 				progress.EligibleSeconds += record.EligibleWindow.Seconds
 			}
 		case KindSleepWake:
@@ -242,6 +246,8 @@ func Inspect(root string, binding Binding) (Progress, error) {
 			if record.Verification != nil && record.Verification.Diverged > 0 {
 				progress.Diverged++
 			}
+		case KindClockAnomaly:
+			// Already counted: an anomaly record is diverged by construction.
 		}
 	}
 	for _, fault := range connectivitytrace.Faults() {
