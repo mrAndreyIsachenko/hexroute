@@ -65,8 +65,11 @@ if grep -q '__HEXROUTE_USERD_' "$rendered"; then
 fi
 argument_count="$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments' "$rendered" |
   awk '/^    /{count++} END{print count+0}')"
-if [[ "$argument_count" != "8" ]]; then
-  echo "rendered plist has $argument_count arguments, expected 8" >&2
+# Eight for the daemon's own operation, two more to name the root socket it
+# publishes what it observed to. The count is pinned so an argument cannot be
+# added without someone deciding it belongs.
+if [[ "$argument_count" != "10" ]]; then
+  echo "rendered plist has $argument_count arguments, expected 10" >&2
   exit 1
 fi
 

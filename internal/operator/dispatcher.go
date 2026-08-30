@@ -7,9 +7,21 @@ import (
 )
 
 type Dispatcher struct {
-	readOnly ReadHandler
-	mutating MutationHandler
-	policy   PolicyHandler
+	readOnly     ReadHandler
+	mutating     MutationHandler
+	policy       PolicyHandler
+	connectivity ConnectivityHandler
+}
+
+// ConnectivityHandler receives what the user domain observed.
+//
+// It is separate from the mutation and policy handlers because a publication
+// is not an action: there is no target, nothing to authorize and no result the
+// caller could act on. A dispatcher without one refuses the publication rather
+// than dropping it silently, so a user daemon publishing into a root that
+// cannot receive learns that it is talking to nothing.
+type ConnectivityHandler interface {
+	Publish(context.Context, ipc.Request) ipc.Response
 }
 
 type ReadHandler interface {
@@ -29,14 +41,18 @@ func NewDispatcher(
 	readOnly ReadHandler,
 	mutating MutationHandler,
 	policyHandler PolicyHandler,
+	connectivity ConnectivityHandler,
 ) (*Dispatcher, error) {
 	if readOnly == nil || mutating == nil || policyHandler == nil {
 		return nil, ErrInvalidController
 	}
+	// connectivity may be absent: the read model is behind a gate, and a root
+	// running without it must still serve every other action.
 	return &Dispatcher{
-		readOnly: readOnly,
-		mutating: mutating,
-		policy:   policyHandler,
+		readOnly:     readOnly,
+		mutating:     mutating,
+		policy:       policyHandler,
+		connectivity: connectivity,
 	}, nil
 }
 
@@ -50,6 +66,14 @@ func (dispatcher *Dispatcher) HandleIPC(
 	switch request.Action {
 	case ipc.ActionStatus, ipc.ActionExportDiagnostics:
 		return dispatcher.handleReadWithPolicy(ctx, request)
+	case ipc.ActionPublishConnectivityFacts:
+		if dispatcher.connectivity == nil {
+			return ipc.Response{
+				Version: ipc.ProtocolVersion, RequestID: request.RequestID,
+				Error: ipc.ErrorPrecondition,
+			}
+		}
+		return dispatcher.connectivity.Publish(ctx, request)
 	case ipc.ActionResumeTarget, ipc.ActionRescuePritunlService:
 		if !dispatcher.policy.MutationAllowed() {
 			return ipc.Response{

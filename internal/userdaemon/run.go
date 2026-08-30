@@ -72,6 +72,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	configPath := flags.String("config", "", "observe-only configuration")
 	statePath := flags.String("state", "", "candidate state snapshot")
 	socketPath := flags.String("socket", "", "typed local operator socket")
+	// The root aggregate's socket. Given one, this daemon publishes what it
+	// observed; without one it publishes nothing and nothing else changes.
+	rootSocketPath := flags.String(
+		"publish-connectivity-to", "", "root socket to publish connectivity facts to")
 
 	if err := flags.Parse(args); err != nil {
 		return rejected(errorLog, logging.ReasonInvalidFlags)
@@ -232,7 +236,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err := controller.SetResumePolicyEvaluator(policyHandler); err != nil {
 			return 1
 		}
-		dispatcher, err := operator.NewDispatcher(controller, broker, policyHandler)
+		dispatcher, err := operator.NewDispatcher(
+			// The user daemon publishes facts; it never receives them.
+			controller, broker, policyHandler, nil)
 		if err != nil {
 			return 1
 		}
@@ -264,6 +270,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			<-done
 		}()
 	}
+	// Off unless a root socket is given, matching the root gate: a user daemon
+	// started without one behaves exactly as it did before this existed.
+	publisher, err := newFactPublisher(bootIdentity(), *rootSocketPath)
+	if err != nil {
+		return rejected(errorLog, logging.ReasonInvalidConfiguration)
+	}
 	if err := observeLoop(
 		ctx,
 		config.Interval,
@@ -276,6 +288,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		requests,
 		serverDone,
 		infoLog,
+		publisher,
 	); err != nil {
 		return 1
 	}
@@ -390,6 +403,7 @@ func observeLoop(
 	requests <-chan operator.Envelope,
 	serverDone <-chan error,
 	logger *logging.Logger,
+	publisher *factPublisher,
 ) error {
 	if ctx == nil ||
 		interval <= 0 ||
@@ -414,6 +428,12 @@ func observeLoop(
 		now := time.Now()
 		at := nowTick()
 		summary := cycler.Observe(ctx, at, now.Unix())
+		// Publishing happens before the daemon acts on its own conclusions and
+		// cannot change them: a root that is unreachable, refusing or absent
+		// leaves this loop exactly as it was.
+		if err := publisher.Publish(ctx, summary.Observed); err != nil {
+			return err
+		}
 		if err := store.Save(summary.Plan.Snapshot); err != nil {
 			return err
 		}

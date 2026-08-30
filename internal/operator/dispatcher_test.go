@@ -76,7 +76,7 @@ func TestDispatcherSeparatesReadOnlyAndMutatingRequests(t *testing.T) {
 	readOnly := &countingReadHandler{}
 	mutating := &countingMutationHandler{}
 	policyHandler := &countingPolicyHandler{allowed: true}
-	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler)
+	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler, nil)
 	if err != nil {
 		t.Fatalf("NewDispatcher() error: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestDispatcherBlocksMutationsDuringPolicyMismatch(t *testing.T) {
 	readOnly := &countingReadHandler{}
 	mutating := &countingMutationHandler{}
 	policyHandler := &countingPolicyHandler{allowed: false}
-	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler)
+	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,8 +152,7 @@ func TestDispatcherAddsMatchingPolicySnapshotToReadStatus(t *testing.T) {
 	}
 	policyHandler := &countingPolicyHandler{status: policyStatus}
 	dispatcher, err := NewDispatcher(
-		successfulReadHandler{}, &countingMutationHandler{}, policyHandler,
-	)
+		successfulReadHandler{}, &countingMutationHandler{}, policyHandler, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

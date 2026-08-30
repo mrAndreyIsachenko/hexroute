@@ -148,6 +148,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	nowTick := func() control.Tick {
 		return publisher.BaseTick() + control.Tick(time.Since(started)/time.Second)
 	}
+	// Opened before the operator socket: the dispatcher needs the publisher,
+	// and a root that cannot receive user facts should fail at startup rather
+	// than accept publications it will drop.
+	reader, err := connectivityhost.Open(*readModelRoot, bootIdentity())
+	if err != nil {
+		return rejected(errorLog, logging.ReasonInvalidConfiguration)
+	}
 	initial := control.NewSnapshot(control.StateSuspended)
 	controller, err := operator.NewController(
 		ipc.RoleRoot,
@@ -191,7 +198,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err := controller.SetResumePolicyEvaluator(policyHandler); err != nil {
 			return 1
 		}
-		dispatcher, err := operator.NewDispatcher(controller, broker, policyHandler)
+		dispatcher, err := operator.NewDispatcher(
+			controller, broker, policyHandler, connectivityPublisher{reader: reader})
 		if err != nil {
 			return 1
 		}
@@ -222,10 +230,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			_ = server.Close()
 			<-done
 		}()
-	}
-	reader, err := connectivityhost.Open(*readModelRoot, bootIdentity())
-	if err != nil {
-		return rejected(errorLog, logging.ReasonInvalidConfiguration)
 	}
 	if err := observeLoop(
 		runCtx,
