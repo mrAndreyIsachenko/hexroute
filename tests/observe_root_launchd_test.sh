@@ -43,3 +43,18 @@ if grep -Eqi 'route[[:space:]]+(add|change|delete)|kill(all)?|pkill|launchctl[[:
 fi
 
 "$ROOT/bin/hexrouted" --check --config "$CONFIG" >/dev/null
+
+# The soak observer is optional and its session is never committed: a session
+# identity in a versioned plist would be shared by every install, and a chain
+# holding two runs adds up to a number about neither.
+if grep -q 'connectivity-qualification' "$PLIST"; then
+  echo "a qualification session is baked into the versioned plist" >&2
+  exit 1
+fi
+grep -q 'connectivity-qualification-session' "$INSTALLER"
+grep -q 'SESSION_UUID must be a lowercase UUID' "$INSTALLER"
+# Spliced after the plist is installed, or the arguments would be written to a
+# file the next line overwrites.
+splice_line="$(grep -n 'add_qualification "$PLIST_DEST"' "$INSTALLER" | cut -d: -f1)"
+plist_install_line="$(grep -n '"$PLIST_SOURCE" "$PLIST_DEST"' "$INSTALLER" | cut -d: -f1)"
+[[ "$splice_line" -gt "$plist_install_line" ]]

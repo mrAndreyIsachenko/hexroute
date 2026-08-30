@@ -44,11 +44,39 @@ bootstrap_with_retry() {
   return 1
 }
 
+# add_qualification splices the soak observer's arguments into the installed
+# plist.
+#
+# They are added here rather than kept in the versioned plist because a session
+# identity is what keeps one soak apart from another. Committing one would mean
+# every install shared it, and a chain holding two runs adds up to a number
+# about neither.
+add_qualification() {
+  local plist="$1"
+  local session="$2"
+  local chain="$STATE_DIR/connectivity-qualification"
+  local buddy="/usr/libexec/PlistBuddy"
+  [[ -x "$buddy" ]] || die "PlistBuddy is required to enable qualification"
+  "$buddy" -c "Add :ProgramArguments: string --connectivity-qualification" \
+    -c "Add :ProgramArguments: string $chain" \
+    -c "Add :ProgramArguments: string --connectivity-qualification-session" \
+    -c "Add :ProgramArguments: string $session" \
+    "$plist" >/dev/null
+  /usr/bin/install -d -o root -g wheel -m 0700 "$chain"
+}
+
 install_observer() {
   require_root
   local binary="${1:-}"
   local config="${2:-}"
-  [[ -n "$binary" && -n "$config" ]] || die "usage: $0 install BINARY PRIVATE_CONFIG"
+  # Optional. Without it the daemon runs exactly the path it ran before the
+  # soak observer existed.
+  local session="${3:-}"
+  [[ -n "$binary" && -n "$config" ]] || die "usage: $0 install BINARY PRIVATE_CONFIG [SESSION_UUID]"
+  if [[ -n "$session" ]]; then
+    [[ "$session" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] ||
+      die "SESSION_UUID must be a lowercase UUID"
+  fi
   require_regular_file "$binary"
   require_regular_file "$config"
   require_regular_file "$PLIST_SOURCE"
@@ -64,6 +92,9 @@ install_observer() {
   /usr/bin/install -o root -g wheel -m 0755 "$binary" "$BIN_DIR/hexrouted"
   /usr/bin/install -o root -g wheel -m 0600 "$config" "$CONFIG_DIR/root-observe.json"
   /usr/bin/install -o root -g wheel -m 0644 "$PLIST_SOURCE" "$PLIST_DEST"
+  if [[ -n "$session" ]]; then
+    add_qualification "$PLIST_DEST" "$session"
+  fi
 
   "$BIN_DIR/hexrouted" \
     --check \
@@ -106,6 +137,6 @@ case "${1:-}" in
     logs_observer
     ;;
   *)
-    die "usage: $0 {install BINARY PRIVATE_CONFIG|uninstall|status|logs}"
+    die "usage: $0 {install BINARY PRIVATE_CONFIG [SESSION_UUID]|uninstall|status|logs}"
     ;;
 esac

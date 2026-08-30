@@ -100,6 +100,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if *heartbeatPath != "" {
 			return rejected(errorLog, logging.ReasonInvalidFlags)
 		}
+		// A check that passes what the run would refuse is worse than no
+		// check: the daemon is bootstrapped with KeepAlive, so a session the
+		// observer cannot parse becomes a restart loop rather than a message
+		// to whoever installed it.
+		if err := connectivityhost.ValidateQualification(
+			*qualificationRoot, *qualificationSession); err != nil {
+			return rejected(errorLog, logging.ReasonInvalidConfiguration)
+		}
 		if err := infoLog.Emit(logging.LevelInfo, logging.EventStartupCheck, logging.ResultOK, ""); err != nil {
 			return 1
 		}

@@ -185,3 +185,54 @@ func TestEnsureRootSocketDirectoryRejectsWritableParent(t *testing.T) {
 		t.Fatalf("ensureRootSocketDirectory() error = %v, want %v", err, ErrInvalidConfig)
 	}
 }
+
+// The daemon is bootstrapped with KeepAlive, so an argument only the run
+// rejects becomes a restart loop instead of a message to whoever installed it.
+// The installer runs --check before bootstrapping for exactly this reason.
+func observeConfigFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "root-observe.json")
+	if err := os.WriteFile(path, []byte(validConfig), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	return path
+}
+
+func TestCheckRefusesAQualificationTheRunWouldRefuse(t *testing.T) {
+	config := observeConfigFile(t)
+	cases := []struct {
+		name  string
+		chain string
+		// session is what an operator typed.
+		session string
+	}{
+		{"a session that is not a UUID", t.TempDir(), "soak-1"},
+		{"a chain with no session at all", t.TempDir(), ""},
+		{"a session with no chain to record into", "", "49ad4f4c-33e1-42f8-a752-b31be7745836"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			args := []string{"--check", "--config", config}
+			if testCase.chain != "" {
+				args = append(args, "--connectivity-qualification", testCase.chain)
+			}
+			if testCase.session != "" {
+				args = append(args,
+					"--connectivity-qualification-session", testCase.session)
+			}
+			if code := Run(args, &bytes.Buffer{}, &bytes.Buffer{}); code == 0 {
+				t.Fatal("the check passed a configuration the run would refuse")
+			}
+		})
+	}
+}
+
+func TestCheckAcceptsAWellFormedQualification(t *testing.T) {
+	if code := Run([]string{
+		"--check", "--config", observeConfigFile(t),
+		"--connectivity-qualification", t.TempDir(),
+		"--connectivity-qualification-session", "49ad4f4c-33e1-42f8-a752-b31be7745836",
+	}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("the check refused a well-formed qualification: %d", code)
+	}
+}
