@@ -125,6 +125,7 @@ shell-test: shell-test-tools build-observe-root build-observe-user build-policy-
 	tests/policy_installer_boundary_test.sh
 	tests/policy_qualification_launchd_test.sh
 	tests/policy_cloud_independence_test.sh
+	tests/package_reachability_test.sh
 	tests/operational_acceptance_drill_test.sh
 	bash tests/reconciler_shadow_integration_test.sh
 	tests/reconciler_qualification_documentation_test.sh
