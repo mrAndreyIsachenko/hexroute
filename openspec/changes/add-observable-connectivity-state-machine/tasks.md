@@ -70,7 +70,7 @@
 
 - [ ] 9.1 Add an offline replay harness that verifies checkpoint lineage and canonical snapshot, diff and proposal digests from a valid ancestor, current policy descriptor and synthetic accepted-fact trace.
 - [ ] 9.2 Add synthetic fault traces for duplicate, reorder, gap, collector loss, conflict, parent/output tamper, missing ancestor, bounded recovery-depth exhaustion, checkpoint corruption, policy change, sleep/wake and reboot.
-- [ ] 9.3 Add a shadow comparison recorder that correlates normalized proposals with existing component planner output without executing either proposal.
+- [x] 9.3 Add a shadow comparison recorder that correlates normalized proposals with existing component planner output without executing either proposal.
 - [ ] 9.4 Record the qualification gate as a canonical append-only hash-linked evidence chain for 72 eligible hours, two sleep/wake cycles, one reboot and every mandatory injected failure with no unexplained divergence; bind each result to source checkpoint/snapshot/diff/proposal/fault-trace digests and reject gaps, tamper and cross-session evidence.
 - [ ] 9.5 Capture rollback evidence showing the reducer, collectors and status integration can be disabled while existing observation, Twilight, AdGuard and both Codex paths remain unchanged.
 - [ ] 9.6 Block completion and any follow-up executor proposal when retained facts cannot reproduce a published snapshot or proposal.
