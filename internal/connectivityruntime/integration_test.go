@@ -76,6 +76,34 @@ func TestReadModelCannotRunOrReachAnything(t *testing.T) {
 	}
 }
 
+// The cloud is telemetry only. The way to guarantee that losing the API,
+// PostgreSQL, a worker or the dashboard cannot change what this host concludes
+// is that no part of the read model can see any of them: there is no path for
+// cloud state to become an input, stale or otherwise.
+func TestCloudCannotInfluenceLocalReduction(t *testing.T) {
+	forbidden := map[string]string{
+		modulePath + "/internal/cloudingest":   "cloud ingest API",
+		modulePath + "/internal/cloudhealth":   "cloud health",
+		modulePath + "/internal/cloudruntime":  "cloud runtime",
+		modulePath + "/internal/cloudincident": "cloud incidents",
+		modulePath + "/internal/dashboard":     "dashboard",
+		modulePath + "/internal/dashboardauth": "dashboard auth",
+		modulePath + "/internal/database":      "database",
+		modulePath + "/internal/telemetry":     "telemetry uploader",
+		"github.com/jackc/pgx/v5":              "PostgreSQL driver",
+	}
+	for _, name := range connectivityPackages {
+		for _, imported := range importsOf(t, filepath.Join("..", name)) {
+			for banned, what := range forbidden {
+				if imported == banned || strings.HasPrefix(imported, banned+"/") {
+					t.Fatalf("%s imports %q (%s); cloud state must never reach reduction",
+						name, imported, what)
+				}
+			}
+		}
+	}
+}
+
 // The read model must not reach into the policy store either: it consults an
 // already-compiled descriptor, and touching the store would let recovery of an
 // old snapshot become authorization of an old policy.

@@ -64,7 +64,7 @@
 - [x] 8.2 Add a versioned allowlisted cloud projection schema and signed idempotent ingestion support for connectivity snapshots.
 - [x] 8.3 Add projection and telemetry secret-canary tests rejecting topology, selector, endpoint, path, process, event, session, proposal-digest and credential fields.
 - [ ] 8.4 Add cloud persistence and dashboard read-model support for the redacted projection without any control endpoint or local callback.
-- [ ] 8.5 Prove API, PostgreSQL, worker and dashboard loss or stale cloud data cannot influence local reduction, policy generation or proposals.
+- [x] 8.5 Prove API, PostgreSQL, worker and dashboard loss or stale cloud data cannot influence local reduction, policy generation or proposals.
 
 ## 9. Replay And Shadow Qualification
 
