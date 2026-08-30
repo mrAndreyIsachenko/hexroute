@@ -139,6 +139,20 @@ func shadowStoreConfig(domain policy.Domain, path string) ShadowStoreConfig {
 	}
 }
 
+// shortTempBase returns a temporary directory shallow enough to hold a Unix
+// socket path.
+//
+// t.TempDir() cannot be used here: on macOS it lives under /var/folders and
+// the resulting path runs past the 104-byte sun_path limit. /private/tmp is
+// the short base there and does not exist elsewhere, so the platform decides
+// rather than the test assuming one.
+func shortTempBase() string {
+	if info, err := os.Stat("/private/tmp"); err == nil && info.IsDir() {
+		return "/private/tmp"
+	}
+	return "/tmp"
+}
+
 func startShadowTestServer(
 	t *testing.T,
 	allowedUID uint32,
@@ -146,7 +160,7 @@ func startShadowTestServer(
 	reporter ipc.RejectionReporter,
 ) (string, func()) {
 	t.Helper()
-	directory, err := os.MkdirTemp("/private/tmp", "hexroute-shadow-ipc-*")
+	directory, err := os.MkdirTemp(shortTempBase(), "hexroute-shadow-ipc-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp() error = %v", err)
 	}
