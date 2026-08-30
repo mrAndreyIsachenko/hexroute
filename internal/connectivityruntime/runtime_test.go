@@ -352,3 +352,118 @@ func TestDisabledGateIgnoresPreconditions(t *testing.T) {
 		t.Fatalf("a disabled runtime demanded preconditions: %v", err)
 	}
 }
+
+// A checkpoint is written only when a reduction was effective, so facts can be
+// accepted and journalled and still lie beyond the newest one. Restoring from
+// the checkpoint alone left the acceptor about to hand those sequences out
+// again, and the journal then held two different facts under one number —
+// which made it unreadable in full, permanently, and took the evidence chain
+// with it. This is that sequence, reproduced.
+func TestRestartDoesNotReissueJournalledSequences(t *testing.T) {
+	base := t.TempDir()
+	h := openHarness(t, base, true)
+
+	// One effective reduction, so a checkpoint exists.
+	if _, err := h.runtime.Publish(rootFacts(), policy.DomainRoot); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if _, err := h.runtime.Tick(TickInput{Policy: activePolicy(), EvaluationTick: tick}); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	// More facts accepted and journalled, with no reduction after them: this
+	// is the window a crash or a no-op leaves behind.
+	beyond := make([]connectivity.Fact, 0)
+	for index, fact := range rootFacts() {
+		fact.SourceSequence = uint64(index + 1 + len(rootFacts()))
+		fact.Baseline = false
+		fact.Reason = connectivity.ReasonProbeSucceeded
+		beyond = append(beyond, fact)
+	}
+	if _, err := h.runtime.Publish(beyond, policy.DomainRoot); err != nil {
+		t.Fatalf("publish beyond: %v", err)
+	}
+
+	// Restart against the same store and journals.
+	restarted := openHarness(t, base, true)
+	after := make([]connectivity.Fact, 0)
+	for index, fact := range rootFacts() {
+		fact.SourceSequence = uint64(index + 1 + 2*len(rootFacts()))
+		fact.Baseline = false
+		fact.Reason = connectivity.ReasonProbeFailed
+		fact.Lifecycle = connectivity.LifecycleDegraded
+		after = append(after, fact)
+	}
+	if _, err := restarted.runtime.Publish(after, policy.DomainRoot); err != nil {
+		t.Fatalf("publish after restart: %v", err)
+	}
+
+	// The journal must still read. A reused sequence makes it refuse in full.
+	journal, err := connectivityjournal.Open(filepath.Join(base, "root"),
+		policy.DomainRoot, connectivityjournal.Options{
+			NodeID: metadata.UUID("33333333-3333-4333-8333-333333333333"),
+			Clock:  &advancingClock{},
+		})
+	if err != nil {
+		t.Fatalf("open journal: %v", err)
+	}
+	records, err := journal.Records()
+	if err != nil {
+		t.Fatalf("the journal became unreadable after a restart: %v", err)
+	}
+	seen := make(map[uint64]struct{}, len(records))
+	for _, record := range records {
+		if _, clash := seen[record.HostSequence]; clash {
+			t.Fatalf("host sequence %d was issued twice", record.HostSequence)
+		}
+		seen[record.HostSequence] = struct{}{}
+	}
+	if len(records) != 3*len(rootFacts()) {
+		t.Fatalf("%d records retained, want %d", len(records), 3*len(rootFacts()))
+	}
+}
+
+// Facts accepted after the newest checkpoint are folded by the next reduction
+// rather than dropped: they were accepted, and a restart that forgets them
+// publishes a model built on part of its own evidence.
+func TestRestartFoldsFactsAcceptedAfterTheCheckpoint(t *testing.T) {
+	base := t.TempDir()
+	h := openHarness(t, base, true)
+	if _, err := h.runtime.Publish(rootFacts(), policy.DomainRoot); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if _, err := h.runtime.Tick(TickInput{Policy: activePolicy(), EvaluationTick: tick}); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	degraded := make([]connectivity.Fact, 0)
+	for index, fact := range rootFacts() {
+		fact.SourceSequence = uint64(index + 1 + len(rootFacts()))
+		fact.Baseline = false
+		fact.Reason = connectivity.ReasonProbeFailed
+		fact.Lifecycle = connectivity.LifecycleDegraded
+		degraded = append(degraded, fact)
+	}
+	if _, err := h.runtime.Publish(degraded, policy.DomainRoot); err != nil {
+		t.Fatalf("publish degraded: %v", err)
+	}
+
+	restarted := openHarness(t, base, true)
+	output, err := restarted.runtime.Tick(TickInput{
+		Policy: activePolicy(), EvaluationTick: tick + 1,
+	})
+	if err != nil {
+		t.Fatalf("the first reduction after a restart failed: %v", err)
+	}
+	if output.Snapshot.ConsumedHostSequence != uint64(2*len(rootFacts())) {
+		t.Fatalf("consumed %d, want %d",
+			output.Snapshot.ConsumedHostSequence, 2*len(rootFacts()))
+	}
+	// The degraded observations were accepted before the restart; the model
+	// must reflect them rather than the checkpoint they never reached.
+	for _, record := range output.Snapshot.Components {
+		if record.Component == connectivity.ComponentRelays &&
+			record.Observed != connectivity.LifecycleDegraded {
+			t.Fatalf("relays observed %q, want the state accepted before the restart",
+				record.Observed)
+		}
+	}
+}

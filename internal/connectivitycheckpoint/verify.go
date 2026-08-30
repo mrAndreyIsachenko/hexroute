@@ -55,6 +55,14 @@ type LinkResult struct {
 	// read rather than taken on trust.
 	Recorded   OutputDigests `json:"recorded"`
 	Reproduced OutputDigests `json:"reproduced,omitempty"`
+
+	// ExpectedFrom, ExpectedTo and Found say which host sequences the link
+	// consumed and how many the journals still hold. A link reported
+	// unreplayable without them names a condition and hides its cause, which
+	// is the failure this whole verification exists to refuse elsewhere.
+	ExpectedFrom uint64 `json:"expected_from"`
+	ExpectedTo   uint64 `json:"expected_to"`
+	Found        int    `json:"found"`
 }
 
 // OutputDigests are the three canonical outputs of one reduction.
@@ -75,6 +83,12 @@ type VerifyResult struct {
 	// LineageOverflow reports that older links were evicted, so a lineage
 	// that verifies completely may still be shorter than the run it describes.
 	LineageOverflow bool `json:"lineage_overflow"`
+
+	// JournalError names why the evidence could not be read at all, when that
+	// is what happened. Without it a journal that refuses to open reads as a
+	// lineage where nothing could be replayed, which is the same words for a
+	// different problem.
+	JournalError string `json:"journal_error,omitempty"`
 }
 
 // Sound reports whether nothing in the lineage contradicted its evidence.
@@ -108,6 +122,15 @@ func Verify(
 		return VerifyResult{}, err
 	}
 	result := VerifyResult{LineageOverflow: pointer.Overflow}
+
+	// The journals are read once. Reading them per link would ask the same
+	// question nine times and, when the answer is an error, would report it
+	// nine times as a property of nine links instead of once as a property of
+	// the evidence.
+	facts, journalErr := allRecords(root, user)
+	if journalErr != nil {
+		result.JournalError = journalErr.Error()
+	}
 
 	byID := make(map[string]Checkpoint, len(index))
 	for _, entry := range index {
@@ -152,13 +175,16 @@ func Verify(
 			result.Links = append(result.Links, link)
 			continue
 		}
-		reproduced, status, err := reproduce(
-			checkpoint, parent, root, user, policyComponents)
+		link.ExpectedFrom = parent.ConsumedTo
+		link.ExpectedTo = checkpoint.ConsumedTo
+		reproduced, found, status, err := reproduce(
+			checkpoint, parent, facts, policyComponents)
 		if err != nil {
 			return VerifyResult{}, err
 		}
 		link.Status = status
 		link.Reproduced = reproduced
+		link.Found = found
 		switch status {
 		case VerifyReproduced:
 			result.Reproduced++
@@ -172,25 +198,22 @@ func Verify(
 	return result, nil
 }
 
-// merged reads both domains forward from a watermark and returns the host
-// order they shared, bounded to what the link consumed.
+// allRecords reads both domains once and returns the host order they shared.
 //
-// Continuity is the two journals' answer taken together: a hole in either is a
-// hole in the host order, because the sequence numbers one stream that both
-// contributed to.
-func merged(
+// Both are required because the sequence numbers one stream that both
+// contributed to: a domain that contributed nothing to a stretch sees a hole
+// in its own numbering where the host order has none.
+func allRecords(
 	root *connectivityjournal.Journal,
 	user *connectivityjournal.Journal,
-	from uint64,
-	consumedTo uint64,
-) ([]connectivityjournal.Record, bool, error) {
-	rootRecords, rootContinuous, err := root.RecordsAfter(from)
+) ([]connectivityjournal.Record, error) {
+	rootRecords, err := root.Records()
 	if err != nil {
-		return nil, false, err
+		return nil, fmt.Errorf("root journal: %w", err)
 	}
-	userRecords, userContinuous, err := user.RecordsAfter(from)
+	userRecords, err := user.Records()
 	if err != nil {
-		return nil, false, err
+		return nil, fmt.Errorf("user journal: %w", err)
 	}
 	all := append(append(
 		make([]connectivityjournal.Record, 0, len(rootRecords)+len(userRecords)),
@@ -198,45 +221,47 @@ func merged(
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].HostSequence < all[j].HostSequence
 	})
-	kept := make([]connectivityjournal.Record, 0, len(all))
-	for _, record := range all {
+	return all, nil
+}
+
+// span returns the retained facts a link consumed, and whether they cover the
+// range without a hole.
+func span(
+	facts []connectivityjournal.Record,
+	from uint64,
+	consumedTo uint64,
+) ([]connectivityjournal.Record, bool) {
+	kept := make([]connectivityjournal.Record, 0, consumedTo-from)
+	for _, record := range facts {
 		if record.HostSequence <= from || record.HostSequence > consumedTo {
 			continue
 		}
 		kept = append(kept, record)
 	}
-	// Continuity is judged on the merged order, not on either journal's own
-	// answer. A domain that contributed nothing to a stretch sees a hole in
-	// its own numbering where the host order has none, so its flag would
-	// condemn every link that the other domain filled in.
-	_, _ = rootContinuous, userContinuous
 	if uint64(len(kept)) != consumedTo-from {
 		// The retained facts do not cover the range. Folding what is left
 		// would produce a different snapshot and call the shortfall a
 		// divergence, which would turn retention into a contradiction.
-		return kept, false, nil
+		return kept, false
 	}
 	for index, record := range kept {
 		if record.HostSequence != from+uint64(index)+1 {
-			return kept, false, nil
+			return kept, false
 		}
 	}
-	return kept, true, nil
+	return kept, true
 }
 
 // reproduce replays one link and compares what came out.
 func reproduce(
 	checkpoint Checkpoint,
 	parent Checkpoint,
-	root *connectivityjournal.Journal,
-	user *connectivityjournal.Journal,
+	facts []connectivityjournal.Record,
 	policyComponents []connectivityreduce.ComponentPolicy,
-) (OutputDigests, VerifyStatus, error) {
-	// Each journal reads forward from a watermark. The parent consumed up to
-	// its own ConsumedTo, so that is where this link's facts begin in both.
-	records, continuous, err := merged(root, user, parent.ConsumedTo, checkpoint.ConsumedTo)
-	if err != nil || !continuous {
-		return OutputDigests{}, VerifyUnreplayable, nil
+) (OutputDigests, int, VerifyStatus, error) {
+	records, continuous := span(facts, parent.ConsumedTo, checkpoint.ConsumedTo)
+	if !continuous {
+		return OutputDigests{}, len(records), VerifyUnreplayable, nil
 	}
 	replayed, err := Replay(ReplayInput{
 		Resume:     Resume{Status: ResumeLatest, Checkpoint: &parent},
@@ -251,29 +276,29 @@ func reproduce(
 		EvaluationTick:   checkpoint.Snapshot.EvaluationTick,
 	})
 	if err != nil {
-		return OutputDigests{}, VerifyUnreplayable, nil
+		return OutputDigests{}, len(records), VerifyUnreplayable, nil
 	}
 	if replayed.Status != ReplayComplete {
-		return OutputDigests{}, VerifyUnreplayable, nil
+		return OutputDigests{}, len(records), VerifyUnreplayable, nil
 	}
 
 	snapshot, err := replayed.Output.Snapshot.Digest()
 	if err != nil {
-		return OutputDigests{}, "", fmt.Errorf("%w: %v", ErrVerify, err)
+		return OutputDigests{}, len(records), "", fmt.Errorf("%w: %v", ErrVerify, err)
 	}
 	diff, err := replayed.Output.Diff.Digest()
 	if err != nil {
-		return OutputDigests{}, "", fmt.Errorf("%w: %v", ErrVerify, err)
+		return OutputDigests{}, len(records), "", fmt.Errorf("%w: %v", ErrVerify, err)
 	}
 	proposals, err := proposalsDigest(replayed.Output.Proposals)
 	if err != nil {
-		return OutputDigests{}, "", fmt.Errorf("%w: %v", ErrVerify, err)
+		return OutputDigests{}, len(records), "", fmt.Errorf("%w: %v", ErrVerify, err)
 	}
 	outputs := OutputDigests{Snapshot: snapshot, Diff: diff, Proposals: proposals}
 	if outputs.Snapshot != checkpoint.SnapshotDigest ||
 		outputs.Diff != checkpoint.DiffDigest ||
 		outputs.Proposals != checkpoint.ProposalsDigest {
-		return outputs, VerifyDiverged, nil
+		return outputs, len(records), VerifyDiverged, nil
 	}
-	return outputs, VerifyReproduced, nil
+	return outputs, len(records), VerifyReproduced, nil
 }
