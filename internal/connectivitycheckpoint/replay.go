@@ -139,8 +139,15 @@ func restoreAcceptor(checkpoint Checkpoint) (*connectivityaccept.Acceptor, error
 }
 
 // SealFrom builds the next checkpoint from a reduction and its parent.
+// SealFrom builds the checkpoint one reduction produced.
+//
+// A parent and a break are mutually exclusive, and one of them is almost
+// always nil: a record either continues a lineage it proved or starts one
+// because it could not. Both nil is genesis, which is only correct for the
+// first checkpoint a store ever holds.
 func SealFrom(
 	parent *Checkpoint,
+	broken *LineageBreak,
 	id string,
 	output connectivityreduce.Output,
 	consumedFrom uint64,
@@ -171,10 +178,14 @@ func SealFrom(
 		ProposalsDigest:    proposalsDigest,
 		Snapshot:           output.Snapshot,
 	}
-	if parent != nil {
+	switch {
+	case parent != nil:
 		checkpoint.Parent = parent.ID
 		checkpoint.ParentDigest = parent.Digest
 		checkpoint.PriorSnapshotDigest = parent.SnapshotDigest
+	case broken != nil:
+		copied := *broken
+		checkpoint.Break = &copied
 	}
 	return Seal(checkpoint)
 }

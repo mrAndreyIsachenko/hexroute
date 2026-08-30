@@ -59,6 +59,11 @@ type Checkpoint struct {
 	// ParentDigest binds this record to that exact parent content, so a
 	// substituted ancestor breaks the chain instead of extending it.
 	ParentDigest string `json:"parent_digest,omitempty"`
+	// Break is set on a checkpoint that starts a new lineage because it could
+	// not prove the old one. It carries no parent and is not genesis, and the
+	// difference matters: genesis says nothing came before, while this says
+	// something did and could not be resumed from.
+	Break *LineageBreak `json:"lineage_break,omitempty"`
 
 	// PriorSnapshotDigest is the input the reduction started from.
 	PriorSnapshotDigest string `json:"prior_snapshot_digest,omitempty"`
@@ -119,7 +124,22 @@ func (checkpoint Checkpoint) Validate() error {
 		if checkpoint.ParentDigest != "" {
 			return fmt.Errorf("%w: genesis carries a parent digest", ErrInvalidCheckpoint)
 		}
+		if checkpoint.Break != nil {
+			if err := checkpoint.Break.Validate(); err != nil {
+				return err
+			}
+			if checkpoint.Break.AfterID == checkpoint.ID {
+				return fmt.Errorf("%w: checkpoint breaks from itself",
+					ErrInvalidCheckpoint)
+			}
+		}
 	} else {
+		// A record that descends from a proven parent has continued the
+		// lineage, so it cannot also claim to have abandoned one.
+		if checkpoint.Break != nil {
+			return fmt.Errorf("%w: a continued lineage carries a break",
+				ErrInvalidCheckpoint)
+		}
 		if !validIdentifier(checkpoint.Parent) || len(checkpoint.ParentDigest) != 64 {
 			return fmt.Errorf("%w: parent binding", ErrInvalidCheckpoint)
 		}
@@ -185,6 +205,41 @@ func (checkpoint Checkpoint) Validate() error {
 		return fmt.Errorf("%w: digest", ErrInvalidCheckpoint)
 	}
 	return nil
+}
+
+// LineageBreak records a lineage that was abandoned rather than continued.
+//
+// A read model that cannot prove its stored lineage has to start again. It
+// must not do that quietly: a checkpoint with no parent appended onto an
+// existing lineage would read, ever after, as though the lineage had always
+// started there. So the break names the checkpoint it does not continue and
+// why it could not, and it is the only thing that lets the generation guard
+// accept a restart.
+type LineageBreak struct {
+	// AfterID is the checkpoint the store believed in and this record does
+	// not descend from.
+	AfterID string `json:"after_id"`
+	// Reason is why it could not be resumed from, in the same bounded
+	// vocabulary a resume reports.
+	Reason ResumeReason `json:"reason"`
+}
+
+// Validate rejects a break that explains nothing.
+func (broken LineageBreak) Validate() error {
+	if !validIdentifier(broken.AfterID) {
+		return fmt.Errorf("%w: lineage break names no checkpoint", ErrInvalidCheckpoint)
+	}
+	switch broken.Reason {
+	case ResumeReasonPointerInvalid, ResumeReasonRecordMissing,
+		ResumeReasonRecordInvalid, ResumeReasonParentBroken,
+		ResumeReasonDigestMismatch, ResumeReasonDepthExhausted,
+		ResumeReasonLineageEvicted:
+		return nil
+	default:
+		// None is not a reason. A break with nothing wrong is a lineage
+		// somebody dropped rather than one that could not be proven.
+		return fmt.Errorf("%w: lineage break gives no reason", ErrInvalidCheckpoint)
+	}
 }
 
 // IndexEntry is one bounded append-only lineage record. It exists so the

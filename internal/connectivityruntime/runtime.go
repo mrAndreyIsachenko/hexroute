@@ -103,6 +103,11 @@ type Runtime struct {
 	acceptor *connectivityaccept.Acceptor
 	snapshot *connectivityreduce.Snapshot
 	parent   *connectivitycheckpoint.Checkpoint
+	// broken is set when startup could not prove the stored lineage and a
+	// lineage already exists. The next checkpoint carries it, which is what
+	// lets the store accept a restart instead of refusing every write from
+	// here on.
+	broken   *connectivitycheckpoint.LineageBreak
 	pending  []connectivityreduce.Event
 	consumed uint64
 
@@ -178,6 +183,25 @@ func New(options Options) (*Runtime, error) {
 	// honest outcome: every component is unknown until an owner speaks, which
 	// is exactly what the operator should see after an unrecoverable lineage.
 	runtime.acceptor = connectivityaccept.New()
+	// If a lineage is nonetheless on disk, the next checkpoint has to say it
+	// is abandoning it. Without that the store refuses a parentless record
+	// against an existing pointer — correctly, since a silent restart would
+	// read ever after as though the lineage had always started there — and
+	// the read model would be left unable to store anything at all.
+	pointer, err := options.Checkpoints.Pointer()
+	switch {
+	case errors.Is(err, connectivitycheckpoint.ErrNotFound):
+	case err != nil:
+		return nil, err
+	default:
+		reason := resume.Reason
+		if reason == connectivitycheckpoint.ResumeReasonNone {
+			reason = connectivitycheckpoint.ResumeReasonRecordInvalid
+		}
+		runtime.broken = &connectivitycheckpoint.LineageBreak{
+			AfterID: pointer.ID, Reason: reason,
+		}
+	}
 	return runtime, nil
 }
 
@@ -379,7 +403,8 @@ func (runtime *Runtime) Tick(input TickInput) (connectivityreduce.Output, error)
 	if output.Snapshot.ConsumedHostSequence > before {
 		from = before + 1
 	}
-	checkpoint, err := connectivitycheckpoint.SealFrom(runtime.parent, string(id), output, from)
+	checkpoint, err := connectivitycheckpoint.SealFrom(
+		runtime.parent, runtime.broken, string(id), output, from)
 	if err != nil {
 		return output, err
 	}
@@ -388,6 +413,9 @@ func (runtime *Runtime) Tick(input TickInput) (connectivityreduce.Output, error)
 	}
 	stored := checkpoint
 	runtime.parent = &stored
+	// The break belongs to the one checkpoint that made it. Everything after
+	// descends from that record and continues the lineage it started.
+	runtime.broken = nil
 	return output, nil
 }
 

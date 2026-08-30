@@ -3,10 +3,14 @@ package connectivityhost
 import (
 	"errors"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivitycheckpoint"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityreduce"
+	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 )
 
@@ -73,3 +77,96 @@ func TestEarlyReturningCycleStillProducesASnapshot(t *testing.T) {
 }
 
 var errNoManagedTUN = errors.New("no managed TUN")
+
+// The live failure. A reducer version moved, so every stored checkpoint was
+// output from rules this build does not have and none of them could be
+// resumed from. The read model started empty, which is correct, sealed a
+// checkpoint with no parent, which is also correct — and the store refused to
+// write it, because a parentless record appended onto an existing lineage
+// would read ever after as though the lineage had always started there.
+//
+// That refusal is right and the wedge it caused is not: every later cycle
+// produced the same parentless checkpoint against the same pointer, so the
+// read model could never store anything again. It observed nothing, published
+// nothing and described nothing, on a host where it had been working.
+func TestALineageItCannotProveDoesNotWedgeTheReadModel(t *testing.T) {
+	root := t.TempDir()
+	reader, err := Open(root, "boot-0000000000000000")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	base, err := continuousTick()
+	if err != nil {
+		t.Skipf("no continuous clock: %v", err)
+	}
+	for cycle := 0; cycle < 3; cycle++ {
+		if _, _, err := reader.Observe(reachedEvidence(),
+			connectivityreduce.PolicyDescriptor{}, base+control.Tick(cycle)); err != nil {
+			t.Fatalf("building the lineage, cycle %d: %v", cycle, err)
+		}
+	}
+
+	// Every record becomes something this build cannot read, which is what a
+	// reducer version bump does to a stored lineage.
+	checkpoints := filepath.Join(root, "readmodel", "checkpoints")
+	entries, err := os.ReadDir(checkpoints)
+	if err != nil {
+		t.Fatalf("read checkpoints: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("no lineage was built, so there is nothing to refuse")
+	}
+	for _, entry := range entries {
+		if err := os.WriteFile(filepath.Join(checkpoints, entry.Name()),
+			[]byte(`{"schema":"output from other rules"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	restarted, err := Open(root, "boot-0000000000000000")
+	if err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	for cycle := 0; cycle < 3; cycle++ {
+		if _, _, err := restarted.Observe(reachedEvidence(),
+			connectivityreduce.PolicyDescriptor{},
+			base+control.Tick(10+cycle)); err != nil {
+			t.Fatalf("the read model is wedged at cycle %d: %v", cycle, err)
+		}
+	}
+
+	// And the restart is on the record rather than passed off as a beginning.
+	store, err := connectivitycheckpoint.Open(
+		filepath.Join(root, "readmodel"), connectivitycheckpoint.Options{})
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	resume, err := store.Resume()
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if !resume.Usable() {
+		t.Fatalf("the new lineage cannot be resumed from: %s", resume)
+	}
+	index, err := store.Index()
+	if err != nil {
+		t.Fatalf("index: %v", err)
+	}
+	found := false
+	for _, entry := range index {
+		checkpoint, loadErr := store.Load(entry.ID)
+		if loadErr != nil {
+			continue
+		}
+		if checkpoint.Break == nil {
+			continue
+		}
+		found = true
+		if checkpoint.Break.Reason == connectivitycheckpoint.ResumeReasonNone {
+			t.Fatal("the lineage was abandoned for no stated reason")
+		}
+	}
+	if !found {
+		t.Fatal("the read model started a new lineage without recording that it had")
+	}
+}

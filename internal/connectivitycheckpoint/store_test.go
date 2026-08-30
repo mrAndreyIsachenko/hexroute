@@ -31,6 +31,7 @@ type lineage struct {
 	acceptor *connectivityaccept.Acceptor
 	prior    *connectivityreduce.Snapshot
 	parent   *Checkpoint
+	broken   *LineageBreak
 	consumed uint64
 	sequence uint64
 	// factsByHostSequence lets a replay test rebuild the journal the run
@@ -72,13 +73,54 @@ func (l *lineage) next(components ...connectivity.Component) Checkpoint {
 	l.consumed = output.Snapshot.ConsumedHostSequence
 
 	id := fmt.Sprintf("cp-%04d", l.sequence)
-	checkpoint, err := SealFrom(l.parent, id, output, from)
+	checkpoint, err := SealFrom(l.parent, l.broken, id, output, from)
 	if err != nil {
 		l.t.Fatalf("seal: %v", err)
 	}
+	l.broken = nil
 	stored := checkpoint
 	l.parent = &stored
 	return checkpoint
+}
+
+// nextBroken builds the checkpoint a read model produces when it could not
+// prove what was already stored.
+func (l *lineage) nextBroken(broken *LineageBreak) Checkpoint {
+	l.t.Helper()
+	// A restarted lineage numbers from its own beginning, so without this its
+	// identifiers would collide with the lineage it is abandoning and the
+	// record would name itself as what it left behind.
+	if l.sequence < 100 {
+		l.sequence = 100
+	}
+	l.broken = broken
+	return l.next(connectivity.ComponentDNS)
+}
+
+// sealBroken returns the sealing error instead of failing on it, for the
+// breaks that must never become records at all.
+func (l *lineage) sealBroken(broken *LineageBreak) (Checkpoint, error) {
+	l.t.Helper()
+	l.broken = broken
+	defer func() { l.broken = nil }()
+	l.sequence++
+	fact := connectivity.FixtureBaseline(connectivity.ComponentDNS, l.sequence)
+	acceptance, err := l.acceptor.Accept(fact, fact.Domain)
+	if err != nil {
+		l.t.Fatalf("accept: %v", err)
+	}
+	output, err := connectivityreduce.Reduce(connectivityreduce.Input{
+		Prior: l.prior,
+		Events: []connectivityreduce.Event{
+			{Acceptance: acceptance, Fact: fact},
+		},
+		Policy: testPolicy(), BootID: connectivity.FixtureBootID,
+		EvaluationTick: replayTick,
+	})
+	if err != nil {
+		l.t.Fatalf("reduce: %v", err)
+	}
+	return SealFrom(nil, broken, fmt.Sprintf("cp-%04d", l.sequence), output, 1)
 }
 
 func openStore(t *testing.T, options Options) (*Store, string) {
@@ -622,5 +664,92 @@ func TestRecoveringAnAncestorSaysWhyTheNewestWasRefused(t *testing.T) {
 	if resume.Reason != ResumeReasonRecordInvalid {
 		t.Fatalf("recovered an ancestor citing %q; the record that was refused "+
 			"was unreadable, and nothing said so", resume.Reason)
+	}
+}
+
+// The guard was right to refuse a parentless record onto an existing lineage.
+// Nothing here loosens that: what changes is that a restart can now be
+// recorded, and an unrecorded one is refused exactly as before.
+func TestASilentRestartIsStillRefused(t *testing.T) {
+	store, _ := openStore(t, Options{})
+	chain := newLineage(t)
+	if err := store.Append(chain.next(connectivity.ComponentDNS)); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	fresh := newLineage(t)
+	orphan := fresh.next(connectivity.ComponentDNS)
+	if orphan.Parent != "" {
+		t.Fatal("the orphan is not parentless, so this test proves nothing")
+	}
+	if err := store.Append(orphan); !errors.Is(err, ErrGenerationGuard) {
+		t.Fatalf("a parentless checkpoint with no break was accepted: %v", err)
+	}
+}
+
+func TestARecordedRestartIsAcceptedAndSaysWhatItAbandoned(t *testing.T) {
+	store, _ := openStore(t, Options{})
+	chain := newLineage(t)
+	first := chain.next(connectivity.ComponentDNS)
+	if err := store.Append(first); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	fresh := newLineage(t)
+	restarted := fresh.nextBroken(&LineageBreak{
+		AfterID: first.ID, Reason: ResumeReasonRecordInvalid,
+	})
+	if err := store.Append(restarted); err != nil {
+		t.Fatalf("a recorded restart was refused: %v", err)
+	}
+	resume, err := store.Resume()
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if resume.Status != ResumeLatest || resume.Checkpoint.ID != restarted.ID {
+		t.Fatalf("the new lineage was not resumed from: %s", resume)
+	}
+	if resume.Checkpoint.Break == nil ||
+		resume.Checkpoint.Break.AfterID != first.ID {
+		t.Fatal("the restart does not name what it abandoned")
+	}
+}
+
+func TestARestartMustNameTheLineageItActuallyAbandons(t *testing.T) {
+	store, _ := openStore(t, Options{})
+	chain := newLineage(t)
+	if err := store.Append(chain.next(connectivity.ComponentDNS)); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	fresh := newLineage(t)
+	// A break naming some other checkpoint would let a restart be moved onto
+	// a lineage it never saw.
+	wrong := fresh.nextBroken(&LineageBreak{
+		AfterID: "11111111-2222-4333-8444-555555555555",
+		Reason:  ResumeReasonRecordInvalid,
+	})
+	if err := store.Append(wrong); !errors.Is(err, ErrGenerationGuard) {
+		t.Fatalf("a break naming another lineage was accepted: %v", err)
+	}
+}
+
+func TestABreakWithoutAReasonIsNotARecord(t *testing.T) {
+	chain := newLineage(t)
+	if _, err := chain.sealBroken(&LineageBreak{
+		AfterID: "11111111-2222-4333-8444-555555555555",
+		Reason:  ResumeReasonNone,
+	}); err == nil {
+		t.Fatal("a lineage was abandoned for no stated reason")
+	}
+}
+
+func TestTheFirstCheckpointCannotAbandonALineage(t *testing.T) {
+	store, _ := openStore(t, Options{})
+	chain := newLineage(t)
+	orphan := chain.nextBroken(&LineageBreak{
+		AfterID: "11111111-2222-4333-8444-555555555555",
+		Reason:  ResumeReasonRecordInvalid,
+	})
+	if err := store.Append(orphan); !errors.Is(err, ErrGenerationGuard) {
+		t.Fatalf("the first checkpoint abandoned a lineage that was never there: %v", err)
 	}
 }
