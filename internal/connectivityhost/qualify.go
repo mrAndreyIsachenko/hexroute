@@ -49,6 +49,12 @@ const (
 	// qualifyVerifyInterval is how much awake time passes between replays of
 	// the stored lineage against its journals.
 	qualifyVerifyInterval = time.Hour
+	// clockSkewTolerance is how far the two clocks may disagree about one
+	// interval before the readings are called impossible rather than
+	// sequential. It is enormous next to the microseconds a pair of reads
+	// costs and next to any scheduling delay between them, and tiny next to
+	// the shortest sleep this notices, so nothing real hides underneath it.
+	clockSkewTolerance = time.Second
 )
 
 // ErrQualification reports that the observer could not be prepared.
@@ -285,7 +291,16 @@ func (qualifier *Qualifier) Sample(
 	// The continuous clock counts through sleep and the awake clock stops for
 	// it, so the awake reading may lag and may never lead, and neither may run
 	// backwards inside one boot.
-	if continuousDelta <= 0 || awakeDelta < 0 || awakeDelta > continuousDelta {
+	//
+	// Compared with no tolerance that is wrong, and measurably so: the two are
+	// read one after the other, so their deltas differ by whatever happened in
+	// between. On this hardware the awake clock advances further than the
+	// continuous one in about half of all reads, by tens of microseconds, and
+	// a scheduler that parks the process between the two calls can stretch
+	// that. Without a tolerance roughly every second cycle was filed as two
+	// clocks that could not both be right.
+	if continuousDelta <= 0 || awakeDelta < -clockSkewTolerance.Nanoseconds() ||
+		awakeDelta > continuousDelta+clockSkewTolerance.Nanoseconds() {
 		if _, err := qualifier.append(recorder, binding, wall, continuous,
 			connectivityqualification.KindClockAnomaly,
 			connectivityqualification.ResultDiverged,
