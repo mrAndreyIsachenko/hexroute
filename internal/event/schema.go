@@ -37,6 +37,9 @@ const (
 	// it is retained ahead of ordinary observations.
 	SchemaConnectivityBaseline    Schema = "connectivity.baseline"
 	SchemaConnectivityObservation Schema = "connectivity.observation"
+	// The projection is what leaves the host. It is operational rather than
+	// critical: losing one costs a sample, not evidence.
+	SchemaConnectivityProjection Schema = "connectivity.projection"
 )
 
 type Priority string
@@ -228,7 +231,7 @@ var (
 func DefinitionFor(schema Schema) (Definition, bool) {
 	var priority Priority
 	switch schema {
-	case SchemaObservation, SchemaConnectivityObservation:
+	case SchemaObservation, SchemaConnectivityObservation, SchemaConnectivityProjection:
 		priority = PriorityOperational
 	case SchemaDiagnostic:
 		priority = PriorityDiagnostic
@@ -355,6 +358,8 @@ func newPayload(schema Schema) any {
 		return &PolicyLifecycle{}
 	case SchemaConnectivityBaseline, SchemaConnectivityObservation:
 		return &ConnectivityFact{}
+	case SchemaConnectivityProjection:
+		return &ConnectivityProjection{}
 	default:
 		return nil
 	}
@@ -366,6 +371,8 @@ func validatePayload(schema Schema, payload any) error {
 		return validateConnectivityFact(payload, true)
 	case SchemaConnectivityObservation:
 		return validateConnectivityFact(payload, false)
+	case SchemaConnectivityProjection:
+		return validateConnectivityProjection(payload)
 	case SchemaObservation:
 		value, ok := asObservation(payload)
 		if !ok || !validComponent(value.Component) || !validHealth(value.Health) ||

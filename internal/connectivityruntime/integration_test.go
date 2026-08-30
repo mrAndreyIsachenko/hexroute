@@ -21,7 +21,7 @@ const modulePath = "github.com/mrAndreyIsachenko/hexroute"
 var connectivityPackages = []string{
 	"connectivity", "connectivityaccept", "connectivitycheckpoint",
 	"connectivitycollect", "connectivityjournal", "connectivityreduce",
-	"connectivityruntime",
+	"connectivityruntime", "connectivityview",
 }
 
 func importsOf(t *testing.T, directory string) []string {
