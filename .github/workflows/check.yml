@@ -46,6 +46,11 @@ jobs:
         with:
           terraform_version: '1.9.8'
           terraform_wrapper: false
+      - name: Install ripgrep
+        # The shell contracts search with rg. `make shell-test` now refuses to
+        # start without it rather than reporting the absence as a failed
+        # contract, which is how this job first went red.
+        run: brew install ripgrep
       - name: Install the OpenSpec CLI
         # Pinned: `spec-check` runs `openspec validate --strict`, and a
         # validator that changes on its own would make the gate advisory.
