@@ -48,6 +48,44 @@ present in the snapshot and a silent one reads as `unknown`:
   collector reports session presence and never claims `expiring` or `expired`;
   saying otherwise would be inventing a measurement.
 
+## Bounds, and where they are decided
+
+Three layers hold a bound: the acceptor caps retained gap ranges per source,
+the reducer caps retained conflict records per source, and the checkpoint store
+caps one persisted record. They have to agree, because a restart rebuilds the acceptor
+from the snapshot the reducer produced and the store wrote. A snapshot holding
+more holes than the acceptor accepts is a checkpoint the host can never resume
+from — a lossy source would break its own lineage.
+
+So the acceptor is the single authority on stream integrity. Gaps, overflow,
+baseline debt and the conflict count are decided once, there, and the reducer
+adopts the decision rather than deriving its own. There is no second opinion to
+diverge, and an overflow the acceptor recorded cannot be lost on the way to the
+operator or the cloud.
+
+The conflict bound is per source rather than global, so a stream that refuses
+constantly cannot crowd out another's evidence. A global bound would evict in
+one fixed order, which means it would systematically drop one privilege
+domain's conflicts in favour of the other's.
+
+Reaching a bound is reported. Dropped holes, evicted conflict evidence and the
+number of streams still owing a restatement all appear in the operator view and
+as counts in the cloud projection, because a bound reached in silence reads
+exactly like a bound never approached.
+
+## What a baseline closes
+
+A source sequence numbers a source, not a component, and `root.network` speaks
+about both physical network and default path. So a hole in that stream leaves
+both unaccounted for: nothing in the facts that survived says which of them the
+lost ones described.
+
+A baseline for one component therefore settles only its own share. The hole
+closes when every component the source speaks about has restated itself in
+full, and until then the snapshot names which ones are still owed. The earlier
+behaviour — any one baseline closing the whole hole — let a component read
+`ready` on the strength of a restatement that was never about it.
+
 ## Startup, sleep and recovery
 
 Startup returns only a checkpoint it can prove. Where it cannot, the answer is

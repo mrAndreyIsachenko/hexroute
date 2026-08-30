@@ -326,7 +326,7 @@ func TestSequenceGapIsVisibleInTheSnapshot(t *testing.T) {
 		if len(watermark.Gaps) != 1 || watermark.Gaps[0].From != 2 || watermark.Gaps[0].To != 4 {
 			t.Fatalf("gaps %+v, want one 2..4", watermark.Gaps)
 		}
-		if !watermark.AwaitingBaseline {
+		if !watermark.AwaitingBaseline() {
 			t.Fatal("the source is not marked as owing a baseline")
 		}
 	}

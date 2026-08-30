@@ -101,6 +101,27 @@ func ConnectivityAuthority(component connectivity.Component) (SourceDeclaration,
 	return declaration, ok
 }
 
+// ConnectivitySourceComponents returns, in fixed component order, every
+// component one source is declared to speak about, whichever role it holds.
+//
+// A source sequence numbers a source, not a component, so a hole in a stream
+// leaves every component that source speaks about unaccounted for: nothing in
+// the surviving facts says which of them the lost ones described. Closing the
+// hole therefore takes a complete restatement of all of them, and this is the
+// compiled list that says which those are.
+func ConnectivitySourceComponents(source connectivity.SourceID) []connectivity.Component {
+	declared := make([]connectivity.Component, 0, len(connectivity.Components()))
+	for _, component := range connectivity.Components() {
+		if _, ok := connectivityByKey[sourceKey{source: source, component: component}]; ok {
+			declared = append(declared, component)
+		}
+	}
+	if len(declared) == 0 {
+		return nil
+	}
+	return declared
+}
+
 // ConnectivitySources returns the compiled declarations in declaration order.
 func ConnectivitySources() []SourceDeclaration {
 	out := make([]SourceDeclaration, len(connectivitySources))

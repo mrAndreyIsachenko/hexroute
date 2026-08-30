@@ -73,6 +73,9 @@ const (
 	ReasonBootChanged      Reason = "boot_changed"
 	ReasonGapOverflow      Reason = "gap_overflow"
 	ReasonBaselineAccepted Reason = "baseline_accepted"
+	// ReasonBaselinePending means this baseline settled its own component but
+	// the source still owes a restatement for others it speaks about.
+	ReasonBaselinePending Reason = "baseline_pending"
 )
 
 // Identity is what makes two arrivals the same observation.
@@ -88,6 +91,29 @@ type GapRange struct {
 	To   uint64 `json:"to"`
 }
 
+// SourceIntegrity is the source's whole stream integrity after one decision.
+//
+// It is returned rather than left for the reader to re-derive. Gap bounds,
+// overflow and baseline coverage are decided once, here, so a consumer cannot
+// hold a second opinion about them — and cannot accumulate past the bound this
+// acceptor enforces, which is also the bound a restored state must satisfy.
+type SourceIntegrity struct {
+	BootID       string     `json:"boot_id"`
+	LastSequence uint64     `json:"last_sequence"`
+	Gaps         []GapRange `json:"gaps,omitempty"`
+	// GapOverflow records that holes were dropped rather than forgotten.
+	GapOverflow bool `json:"gap_overflow"`
+	// PendingBaseline is which components still owe a complete restatement
+	// before the stream can be called continuous again.
+	PendingBaseline []connectivity.Component `json:"pending_baseline,omitempty"`
+	Conflicts       uint32                   `json:"conflicts"`
+}
+
+// AwaitingBaseline reports whether any component still owes a restatement.
+func (integrity SourceIntegrity) AwaitingBaseline() bool {
+	return len(integrity.PendingBaseline) > 0
+}
+
 // Acceptance is the decision about one arrival.
 type Acceptance struct {
 	Outcome      Outcome           `json:"outcome"`
@@ -97,8 +123,12 @@ type Acceptance struct {
 	HostSequence uint64            `json:"host_sequence,omitempty"`
 	// OpenedGap is set when this arrival revealed a hole behind it.
 	OpenedGap *GapRange `json:"opened_gap,omitempty"`
-	// ClearedGaps is set when a complete baseline closed prior holes.
+	// ClearedGaps is set when the last owed baseline closed prior holes.
 	ClearedGaps []GapRange `json:"cleared_gaps,omitempty"`
+	// Source is the stream's integrity after this decision. It is present on
+	// every outcome that reached a known source, because refusing an arrival
+	// changes integrity just as accepting one does.
+	Source SourceIntegrity `json:"source"`
 }
 
 // Accepted reports whether the arrival entered the host order.
@@ -120,9 +150,18 @@ type SourceState struct {
 	Gaps         []GapRange    `json:"gaps"`
 	// GapOverflow records that holes were dropped rather than forgotten.
 	GapOverflow bool `json:"gap_overflow"`
-	// AwaitingBaseline is set when the stream cannot be trusted to be
-	// continuous until the owner restates its component in full.
-	AwaitingBaseline bool `json:"awaiting_baseline"`
+	// PendingBaseline is the set of components that still owe a complete
+	// restatement. The stream is continuous again only when it is empty: a
+	// hole is numbered per source, so a baseline for one component says
+	// nothing about what the hole held for the others.
+	PendingBaseline []connectivity.Component `json:"pending_baseline"`
+	// Conflicts counts refusals to resolve a reused identity by overwriting.
+	Conflicts uint32 `json:"conflicts"`
+}
+
+// AwaitingBaseline reports whether the stream still owes a restatement.
+func (source *SourceState) AwaitingBaseline() bool {
+	return source != nil && len(source.PendingBaseline) > 0
 }
 
 // State is the whole durable position of the acceptor.
@@ -139,6 +178,8 @@ func (state State) Clone() State {
 		copied := *source
 		copied.Recent = append([]digestEntry(nil), source.Recent...)
 		copied.Gaps = append([]GapRange(nil), source.Gaps...)
+		copied.PendingBaseline = append(
+			[]connectivity.Component(nil), source.PendingBaseline...)
 		out.Sources[id] = &copied
 	}
 	return out
@@ -169,6 +210,20 @@ func (state State) Validate() error {
 		for _, gap := range source.Gaps {
 			if gap.From == 0 || gap.To < gap.From {
 				return fmt.Errorf("%w: %q has an inverted gap", ErrInvalidState, id)
+			}
+		}
+		// A restored state that owes nothing cannot also be holding holes:
+		// that pairing describes a stream both interrupted and continuous,
+		// which this acceptor never produces.
+		if len(source.Gaps) > 0 && len(source.PendingBaseline) == 0 {
+			return fmt.Errorf("%w: %q holds gaps while owing no baseline",
+				ErrInvalidState, id)
+		}
+		declared := safety.ConnectivitySourceComponents(id)
+		for _, component := range source.PendingBaseline {
+			if !containsComponent(declared, component) {
+				return fmt.Errorf("%w: %q owes a baseline for %q, which it does not speak about",
+					ErrInvalidState, id, component)
 			}
 		}
 	}
@@ -244,8 +299,13 @@ func (acceptor *Acceptor) Accept(
 
 	if source.BootID != fact.BootID {
 		// A new boot is a new stream. Nothing from the prior boot orders
-		// against it, and its freshness deadlines do not carry over.
-		*source = SourceState{BootID: fact.BootID, AwaitingBaseline: true}
+		// against it, and its freshness deadlines do not carry over. Every
+		// component the source speaks about owes a restatement, because none
+		// of what it said in the prior boot describes this one.
+		*source = SourceState{
+			BootID:          fact.BootID,
+			PendingBaseline: safety.ConnectivitySourceComponents(fact.SourceID),
+		}
 		acceptance := acceptor.admit(source, fact, digest, role)
 		if acceptance.Reason == ReasonNone || acceptance.Reason == ReasonSequenceGap {
 			acceptance.Reason = ReasonBootChanged
@@ -259,6 +319,67 @@ func (acceptor *Acceptor) Accept(
 	default:
 		return acceptor.replay(source, fact, digest, role), nil
 	}
+}
+
+// integrityOf snapshots a source's stream integrity for the caller.
+func integrityOf(source *SourceState) SourceIntegrity {
+	if source == nil {
+		return SourceIntegrity{}
+	}
+	return SourceIntegrity{
+		BootID:          source.BootID,
+		LastSequence:    source.LastSequence,
+		Gaps:            append([]GapRange(nil), source.Gaps...),
+		GapOverflow:     source.GapOverflow,
+		PendingBaseline: append([]connectivity.Component(nil), source.PendingBaseline...),
+		Conflicts:       source.Conflicts,
+	}
+}
+
+func containsComponent(list []connectivity.Component, value connectivity.Component) bool {
+	for _, entry := range list {
+		if entry == value {
+			return true
+		}
+	}
+	return false
+}
+
+// owesBaseline puts every component the source speaks about back on the hook.
+//
+// It is called wherever the stream stopped being provably continuous — a hole,
+// a conflicting reuse, a new boot — because all three lose the same thing: the
+// guarantee that what survived accounts for what did not.
+func owesBaseline(source *SourceState, id connectivity.SourceID) {
+	declared := safety.ConnectivitySourceComponents(id)
+	for _, component := range declared {
+		if !containsComponent(source.PendingBaseline, component) {
+			source.PendingBaseline = append(source.PendingBaseline, component)
+		}
+	}
+	sort.Slice(source.PendingBaseline, func(i, j int) bool {
+		return source.PendingBaseline[i] < source.PendingBaseline[j]
+	})
+}
+
+// settleBaseline records that one component restated itself in full.
+//
+// The debt is only discharged when the last component pays it. A baseline for
+// physical_network says what physical_network is now; it does not say what the
+// hole held for default_path, which the same source also speaks about.
+func settleBaseline(source *SourceState, component connectivity.Component) bool {
+	remaining := source.PendingBaseline[:0]
+	for _, pending := range source.PendingBaseline {
+		if pending != component {
+			remaining = append(remaining, pending)
+		}
+	}
+	source.PendingBaseline = remaining
+	if len(source.PendingBaseline) > 0 {
+		return false
+	}
+	source.PendingBaseline = nil
+	return true
 }
 
 // admit records a fact that advances its source's stream.
@@ -277,20 +398,25 @@ func (acceptor *Acceptor) admit(
 	expected := source.LastSequence + 1
 	if source.LastSequence > 0 && fact.SourceSequence > expected {
 		gap := GapRange{From: expected, To: fact.SourceSequence - 1}
-		acceptor.recordGap(source, gap)
+		acceptor.recordGap(source, gap, fact.SourceID)
 		acceptance.OpenedGap = &gap
 		acceptance.Reason = ReasonSequenceGap
 	}
 
 	// Only a complete restatement can close holes: the later state is known,
 	// but what happened inside the hole is not, and a non-baseline fact does
-	// not claim to describe it.
-	if fact.Baseline && (len(source.Gaps) > 0 || source.AwaitingBaseline) {
-		acceptance.ClearedGaps = append([]GapRange(nil), source.Gaps...)
-		source.Gaps = nil
-		source.GapOverflow = false
-		source.AwaitingBaseline = false
-		acceptance.Reason = ReasonBaselineAccepted
+	// not claim to describe it. One component restating itself settles its own
+	// share of the debt; the holes close when the last share is settled.
+	if fact.Baseline && source.AwaitingBaseline() {
+		if settleBaseline(source, fact.Component) {
+			acceptance.ClearedGaps = append([]GapRange(nil), source.Gaps...)
+			source.Gaps = nil
+			source.GapOverflow = false
+			source.Conflicts = 0
+			acceptance.Reason = ReasonBaselineAccepted
+		} else if acceptance.Reason == ReasonNone {
+			acceptance.Reason = ReasonBaselinePending
+		}
 	}
 
 	source.LastSequence = fact.SourceSequence
@@ -303,6 +429,7 @@ func (acceptor *Acceptor) admit(
 
 	acceptor.state.HostSequence++
 	acceptance.HostSequence = acceptor.state.HostSequence
+	acceptance.Source = integrityOf(source)
 	return acceptance
 }
 
@@ -320,12 +447,17 @@ func (acceptor *Acceptor) replay(
 		if entry.Digest == digest {
 			return Acceptance{
 				Outcome: OutcomeDuplicate, Reason: ReasonExactRetry,
-				Role: role, Digest: digest,
+				Role: role, Digest: digest, Source: integrityOf(source),
 			}
 		}
+		// A reused identity carrying different content means the stream can no
+		// longer be trusted to be continuous, so it owes the same complete
+		// restatement a hole owes.
+		source.Conflicts++
+		owesBaseline(source, fact.SourceID)
 		return Acceptance{
 			Outcome: OutcomeConflict, Reason: ReasonIdentityReused,
-			Role: role, Digest: digest,
+			Role: role, Digest: digest, Source: integrityOf(source),
 		}
 	}
 	// Inside a recorded hole the sequence was never accepted, so a late
@@ -334,7 +466,10 @@ func (acceptor *Acceptor) replay(
 	if inGap(source.Gaps, fact.SourceSequence) {
 		reason = ReasonBehindWatermark
 	}
-	return Acceptance{Outcome: OutcomeStale, Reason: reason, Role: role, Digest: digest}
+	return Acceptance{
+		Outcome: OutcomeStale, Reason: reason,
+		Role: role, Digest: digest, Source: integrityOf(source),
+	}
 }
 
 func inGap(gaps []GapRange, sequence uint64) bool {
@@ -348,16 +483,21 @@ func inGap(gaps []GapRange, sequence uint64) bool {
 
 // recordGap keeps holes ordered and bounded, and makes the loss of a hole
 // itself observable rather than silently forgetting it.
-func (acceptor *Acceptor) recordGap(source *SourceState, gap GapRange) {
+func (acceptor *Acceptor) recordGap(
+	source *SourceState,
+	gap GapRange,
+	id connectivity.SourceID,
+) {
 	source.Gaps = append(source.Gaps, gap)
 	sort.Slice(source.Gaps, func(i, j int) bool {
 		return source.Gaps[i].From < source.Gaps[j].From
 	})
 	if len(source.Gaps) > MaxGapRanges {
-		source.Gaps = source.Gaps[len(source.Gaps)-MaxGapRanges:]
+		source.Gaps = append(
+			[]GapRange(nil), source.Gaps[len(source.Gaps)-MaxGapRanges:]...)
 		source.GapOverflow = true
 	}
-	source.AwaitingBaseline = true
+	owesBaseline(source, id)
 }
 
 // Gaps returns the holes currently recorded for a source.

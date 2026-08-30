@@ -36,6 +36,18 @@ const (
 
 	// MaxCorroborations bounds retained evidence per component.
 	MaxCorroborations = 8
+	// MaxConflictRecords bounds retained refusals per source.
+	//
+	// A conflict is evidence, and evidence that grows without a bound stops
+	// being storable: the snapshot is embedded in every checkpoint, and a
+	// checkpoint has a size the store will refuse. Beyond this bound a
+	// source's oldest records are evicted and the eviction becomes visible.
+	//
+	// The bound is per source rather than global so that one noisy stream
+	// cannot crowd out another's evidence. A global bound would evict in one
+	// fixed order, which means it would systematically drop one privilege
+	// domain's conflicts in favour of the other's.
+	MaxConflictRecords = 8
 )
 
 var (
@@ -103,16 +115,28 @@ type ComponentRecord struct {
 
 // SourceWatermark is one source's position and integrity as the snapshot sees
 // it. This is where a gap or a conflict stops being a return value.
+//
+// The integrity fields are adopted from the acceptance decision rather than
+// re-derived here. The acceptor is the single authority on them, so the
+// snapshot cannot hold a second opinion, cannot exceed the bound the acceptor
+// enforces, and cannot lose an overflow the acceptor recorded.
 type SourceWatermark struct {
-	Source           connectivity.SourceID         `json:"source"`
-	Domain           policy.Domain                 `json:"domain"`
-	Role             safety.SourceRole             `json:"role"`
-	BootID           string                        `json:"boot_id"`
-	LastSequence     uint64                        `json:"last_sequence"`
-	Gaps             []connectivityaccept.GapRange `json:"gaps,omitempty"`
-	GapOverflow      bool                          `json:"gap_overflow"`
-	AwaitingBaseline bool                          `json:"awaiting_baseline"`
-	Conflicts        uint32                        `json:"conflicts"`
+	Source       connectivity.SourceID         `json:"source"`
+	Domain       policy.Domain                 `json:"domain"`
+	Role         safety.SourceRole             `json:"role"`
+	BootID       string                        `json:"boot_id"`
+	LastSequence uint64                        `json:"last_sequence"`
+	Gaps         []connectivityaccept.GapRange `json:"gaps,omitempty"`
+	GapOverflow  bool                          `json:"gap_overflow"`
+	// PendingBaseline names the components that still owe a complete
+	// restatement before this stream counts as continuous again.
+	PendingBaseline []connectivity.Component `json:"pending_baseline,omitempty"`
+	Conflicts       uint32                   `json:"conflicts"`
+}
+
+// AwaitingBaseline reports whether the stream still owes a restatement.
+func (watermark SourceWatermark) AwaitingBaseline() bool {
+	return len(watermark.PendingBaseline) > 0
 }
 
 // ConflictRecord names one refusal to resolve a disagreement by overwriting.
@@ -192,6 +216,11 @@ type Summary struct {
 	OpenGaps        uint16 `json:"open_gaps"`
 	GapOverflow     bool   `json:"gap_overflow"`
 	SourceConflicts uint16 `json:"source_conflicts"`
+	// AwaitingBaseline counts sources that still owe a restatement.
+	AwaitingBaseline uint16 `json:"awaiting_baseline"`
+	// ConflictOverflow records that retained conflict evidence was evicted
+	// to stay inside the bound, rather than quietly stopping at it.
+	ConflictOverflow bool `json:"conflict_overflow"`
 }
 
 // Snapshot is the whole normalized read model at one generation.
@@ -251,6 +280,34 @@ func (snapshot Snapshot) Validate() error {
 			return ErrInvalidSnapshot
 		}
 		if !record.State.valid() {
+			return ErrInvalidSnapshot
+		}
+	}
+	// The bounds below are what makes a snapshot storable and a restored
+	// acceptor valid. A snapshot that exceeds them could not have come from
+	// this reducer, and accepting one would break the lineage at the next
+	// checkpoint rather than here.
+	perSource := make(map[connectivity.SourceID]int, len(snapshot.Sources))
+	for _, record := range snapshot.Conflicts {
+		perSource[record.Source]++
+		if perSource[record.Source] > MaxConflictRecords {
+			return ErrInvalidSnapshot
+		}
+	}
+	for _, watermark := range snapshot.Sources {
+		if len(watermark.Gaps) > connectivityaccept.MaxGapRanges {
+			return ErrInvalidSnapshot
+		}
+		if len(watermark.Gaps) > 0 && !watermark.AwaitingBaseline() {
+			return ErrInvalidSnapshot
+		}
+		if len(watermark.PendingBaseline) >
+			len(safety.ConnectivitySourceComponents(watermark.Source)) {
+			return ErrInvalidSnapshot
+		}
+	}
+	for _, record := range snapshot.Components {
+		if len(record.Corroborations) > MaxCorroborations {
 			return ErrInvalidSnapshot
 		}
 	}

@@ -58,7 +58,11 @@ type LocalSource struct {
 	Gaps             []connectivityaccept.GapRange `json:"gaps,omitempty"`
 	GapOverflow      bool                          `json:"gap_overflow"`
 	AwaitingBaseline bool                          `json:"awaiting_baseline"`
-	Conflicts        uint32                        `json:"conflicts"`
+	// PendingBaseline names which components still owe a restatement. An
+	// operator looking at a stream that will not settle needs to know who it
+	// is waiting on, not only that it is waiting.
+	PendingBaseline []connectivity.Component `json:"pending_baseline,omitempty"`
+	Conflicts       uint32                   `json:"conflicts"`
 }
 
 // LocalStatus is the whole operator view.
@@ -79,6 +83,12 @@ type LocalStatus struct {
 	OpenGaps        uint16 `json:"open_gaps"`
 	GapOverflow     bool   `json:"gap_overflow"`
 	SourceConflicts uint16 `json:"source_conflicts"`
+	// AwaitingBaseline counts streams that still owe a restatement, and
+	// ConflictOverflow says retained refusals were evicted to stay inside the
+	// bound. Both are here because a bound reached in silence reads exactly
+	// like a bound never approached.
+	AwaitingBaseline uint16 `json:"awaiting_baseline"`
+	ConflictOverflow bool   `json:"conflict_overflow"`
 
 	ProposalClasses []event.ProjectedProposalClass `json:"proposal_classes,omitempty"`
 }
@@ -147,6 +157,8 @@ func Local(
 		OpenGaps:           snapshot.Summary.OpenGaps,
 		GapOverflow:        snapshot.Summary.GapOverflow,
 		SourceConflicts:    snapshot.Summary.SourceConflicts,
+		AwaitingBaseline:   snapshot.Summary.AwaitingBaseline,
+		ConflictOverflow:   snapshot.Summary.ConflictOverflow,
 		ProposalClasses:    classCounts(proposals),
 	}
 	for _, record := range snapshot.Components {
@@ -180,7 +192,8 @@ func Local(
 			LastSequence:     watermark.LastSequence,
 			Gaps:             watermark.Gaps,
 			GapOverflow:      watermark.GapOverflow,
-			AwaitingBaseline: watermark.AwaitingBaseline,
+			AwaitingBaseline: watermark.AwaitingBaseline(),
+			PendingBaseline:  watermark.PendingBaseline,
 			Conflicts:        watermark.Conflicts,
 		})
 	}
@@ -212,6 +225,8 @@ func Project(
 		OpenGaps:            snapshot.Summary.OpenGaps,
 		GapOverflow:         snapshot.Summary.GapOverflow,
 		SourceConflicts:     snapshot.Summary.SourceConflicts,
+		AwaitingBaseline:    snapshot.Summary.AwaitingBaseline,
+		ConflictOverflow:    snapshot.Summary.ConflictOverflow,
 		ProposalClasses:     classCounts(proposals),
 	}
 	for _, record := range snapshot.Components {

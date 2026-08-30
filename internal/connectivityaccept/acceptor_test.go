@@ -183,7 +183,7 @@ func TestBootChangeStartsANewStreamAwaitingBaseline(t *testing.T) {
 	if state.Sources[source].BootID != rebooted.BootID {
 		t.Fatal("the source did not move to the new boot")
 	}
-	if !state.Sources[source].AwaitingBaseline {
+	if !state.Sources[source].AwaitingBaseline() {
 		t.Fatal("a new boot did not require a baseline")
 	}
 }
