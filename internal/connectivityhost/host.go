@@ -123,6 +123,30 @@ type Reader struct {
 	sources  map[connectivity.SourceID]*connectivitycollect.Collector
 	owners   map[connectivity.Component]connectivity.SourceID
 	baseline bool
+
+	// The store and journals are retained so a qualification observer can be
+	// attached later. Nothing else reads them: the read model itself goes
+	// through the runtime, which is the only thing allowed to fold.
+	bootID string
+	// The clock pair is how a sleep is noticed without anything announcing
+	// one. Nothing on this host publishes a wake, so if the reader does not
+	// detect it the reducer's whole rebaseline path never runs and a host
+	// comes back from two hours asleep with every component still reading
+	// fresh.
+	clocks           func() (reading, error)
+	lastContinuousNS int64
+	lastAwakeNS      int64
+	// now and slept are this cycle's reading. They are held rather than
+	// re-read so the read model and anything describing it are measured on
+	// one look at the clocks: two reads a few milliseconds apart could count
+	// the same sleep twice or miss it entirely.
+	now   reading
+	slept time.Duration
+
+	store       *connectivitycheckpoint.Store
+	rootJournal *connectivityjournal.Journal
+	userJournal *connectivityjournal.Journal
+	qualifier   *Qualifier
 }
 
 // Open builds the read model under the given root.
@@ -197,10 +221,15 @@ func Open(
 		return nil, err
 	}
 	reader := &Reader{
-		recorder: recorder,
-		runtime:  runtime,
-		sources:  make(map[connectivity.SourceID]*connectivitycollect.Collector),
-		owners:   make(map[connectivity.Component]connectivity.SourceID),
+		recorder:    recorder,
+		runtime:     runtime,
+		sources:     make(map[connectivity.SourceID]*connectivitycollect.Collector),
+		owners:      make(map[connectivity.Component]connectivity.SourceID),
+		bootID:      bootID,
+		clocks:      systemReading,
+		store:       checkpoints,
+		rootJournal: rootJournal,
+		userJournal: userJournal,
 	}
 	// One collector per source, not per component: a source sequence numbers
 	// the source, and root.network speaks for both physical network and
@@ -298,6 +327,16 @@ func (reader *Reader) Observe(
 	if reader == nil || reader.runtime == nil {
 		return connectivityview.LocalStatus{}, false, nil
 	}
+	woken := reader.detectSleep()
+	if woken != nil {
+		// The wake invalidated what the owners had said, so this cycle
+		// restates every component in full. The reducer clears a rebaseline
+		// requirement that a baseline in the same batch answers, which is why
+		// the two have to happen together: raising the requirement without
+		// restating would leave the model stale until something else
+		// happened to publish a baseline, and nothing else does.
+		reader.baseline = false
+	}
 	if evidence.Reached {
 		facts, err := reader.facts(evidence)
 		if err != nil {
@@ -311,6 +350,7 @@ func (reader *Reader) Observe(
 	output, err := reader.runtime.Tick(connectivityruntime.TickInput{
 		Policy:         descriptor,
 		EvaluationTick: at,
+		Wake:           woken,
 	})
 	if err != nil {
 		return connectivityview.LocalStatus{}, false, err
@@ -321,6 +361,46 @@ func (reader *Reader) Observe(
 	return connectivityview.Local(output.Snapshot, output.Diff, output.Proposals),
 		output.Changed, nil
 }
+
+// wake reports that the host slept since the last cycle.
+//
+// It asks two clocks rather than waiting to be told. One counts through sleep
+// and the other stops for it, so the difference between what they advanced by
+// is the sleep, and no daemon, agent or power-management notification has to
+// have survived it for the read model to know.
+//
+// Sleep is not evidence of health. What was observed before it describes a
+// host that was not running, so the components it invalidated are held stale
+// until their owners restate them in full.
+func (reader *Reader) detectSleep() *connectivityreduce.Wake {
+	reader.slept = 0
+	now, err := reader.clocks()
+	if err != nil {
+		// Without the pair there is nothing to compare. Claiming a wake would
+		// be as wrong as denying one, and the freshness deadlines still
+		// expire on their own.
+		return nil
+	}
+	previous := reader.now
+	reader.now = now
+	if previous.Continuous == 0 {
+		return nil
+	}
+	slept := (now.Continuous - previous.Continuous) - (now.Awake - previous.Awake)
+	if slept < sleepFloor {
+		return nil
+	}
+	reader.slept = slept
+	tick, err := continuousTick()
+	if err != nil {
+		return nil
+	}
+	return &connectivityreduce.Wake{Tick: tick}
+}
+
+// sleepFloor is the smallest difference between the two clocks that is a sleep
+// rather than the microseconds between reading one and reading the other.
+const sleepFloor = 60 * time.Second
 
 // facts maps one cycle's evidence onto the components this daemon owns.
 func (reader *Reader) facts(
@@ -392,6 +472,19 @@ func Fold(
 			"",
 		)
 	}
+	// The soak is described after the model has folded, so the snapshot it
+	// judges is the one this cycle produced. Its failure is reported and
+	// dropped for the same reason the read model's is: a daemon that stopped
+	// observing because a description of its observations failed would be
+	// worse than one with no description at all.
+	if qualifyErr := reader.qualifier.Sample(
+		reader.bootID, reader.runtime.Snapshot(),
+		reader.now, reader.slept); qualifyErr != nil {
+		if err := logger.Emit(logging.LevelWarn,
+			logging.EventConnectivitySnapshot, logging.ResultDegraded, ""); err != nil {
+			return err
+		}
+	}
 	// The correlation is recorded whether or not the reduction changed: the
 	// component planners run on their own evidence, so they can start or stop
 	// proposing something while the read model stands still. Recording only on
@@ -420,6 +513,24 @@ func Fold(
 		result,
 		"",
 	)
+}
+
+// AttachQualifier turns on the soak observer for one session.
+//
+// It is separate from Open because qualification is a decision someone
+// records, not a consequence of having a read model. A reader without one
+// behaves exactly as it did before this existed.
+func (reader *Reader) AttachQualifier(chainRoot, session string) error {
+	if reader == nil {
+		return nil
+	}
+	qualifier, err := OpenQualifier(
+		chainRoot, session, reader.store, reader.rootJournal, reader.userJournal)
+	if err != nil {
+		return err
+	}
+	reader.qualifier = qualifier
+	return nil
 }
 
 // unauthorizedPolicy is the descriptor the read model runs under until the
