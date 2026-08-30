@@ -175,7 +175,8 @@ func TestProjectionCarriesNoIdentifyingField(t *testing.T) {
 		"bundle_generation": {}, "root_generation": {}, "user_generation": {},
 		"aggregate": {}, "authorization": {}, "authorization_reason": {},
 		"components": {}, "open_gaps": {}, "gap_overflow": {},
-		"source_conflicts": {}, "proposal_classes": {},
+		"source_conflicts": {}, "awaiting_baseline": {},
+		"conflict_overflow": {}, "proposal_classes": {},
 	}
 	for name := range generic {
 		if _, ok := permitted[name]; !ok {

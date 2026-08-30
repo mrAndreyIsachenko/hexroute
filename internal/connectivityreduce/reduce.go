@@ -89,7 +89,7 @@ func Reduce(input Input) (Output, error) {
 					ErrOutOfOrder, consumed+1, event.Acceptance.HostSequence)
 			}
 			consumed = event.Acceptance.HostSequence
-			applyAccepted(components, sources, event)
+			applyAccepted(components, sources, conflicts, event)
 		case connectivityaccept.OutcomeConflict:
 			applyConflict(sources, conflicts, event)
 		case connectivityaccept.OutcomeDuplicate, connectivityaccept.OutcomeStale:
@@ -112,10 +112,11 @@ func Reduce(input Input) (Output, error) {
 		ConsumedHostSequence: consumed,
 		Components:           renderComponents(components, sources, input),
 		Sources:              renderSources(sources),
-		Conflicts:            renderConflicts(conflicts),
 	}
+	records, conflictOverflow := renderConflicts(conflicts)
+	snapshot.Conflicts = records
 	snapshot.Authorization, snapshot.Reason = authorize(input.Policy, input.Prior)
-	snapshot.Summary = summarize(snapshot)
+	snapshot.Summary = summarize(snapshot, conflictOverflow)
 
 	changed, err := effective(input.Prior, snapshot)
 	if err != nil {
@@ -219,6 +220,8 @@ func newSourceTable(prior *Snapshot) sourceTable {
 	for _, watermark := range prior.Sources {
 		carried := watermark
 		carried.Gaps = append([]connectivityaccept.GapRange(nil), watermark.Gaps...)
+		carried.PendingBaseline = append(
+			[]connectivity.Component(nil), watermark.PendingBaseline...)
 		table[watermark.Source] = &carried
 	}
 	return table
@@ -258,33 +261,38 @@ func watermarkFor(sources sourceTable, event Event) *SourceWatermark {
 	return watermark
 }
 
-func applyAccepted(components componentTable, sources sourceTable, event Event) {
+// adoptIntegrity takes the acceptor's decision about a stream verbatim.
+//
+// Nothing here recomputes gaps, overflow, baseline debt or the conflict count.
+// They were decided once, under the acceptor's bounds, and a second derivation
+// here is exactly how the snapshot and the acceptor would come to disagree —
+// which matters because a restart rebuilds the acceptor from this watermark.
+func adoptIntegrity(watermark *SourceWatermark, event Event) {
+	integrity := event.Acceptance.Source
+	watermark.BootID = integrity.BootID
+	watermark.LastSequence = integrity.LastSequence
+	watermark.Gaps = append([]connectivityaccept.GapRange(nil), integrity.Gaps...)
+	watermark.GapOverflow = integrity.GapOverflow
+	watermark.PendingBaseline = append(
+		[]connectivity.Component(nil), integrity.PendingBaseline...)
+	watermark.Conflicts = integrity.Conflicts
+}
+
+func applyAccepted(
+	components componentTable,
+	sources sourceTable,
+	conflicts conflictTable,
+	event Event,
+) {
 	watermark := watermarkFor(sources, event)
-	if watermark.BootID != event.Fact.BootID {
-		// A new boot is a new stream: prior holes belonged to a position that
-		// no longer exists, and nothing from it is fresh.
-		watermark.BootID = event.Fact.BootID
-		watermark.Gaps = nil
-		watermark.GapOverflow = false
-		watermark.Conflicts = 0
-		watermark.LastSequence = 0
-		watermark.AwaitingBaseline = true
-	}
-	watermark.LastSequence = event.Fact.SourceSequence
 	watermark.Role = event.Acceptance.Role
-	if opened := event.Acceptance.OpenedGap; opened != nil {
-		watermark.Gaps = append(watermark.Gaps, *opened)
-		watermark.AwaitingBaseline = true
-	}
-	if len(event.Acceptance.ClearedGaps) > 0 || event.Fact.Baseline {
-		if event.Fact.Baseline {
-			// Only a complete restatement can close what was missed, and it
-			// closes the unresolved conflict for the same reason.
-			watermark.Gaps = nil
-			watermark.GapOverflow = false
-			watermark.AwaitingBaseline = false
-			watermark.Conflicts = 0
-		}
+	adoptIntegrity(watermark, event)
+	if event.Fact.Baseline {
+		// The owner restated this component in full, so the refusals recorded
+		// against it describe a position that has been superseded. Retaining
+		// them past that point would show an operator a conflict the state no
+		// longer has.
+		clearComponentConflicts(conflicts, event.Fact.SourceID, event.Fact.Component)
 	}
 
 	record := components[event.Fact.Component]
@@ -329,10 +337,8 @@ func addCorroboration(record *ComponentRecord, event Event) {
 
 func applyConflict(sources sourceTable, conflicts conflictTable, event Event) {
 	watermark := watermarkFor(sources, event)
-	watermark.Conflicts++
-	// A conflicting reuse means the stream can no longer be trusted to be
-	// continuous, so it needs the same complete restatement a gap needs.
-	watermark.AwaitingBaseline = true
+	watermark.Role = event.Acceptance.Role
+	adoptIntegrity(watermark, event)
 
 	key := conflictKey{event.Fact.SourceID, event.Fact.Component, event.Fact.SourceSequence}
 	if existing, seen := conflicts[key]; seen {
@@ -345,6 +351,18 @@ func applyConflict(sources sourceTable, conflicts conflictTable, event Event) {
 		Sequence:  event.Fact.SourceSequence,
 		Reason:    event.Acceptance.Reason,
 		Count:     1,
+	}
+}
+
+func clearComponentConflicts(
+	conflicts conflictTable,
+	source connectivity.SourceID,
+	component connectivity.Component,
+) {
+	for key := range conflicts {
+		if key.source == source && key.component == component {
+			delete(conflicts, key)
+		}
 	}
 }
 
@@ -426,19 +444,51 @@ func renderSources(sources sourceTable) []SourceWatermark {
 		if len(copied.Gaps) == 0 {
 			copied.Gaps = nil
 		}
+		copied.PendingBaseline = append(
+			[]connectivity.Component(nil), watermark.PendingBaseline...)
+		sort.Slice(copied.PendingBaseline, func(i, j int) bool {
+			return copied.PendingBaseline[i] < copied.PendingBaseline[j]
+		})
+		if len(copied.PendingBaseline) == 0 {
+			copied.PendingBaseline = nil
+		}
 		out = append(out, copied)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Source < out[j].Source })
 	return out
 }
 
-func renderConflicts(conflicts conflictTable) []ConflictRecord {
+// renderConflicts orders retained refusals and holds each source inside the
+// bound.
+//
+// Within a source the lowest sequences are dropped first: those describe
+// positions the stream has already moved past, while the most recent refusals
+// are the ones an operator can still do something about. The eviction is
+// reported rather than left to look like a shorter list.
+func renderConflicts(conflicts conflictTable) ([]ConflictRecord, bool) {
 	if len(conflicts) == 0 {
-		return nil
+		return nil, false
 	}
-	out := make([]ConflictRecord, 0, len(conflicts))
+	bySource := make(map[connectivity.SourceID][]ConflictRecord)
 	for _, record := range conflicts {
-		out = append(out, *record)
+		bySource[record.Source] = append(bySource[record.Source], *record)
+	}
+	overflow := false
+	out := make([]ConflictRecord, 0, len(conflicts))
+	for _, records := range bySource {
+		// Sequence orders age inside one stream, so the tail is the most
+		// recent evidence this source produced.
+		sort.Slice(records, func(i, j int) bool {
+			if records[i].Sequence != records[j].Sequence {
+				return records[i].Sequence < records[j].Sequence
+			}
+			return records[i].Component < records[j].Component
+		})
+		if len(records) > MaxConflictRecords {
+			records = records[len(records)-MaxConflictRecords:]
+			overflow = true
+		}
+		out = append(out, records...)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Source != out[j].Source {
@@ -449,7 +499,7 @@ func renderConflicts(conflicts conflictTable) []ConflictRecord {
 		}
 		return out[i].Sequence < out[j].Sequence
 	})
-	return out
+	return out, overflow
 }
 
 // authorize decides whether desired state may be derived at all. Observations
@@ -478,10 +528,11 @@ func authorize(descriptor PolicyDescriptor, prior *Snapshot) (Authorization, Aut
 
 // summarize derives the operator projection. It cannot report better than its
 // worst component, and it never replaces the component records.
-func summarize(snapshot Snapshot) Summary {
+func summarize(snapshot Snapshot, conflictOverflow bool) Summary {
 	summary := Summary{
-		Authorization: snapshot.Authorization,
-		Reason:        snapshot.Reason,
+		Authorization:    snapshot.Authorization,
+		Reason:           snapshot.Reason,
+		ConflictOverflow: conflictOverflow,
 	}
 	for _, record := range snapshot.Components {
 		switch record.State {
@@ -502,12 +553,17 @@ func summarize(snapshot Snapshot) Summary {
 		}
 	}
 	for _, watermark := range snapshot.Sources {
+		// Both counts are bounded by the compiled source and gap limits, so
+		// the widening cannot lose a digit.
 		summary.OpenGaps += uint16(len(watermark.Gaps))
 		if watermark.GapOverflow {
 			summary.GapOverflow = true
 		}
 		if watermark.Conflicts > 0 {
 			summary.SourceConflicts++
+		}
+		if watermark.AwaitingBaseline() {
+			summary.AwaitingBaseline++
 		}
 	}
 	switch {
@@ -557,12 +613,12 @@ type semanticCorroboration struct {
 }
 
 type semanticSource struct {
-	Source           connectivity.SourceID         `json:"source"`
-	BootID           string                        `json:"boot_id"`
-	Gaps             []connectivityaccept.GapRange `json:"gaps,omitempty"`
-	GapOverflow      bool                          `json:"gap_overflow"`
-	AwaitingBaseline bool                          `json:"awaiting_baseline"`
-	Conflicts        uint32                        `json:"conflicts"`
+	Source          connectivity.SourceID         `json:"source"`
+	BootID          string                        `json:"boot_id"`
+	Gaps            []connectivityaccept.GapRange `json:"gaps,omitempty"`
+	GapOverflow     bool                          `json:"gap_overflow"`
+	PendingBaseline []connectivity.Component      `json:"pending_baseline,omitempty"`
+	Conflicts       uint32                        `json:"conflicts"`
 }
 
 func project(snapshot Snapshot) semantic {
@@ -594,12 +650,12 @@ func project(snapshot Snapshot) semantic {
 	}
 	for _, watermark := range snapshot.Sources {
 		out.Sources = append(out.Sources, semanticSource{
-			Source:           watermark.Source,
-			BootID:           watermark.BootID,
-			Gaps:             watermark.Gaps,
-			GapOverflow:      watermark.GapOverflow,
-			AwaitingBaseline: watermark.AwaitingBaseline,
-			Conflicts:        watermark.Conflicts,
+			Source:          watermark.Source,
+			BootID:          watermark.BootID,
+			Gaps:            watermark.Gaps,
+			GapOverflow:     watermark.GapOverflow,
+			PendingBaseline: watermark.PendingBaseline,
+			Conflicts:       watermark.Conflicts,
 		})
 	}
 	return out

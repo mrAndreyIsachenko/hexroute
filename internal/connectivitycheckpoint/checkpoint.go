@@ -170,7 +170,8 @@ func (checkpoint Checkpoint) Validate() error {
 		if watermark.Source != carried.Source || watermark.BootID != carried.BootID ||
 			watermark.LastSequence != carried.LastSequence ||
 			watermark.Conflicts != carried.Conflicts ||
-			watermark.AwaitingBaseline != carried.AwaitingBaseline ||
+			watermark.AwaitingBaseline() != carried.AwaitingBaseline() ||
+			len(watermark.PendingBaseline) != len(carried.PendingBaseline) ||
 			len(watermark.Gaps) != len(carried.Gaps) {
 			return fmt.Errorf("%w: watermark %q disagrees with the snapshot",
 				ErrInvalidCheckpoint, watermark.Source)

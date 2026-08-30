@@ -65,6 +65,13 @@ type ConnectivityProjection struct {
 	OpenGaps        uint16 `json:"open_gaps"`
 	GapOverflow     bool   `json:"gap_overflow"`
 	SourceConflicts uint16 `json:"source_conflicts"`
+	// AwaitingBaseline counts streams still owing a restatement and
+	// ConflictOverflow says local conflict evidence was evicted. Both are
+	// counts of the host's own bookkeeping, not topology: they say a host is
+	// not telling a complete story, which is the one thing about local
+	// integrity the cloud is any use for.
+	AwaitingBaseline uint16 `json:"awaiting_baseline"`
+	ConflictOverflow bool   `json:"conflict_overflow"`
 
 	ProposalClasses []ProjectedProposalClass `json:"proposal_classes,omitempty"`
 }

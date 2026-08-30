@@ -177,11 +177,13 @@ func restoreAcceptor(checkpoint connectivitycheckpoint.Checkpoint) (*connectivit
 	}
 	for _, watermark := range checkpoint.SourceWatermarks {
 		state.Sources[watermark.Source] = &connectivityaccept.SourceState{
-			BootID:           watermark.BootID,
-			LastSequence:     watermark.LastSequence,
-			Gaps:             append([]connectivityaccept.GapRange(nil), watermark.Gaps...),
-			GapOverflow:      watermark.GapOverflow,
-			AwaitingBaseline: watermark.AwaitingBaseline,
+			BootID:       watermark.BootID,
+			LastSequence: watermark.LastSequence,
+			Gaps:         append([]connectivityaccept.GapRange(nil), watermark.Gaps...),
+			GapOverflow:  watermark.GapOverflow,
+			PendingBaseline: append(
+				[]connectivity.Component(nil), watermark.PendingBaseline...),
+			Conflicts: watermark.Conflicts,
 		}
 	}
 	return connectivityaccept.Restore(state)

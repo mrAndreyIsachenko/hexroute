@@ -48,6 +48,24 @@ complete baseline is accepted.
 - **THEN** the gap is recorded in source and snapshot metadata
 - **AND** healthy aggregate output is not inferred from the missing observation
 
+#### Scenario: One component restates itself while its source speaks for others
+
+- **WHEN** a complete baseline arrives for one component of a source that is
+  declared for more than one
+- **THEN** the gap and the awaiting-baseline condition remain recorded, because
+  a source sequence numbers the source and nothing in the surviving facts says
+  which components the lost ones described
+- **AND** the components still owing a complete restatement are named
+- **AND** the gap is cleared only once every one of them has restated itself
+
+#### Scenario: A source accumulates more holes than may be retained
+
+- **WHEN** the bound on retained gap ranges is exceeded
+- **THEN** the oldest ranges are dropped and the overflow is recorded on the
+  source watermark, the snapshot summary and the redacted projection
+- **AND** the retained ranges never exceed the bound in any persisted snapshot,
+  so a stored read model always remains restorable
+
 ### Requirement: Normalized inspectable connectivity snapshot
 
 Hexroute SHALL build one typed `ConnectivitySnapshot` containing source
