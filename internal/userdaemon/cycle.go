@@ -38,6 +38,31 @@ type Summary struct {
 	ServiceRunning       bool
 	ClientAddressPresent bool
 	Plan                 pritunlplan.Plan
+	// Observed carries the readings this cycle already made. Publishing them
+	// costs nothing extra: the cycle looks at the session, the profile and the
+	// service either way, and keeping what it saw is the only thing that was
+	// missing.
+	Observed Evidence
+}
+
+// Evidence is one cycle's raw readings from the user domain.
+//
+// It carries no secret material of any kind, because the observations it is
+// built from cannot express one: they are states and booleans. What leaves
+// this host is bounded further still — the facts these become describe a
+// profile class and a session class, never an identity.
+type Evidence struct {
+	// Reached reports that the cycle got far enough to observe anything.
+	Reached bool
+
+	Session      userobserve.SessionObservation
+	SessionError error
+
+	Profile      userobserve.ProfileObservation
+	ProfileError error
+
+	Service      userobserve.ServiceObservation
+	ServiceError error
 }
 
 type Cycle struct {
@@ -75,6 +100,8 @@ func (cycle *Cycle) Observe(
 	summary := cycle.failedSummary()
 
 	session, err := cycle.session.UserSession(ctx, cycle.config.ExpectedUID)
+	summary.Observed.Reached = true
+	summary.Observed.Session, summary.Observed.SessionError = session, err
 	if err != nil {
 		summary.Failures++
 		return summary
@@ -96,11 +123,13 @@ func (cycle *Cycle) Observe(
 	}
 
 	profile, err := cycle.pritunl.Profile(ctx, cycle.config.ProfileID)
+	summary.Observed.Profile, summary.Observed.ProfileError = profile, err
 	if err != nil {
 		summary.Failures++
 		return summary
 	}
 	service, err := cycle.pritunl.Service(ctx)
+	summary.Observed.Service, summary.Observed.ServiceError = service, err
 	if err != nil {
 		summary.Failures++
 	} else {

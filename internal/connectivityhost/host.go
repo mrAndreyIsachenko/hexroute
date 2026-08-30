@@ -12,6 +12,7 @@ package connectivityhost
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityruntime"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityview"
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
@@ -400,4 +402,51 @@ func Fold(
 // honest position for a daemon that has not yet been given one.
 func unauthorizedPolicy() connectivityreduce.PolicyDescriptor {
 	return connectivityreduce.PolicyDescriptor{}
+}
+
+// PublishUser folds facts the user domain observed into the read model.
+//
+// The facts arrive as opaque bytes and are decoded here, under the same strict
+// codec the user daemon encoded them with. Root does not trust the sender's
+// account of what they mean: ownership, domain and order are all decided by
+// the acceptor against the compiled envelope, exactly as they are for facts
+// root observed itself.
+//
+// Nothing flows back. The report is counts and a watermark — enough for the
+// publisher to know it was heard, and nothing it could act on.
+func (reader *Reader) PublishUser(encoded []json.RawMessage) (Report, error) {
+	if reader == nil || reader.runtime == nil {
+		return Report{}, ErrStore
+	}
+	if len(encoded) == 0 || len(encoded) > ipc.MaxPublishedFacts {
+		return Report{}, fmt.Errorf("%w: publication size", ErrStore)
+	}
+	facts := make([]connectivity.Fact, 0, len(encoded))
+	for _, raw := range encoded {
+		fact, err := connectivity.Decode(raw)
+		if err != nil {
+			return Report{}, fmt.Errorf("%w: %v", ErrStore, err)
+		}
+		facts = append(facts, fact)
+	}
+	report, err := reader.runtime.Publish(facts, policy.DomainUser)
+	if err != nil {
+		return Report{}, err
+	}
+	return Report{
+		Accepted:   report.Accepted,
+		Duplicates: report.Duplicates,
+		Conflicts:  report.Conflicts,
+		Rejected:   report.Rejected,
+		Watermark:  report.Watermark,
+	}, nil
+}
+
+// Report is what one publication turned into.
+type Report struct {
+	Accepted   uint16
+	Duplicates uint16
+	Conflicts  uint16
+	Rejected   uint16
+	Watermark  uint64
 }

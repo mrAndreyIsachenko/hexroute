@@ -14,6 +14,8 @@
 		<string>__HEXROUTE_USERD_STATE__</string>
 		<string>--socket</string>
 		<string>__HEXROUTE_USERD_SOCKET__</string>
+		<string>--publish-connectivity-to</string>
+		<string>/var/run/hexroute-observe/hexrouted.sock</string>
 	</array>
 	<key>WorkingDirectory</key>
 	<string>__HEXROUTE_USERD_STATE_DIR__</string>
