@@ -274,16 +274,75 @@ func TestPostgresIncidentOutboxQueuesSnapshotExactlyOnce(t *testing.T) {
 		resetAlertIntegrationData(t, cleanupCtx, admin)
 	})
 
-	observedAt := time.Now().UTC().Truncate(time.Second).Add(time.Minute)
+	// The plan a transition produces depends on the hour it was observed at,
+	// so the hour is chosen rather than read from the clock. Taking the
+	// instant straight from `time.Now` made this test assert the daytime
+	// single-channel plan while actually exercising the two-channel night
+	// plan for nine hours out of every day, where it could not pass.
+	//
+	// The instant still has to be in the future, because the outbox refuses a
+	// row processed before it was created and `created_at` defaults to the
+	// database's own clock. So the hour is fixed and the date is the next one
+	// on which that hour has not yet passed.
+	for _, testCase := range []struct {
+		name           string
+		correlationKey string
+		hour           int
+		seed           byte
+		wantDeliveries int
+	}{
+		{"day", "outbox-runtime-day", 12, 0x10, 1},
+		{"night", "outbox-runtime-night", 2, 0x40, 2},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			resetAlertIntegrationData(t, ctx, admin)
+			assertOutboxQueuesExactlyOnce(
+				t,
+				ctx,
+				admin,
+				maintenance,
+				testCase.correlationKey,
+				nextUTCHour(testCase.hour),
+				testCase.seed,
+				testCase.wantDeliveries,
+			)
+		})
+	}
+}
+
+// nextUTCHour returns the next instant at the given UTC hour that is still
+// ahead of the clock.
+func nextUTCHour(hour int) time.Time {
+	now := time.Now().UTC()
+	candidate := time.Date(now.Year(), now.Month(), now.Day(), hour, 0, 0, 0, time.UTC)
+	if !candidate.After(now.Add(time.Minute)) {
+		candidate = candidate.AddDate(0, 0, 1)
+	}
+	return candidate
+}
+
+// assertOutboxQueuesExactlyOnce drains one incident's outbox entry twice and
+// checks that the second pass queues nothing further.
+func assertOutboxQueuesExactlyOnce(
+	t *testing.T,
+	ctx context.Context,
+	admin *pgxpool.Pool,
+	maintenance *pgxpool.Pool,
+	correlationKey string,
+	observedAt time.Time,
+	seed byte,
+	wantDeliveries int,
+) {
+	t.Helper()
 	incidentStore, err := cloudincident.NewPostgresStore(
 		maintenance,
-		bytes.NewReader(bytes.Repeat([]byte{0x71}, 64)),
+		alertRandomBytes(seed),
 	)
 	if err != nil {
 		t.Fatalf("NewPostgresStore(incident) error = %v", err)
 	}
 	incident, err := incidentStore.Reconcile(ctx, cloudincident.Signal{
-		CorrelationKey: "outbox-runtime-test",
+		CorrelationKey: correlationKey,
 		Category:       event.IncidentAvailability,
 		Component:      control.ComponentRuntime,
 		Severity:       event.SeverityWarning,
@@ -303,14 +362,30 @@ func TestPostgresIncidentOutboxQueuesSnapshotExactlyOnce(t *testing.T) {
 		RetryMinimum:   time.Minute,
 		RetryMaximum:   5 * time.Minute,
 	}
-	alertStore, err := NewPostgresStore(
-		maintenance,
-		policy,
-		bytes.NewReader(bytes.Repeat([]byte{0x81}, 64)),
-	)
+	// Every planned channel is given its own identity. A reader that repeats
+	// one byte mints one UUID however many times it is called, so a plan with
+	// more than one channel would collide on the delivery primary key for a
+	// reason that has nothing to do with what this test asserts.
+	alertStore, err := NewPostgresStore(maintenance, policy, alertRandomBytes(seed^0xff))
 	if err != nil {
 		t.Fatalf("NewPostgresStore(alert) error = %v", err)
 	}
+	plan, err := policy.Plan(Snapshot{
+		IncidentID:     incident.IncidentID,
+		Generation:     incident.Generation,
+		Status:         cloudincident.StatusOpen,
+		Severity:       event.SeverityWarning,
+		Category:       event.IncidentAvailability,
+		Component:      control.ComponentRuntime,
+		TransitionedAt: observedAt,
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if len(plan) != wantDeliveries {
+		t.Fatalf("plan has %d channels, want %d", len(plan), wantDeliveries)
+	}
+
 	processed, err := alertStore.DrainOutbox(
 		ctx,
 		alertWorkerOneID,
@@ -364,19 +439,30 @@ func TestPostgresIncidentOutboxQueuesSnapshotExactlyOnce(t *testing.T) {
 		t.Fatalf("read drained outbox: %v", err)
 	}
 	if outboxProcessedAt == nil ||
-		deliveryCount != 1 ||
+		deliveryCount != wantDeliveries ||
 		snapshotStatus != cloudincident.StatusOpen ||
 		snapshotSeverity != event.SeverityWarning ||
 		!snapshotAt.Equal(observedAt) {
 		t.Fatalf(
-			"processed=%v count=%d status=%s severity=%s at=%s",
+			"processed=%v count=%d want=%d status=%s severity=%s at=%s",
 			outboxProcessedAt,
 			deliveryCount,
+			wantDeliveries,
 			snapshotStatus,
 			snapshotSeverity,
 			snapshotAt,
 		)
 	}
+}
+
+// alertRandomBytes returns a deterministic reader whose bytes vary, so every
+// identity minted from it differs.
+func alertRandomBytes(seed byte) *bytes.Reader {
+	buffer := make([]byte, 16*32)
+	for index := range buffer {
+		buffer[index] = seed ^ byte(index)
+	}
+	return bytes.NewReader(buffer)
 }
 
 func alertIntegrationPool(
