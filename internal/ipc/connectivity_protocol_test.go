@@ -141,3 +141,41 @@ func TestPublicationCannotExceedTheFrame(t *testing.T) {
 			MaxPublishedTotalBytes, MaxFrameBytes)
 	}
 }
+
+// A well-formed publication response must survive the server's own check.
+// This is the gap that made the path unusable: the response type carried the
+// result, nothing counted it as a payload, and every correct answer came back
+// to the caller as an internal error.
+func TestPublicationResponseIsWellFormed(t *testing.T) {
+	response := Response{
+		Version: ProtocolVersion, RequestID: "publication-response", OK: true,
+		PublishConnectivityFacts: &PublishConnectivityFactsResult{
+			Accepted: 2, HighWatermark: 9,
+		},
+	}
+	if err := response.Validate(); err != nil {
+		t.Fatalf("a correct publication response was refused: %v", err)
+	}
+}
+
+func TestPublicationResponseRejectsAnEmptyAccounting(t *testing.T) {
+	response := Response{
+		Version: ProtocolVersion, RequestID: "publication-empty", OK: true,
+		PublishConnectivityFacts: &PublishConnectivityFactsResult{},
+	}
+	if err := response.Validate(); err == nil {
+		t.Fatal("a result accounting for no fact at all was accepted")
+	}
+}
+
+func TestPublicationResponseRejectsMoreOutcomesThanFactsAllowed(t *testing.T) {
+	response := Response{
+		Version: ProtocolVersion, RequestID: "publication-overflow", OK: true,
+		PublishConnectivityFacts: &PublishConnectivityFactsResult{
+			Accepted: MaxPublishedFacts + 1,
+		},
+	}
+	if err := response.Validate(); err == nil {
+		t.Fatal("a result accounting for more facts than may be sent was accepted")
+	}
+}

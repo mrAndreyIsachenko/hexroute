@@ -247,6 +247,16 @@ func (response Response) Validate() error {
 			return ErrMalformedFrame
 		}
 	}
+	if response.PublishConnectivityFacts != nil {
+		payloads++
+		// The result is counted like every other payload. Leaving it out is
+		// how a well-formed publication response came back as an internal
+		// error: the field existed, nothing validated it, and every correct
+		// answer was refused as malformed.
+		if !response.PublishConnectivityFacts.valid() {
+			return ErrMalformedFrame
+		}
+	}
 	if response.OK {
 		if response.Error != ErrorNone || payloads != 1 {
 			return ErrMalformedFrame
