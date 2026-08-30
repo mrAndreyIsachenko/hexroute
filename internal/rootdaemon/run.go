@@ -361,7 +361,8 @@ func observeLoop(
 		// Its failure is reported and dropped: a daemon that stops observing
 		// because a description of its observations failed would be worse than
 		// one with no read model at all.
-		if err := connectivityhost.Fold(reader, summary.Observed, logger); err != nil {
+		if err := connectivityhost.Fold(
+			reader, summary.Observed, plannerIntents(summary.Plan), logger); err != nil {
 			return err
 		}
 		if err := publisher.Publish(at); err != nil {

@@ -118,6 +118,7 @@ func continuousTick() (control.Tick, error) {
 
 // Reader owns the host's read model for the observe loop.
 type Reader struct {
+	recorder *Recorder
 	runtime  *connectivityruntime.Runtime
 	sources  map[connectivity.SourceID]*connectivitycollect.Collector
 	owners   map[connectivity.Component]connectivity.SourceID
@@ -191,10 +192,15 @@ func Open(
 		return nil, fmt.Errorf("%w: %v", ErrStore, err)
 	}
 
+	recorder, err := OpenRecorder(filepath.Join(root, "shadow"))
+	if err != nil {
+		return nil, err
+	}
 	reader := &Reader{
-		runtime: runtime,
-		sources: make(map[connectivity.SourceID]*connectivitycollect.Collector),
-		owners:  make(map[connectivity.Component]connectivity.SourceID),
+		recorder: recorder,
+		runtime:  runtime,
+		sources:  make(map[connectivity.SourceID]*connectivitycollect.Collector),
+		owners:   make(map[connectivity.Component]connectivity.SourceID),
 	}
 	// One collector per source, not per component: a source sequence numbers
 	// the source, and root.network speaks for both physical network and
@@ -359,6 +365,7 @@ func (reader *Reader) facts(
 func Fold(
 	reader *Reader,
 	evidence Evidence,
+	intents []PlannerIntent,
 	logger *logging.Logger,
 ) error {
 	if reader == nil {
@@ -384,6 +391,18 @@ func Fold(
 			logging.ResultDegraded,
 			"",
 		)
+	}
+	// The correlation is recorded whether or not the reduction changed: the
+	// component planners run on their own evidence, so they can start or stop
+	// proposing something while the read model stands still. Recording only on
+	// reduction change would miss exactly the divergence worth seeing.
+	comparison := Compare(
+		status, intents, status.BootID, status.SnapshotGeneration,
+		status.Authorization == connectivityreduce.AuthorizationAuthorized,
+	)
+	if _, recordErr := reader.recorder.Record(comparison); recordErr != nil {
+		return logger.Emit(logging.LevelWarn, logging.EventConnectivitySnapshot,
+			logging.ResultDegraded, "")
 	}
 	if !changed {
 		// The reduction meant nothing. Saying so every cycle would make the
