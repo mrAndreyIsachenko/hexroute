@@ -232,3 +232,77 @@ func TestALostLineageDoesNotReissueSequencesTheJournalsHold(t *testing.T) {
 		}
 	}
 }
+
+// The pointer is a mutable convenience: a crash between the index write and
+// the pointer write can leave it absent, and a partial write can leave it
+// truncated or holding something that is not a pointer at all. The lineage is
+// what survives, and resume has always known that.
+//
+// Append did not. It read a missing pointer as an empty store, so a read model
+// whose pointer was lost refused every checkpoint from then on — starting
+// normally, observing normally, and storing nothing, for ever.
+func TestALostPointerDoesNotStopTheReadModelStoring(t *testing.T) {
+	cases := []struct {
+		name  string
+		spoil func(t *testing.T, pointer string)
+	}{
+		{"lost between two writes", func(t *testing.T, pointer string) {
+			if err := os.Remove(pointer); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"written half way", func(t *testing.T, pointer string) {
+			if err := os.WriteFile(pointer, []byte(`{"schema":"hexro`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"readable but not a pointer", func(t *testing.T, pointer string) {
+			if err := os.WriteFile(pointer, []byte(`{"schema":"other"}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := t.TempDir()
+			base, err := continuousTick()
+			if err != nil {
+				t.Skipf("no continuous clock: %v", err)
+			}
+			reader, err := Open(root, "boot-0000000000000000")
+			if err != nil {
+				t.Fatalf("open: %v", err)
+			}
+			for cycle := 0; cycle < 3; cycle++ {
+				if _, _, err := reader.Observe(reachedEvidence(),
+					connectivityreduce.PolicyDescriptor{},
+					base+control.Tick(cycle)); err != nil {
+					t.Fatalf("building the lineage: %v", err)
+				}
+			}
+			testCase.spoil(t, filepath.Join(root, "readmodel", "latest.json"))
+
+			restarted, err := Open(root, "boot-0000000000000000")
+			if err != nil {
+				t.Fatalf("restart refused: %v", err)
+			}
+			for cycle := 0; cycle < 3; cycle++ {
+				if _, _, err := restarted.Observe(reachedEvidence(),
+					connectivityreduce.PolicyDescriptor{},
+					base+control.Tick(10+cycle)); err != nil {
+					t.Fatalf("cannot store after the pointer was %s: %v",
+						testCase.name, err)
+				}
+			}
+			// And the pointer heals: the next start needs no fallback.
+			store, err := connectivitycheckpoint.Open(
+				filepath.Join(root, "readmodel"), connectivitycheckpoint.Options{})
+			if err != nil {
+				t.Fatalf("store: %v", err)
+			}
+			if _, err := store.Pointer(); err != nil {
+				t.Fatalf("the pointer was never rewritten: %v", err)
+			}
+		})
+	}
+}

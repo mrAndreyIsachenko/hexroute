@@ -203,9 +203,12 @@ func (store *Store) Append(checkpoint Checkpoint) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	pointer, err := store.pointerLocked()
+	pointer, err := store.latestLocked()
+	if err != nil {
+		return err
+	}
 	switch {
-	case err == nil:
+	case pointer.present:
 		if checkpoint.Parent == "" {
 			// A read model that could not prove this lineage has to start
 			// again, and refusing that write leaves it unable to store
@@ -216,11 +219,11 @@ func (store *Store) Append(checkpoint Checkpoint) error {
 			// name the pointer it does not continue.
 			if checkpoint.Break == nil {
 				return fmt.Errorf("%w: parent %q, latest is %q",
-					ErrGenerationGuard, checkpoint.Parent, pointer.ID)
+					ErrGenerationGuard, checkpoint.Parent, pointer.id)
 			}
-			if checkpoint.Break.AfterID != pointer.ID {
+			if checkpoint.Break.AfterID != pointer.id {
 				return fmt.Errorf("%w: break names %q, latest is %q",
-					ErrGenerationGuard, checkpoint.Break.AfterID, pointer.ID)
+					ErrGenerationGuard, checkpoint.Break.AfterID, pointer.id)
 			}
 			// Generation is deliberately not compared. A new lineage counts
 			// from its own beginning, and the break is what tells a reader
@@ -231,18 +234,18 @@ func (store *Store) Append(checkpoint Checkpoint) error {
 			return fmt.Errorf("%w: a continued lineage carries a break",
 				ErrGenerationGuard)
 		}
-		if checkpoint.Parent != pointer.ID {
+		if checkpoint.Parent != pointer.id {
 			return fmt.Errorf("%w: parent %q, latest is %q",
-				ErrGenerationGuard, checkpoint.Parent, pointer.ID)
+				ErrGenerationGuard, checkpoint.Parent, pointer.id)
 		}
-		if checkpoint.ParentDigest != pointer.Digest {
+		if checkpoint.ParentDigest != pointer.digest {
 			return fmt.Errorf("%w: parent digest", ErrGenerationGuard)
 		}
-		if checkpoint.SnapshotGeneration < pointer.Generation {
+		if checkpoint.SnapshotGeneration < pointer.generation {
 			return fmt.Errorf("%w: generation %d is behind %d",
-				ErrGenerationGuard, checkpoint.SnapshotGeneration, pointer.Generation)
+				ErrGenerationGuard, checkpoint.SnapshotGeneration, pointer.generation)
 		}
-	case err == ErrNotFound:
+	default:
 		if checkpoint.Parent != "" {
 			return fmt.Errorf("%w: first checkpoint claims a parent", ErrGenerationGuard)
 		}
@@ -250,8 +253,6 @@ func (store *Store) Append(checkpoint Checkpoint) error {
 			return fmt.Errorf("%w: first checkpoint abandons a lineage that was never there",
 				ErrGenerationGuard)
 		}
-	default:
-		return err
 	}
 
 	encoded, err := json.Marshal(checkpoint)
@@ -266,7 +267,7 @@ func (store *Store) Append(checkpoint Checkpoint) error {
 		return err
 	}
 
-	sequence := pointer.Sequence + 1
+	sequence := pointer.sequence + 1
 	entry := IndexEntry{
 		Schema: IndexSchema, Sequence: sequence, ID: checkpoint.ID,
 		Parent: checkpoint.Parent, Digest: checkpoint.Digest,
@@ -288,13 +289,63 @@ func (store *Store) Append(checkpoint Checkpoint) error {
 	next := Pointer{
 		Schema: PointerSchema, ID: checkpoint.ID, Digest: checkpoint.Digest,
 		Generation: checkpoint.SnapshotGeneration, Sequence: sequence,
-		Overflow: pointer.Overflow || overflow,
+		Overflow: pointer.overflow || overflow,
 	}
 	encodedPointer, err := json.Marshal(next)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidCheckpoint, err)
 	}
 	return store.writeRecord(OpPointer, store.root, pointerName, encodedPointer, true)
+}
+
+// latest is what the store has to append onto.
+//
+// It is not always the pointer. The pointer is a mutable convenience that a
+// crash between two writes can leave absent, truncated or holding something
+// that is not a pointer at all; the index is the append-only lineage, and it
+// is what survives. Resume has always known that. Append did not, and read a
+// missing pointer as an empty store — so a store whose pointer was lost
+// refused every checkpoint from then on with "first checkpoint claims a
+// parent", and one whose pointer was unreadable refused every checkpoint with
+// the decode error, for ever, on a read model that was otherwise intact.
+type latest struct {
+	present    bool
+	id         string
+	digest     string
+	generation uint64
+	sequence   uint64
+	overflow   bool
+}
+
+// latestLocked prefers the pointer and falls back to the lineage.
+func (store *Store) latestLocked() (latest, error) {
+	pointer, err := store.pointerLocked()
+	if err == nil {
+		return latest{
+			present: true, id: pointer.ID, digest: pointer.Digest,
+			generation: pointer.Generation, sequence: pointer.Sequence,
+			overflow: pointer.Overflow,
+		}, nil
+	}
+	entries, indexErr := store.indexLocked()
+	if indexErr != nil {
+		// The lineage itself is unreadable. That is not something to append
+		// past: writing on top of a lineage nobody can read is how a store
+		// stops being evidence of anything.
+		return latest{}, indexErr
+	}
+	if len(entries) == 0 {
+		return latest{}, nil
+	}
+	newest := entries[len(entries)-1]
+	return latest{
+		present: true, id: newest.ID, digest: newest.Digest,
+		generation: newest.Generation, sequence: newest.Sequence,
+		// The pointer carried whether older lineage had been evicted. Without
+		// it the same fact is still on the record: a retained lineage that no
+		// longer starts at one is one that was trimmed.
+		overflow: entries[0].Sequence > 1,
+	}, nil
 }
 
 func indexName(sequence uint64) string {
