@@ -59,6 +59,14 @@ const (
 	KindFaultInjection Kind = "fault_injection"
 	// KindVerification is a replay of the stored lineage against its journal.
 	KindVerification Kind = "verification"
+	// KindClockAnomaly is two clocks that cannot both be right.
+	//
+	// It is its own kind because it is the one event that makes every
+	// measurement around it unusable: eligible time, sleep and the gap
+	// between samples are all read off those clocks. Folding it into a window
+	// would mean recording a duration derived from the readings that just
+	// proved themselves untrustworthy.
+	KindClockAnomaly Kind = "clock_anomaly"
 )
 
 // Result is the verdict a record carries.
@@ -134,6 +142,18 @@ type FaultInjection struct {
 // a name no catalogue knows.
 type Fault = connectivitytrace.Fault
 
+// ClockAnomaly reports readings that cannot all be true in one boot.
+//
+// The continuous clock counts through sleep and the awake clock stops for it,
+// so the awake reading may lag and may not lead, and neither may run
+// backwards. The deltas are kept as observed rather than corrected: what makes
+// this useful later is exactly what the clocks said.
+type ClockAnomaly struct {
+	ContinuousDeltaNS int64 `json:"continuous_delta_ns"`
+	AwakeDeltaNS      int64 `json:"awake_delta_ns"`
+	WallDeltaNS       int64 `json:"wall_delta_ns"`
+}
+
 // Verification reports a replay of the stored lineage against its journals.
 type Verification struct {
 	Reproduced   int `json:"reproduced"`
@@ -163,6 +183,7 @@ type EvidenceRecord struct {
 	Reboot         *Reboot         `json:"reboot,omitempty"`
 	FaultInjection *FaultInjection `json:"fault_injection,omitempty"`
 	Verification   *Verification   `json:"verification,omitempty"`
+	ClockAnomaly   *ClockAnomaly   `json:"clock_anomaly,omitempty"`
 
 	// RecordSHA256 covers every field above. Rewriting any of them breaks it,
 	// and breaking it breaks every link after.
@@ -234,7 +255,7 @@ func (record EvidenceRecord) Validate() error {
 	for _, present := range []bool{
 		record.EligibleWindow != nil, record.SleepWake != nil,
 		record.Reboot != nil, record.FaultInjection != nil,
-		record.Verification != nil,
+		record.Verification != nil, record.ClockAnomaly != nil,
 	} {
 		if present {
 			payloads++
@@ -265,6 +286,11 @@ func (record EvidenceRecord) Validate() error {
 		}
 	case KindVerification:
 		if record.Verification == nil {
+			return ErrInvalidRecord
+		}
+	case KindClockAnomaly:
+		// An anomaly nobody can reconstruct is an assertion, not evidence.
+		if record.ClockAnomaly == nil || record.Result != ResultDiverged {
 			return ErrInvalidRecord
 		}
 	default:

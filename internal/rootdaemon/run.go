@@ -57,6 +57,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// it ran before the read model existed.
 	readModelRoot := flags.String(
 		"connectivity-read-model", "", "observe-only connectivity read model root")
+	// Off unless both are given. Qualification is a decision someone records,
+	// and a chain without a session identity would accumulate two runs into a
+	// number about neither.
+	qualificationRoot := flags.String(
+		"connectivity-qualification", "", "soak qualification evidence chain root")
+	qualificationSession := flags.String(
+		"connectivity-qualification-session", "", "soak qualification session UUID")
 
 	if err := flags.Parse(args); err != nil {
 		return rejected(errorLog, logging.ReasonInvalidFlags)
@@ -154,6 +161,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// than accept publications it will drop.
 	reader, err := connectivityhost.Open(*readModelRoot, bootIdentity())
 	if err != nil {
+		return rejected(errorLog, logging.ReasonInvalidConfiguration)
+	}
+	// A misconfigured chain is refused at startup rather than at the first
+	// sample. A soak that ran for hours and then turned out to have been
+	// recording nothing is worse than one that never started.
+	if err := reader.AttachQualifier(*qualificationRoot, *qualificationSession); err != nil {
 		return rejected(errorLog, logging.ReasonInvalidConfiguration)
 	}
 	// The reconciler's shadow store is opened so its status is answerable. It
