@@ -41,6 +41,13 @@ const (
 	VerifyUnreplayable VerifyStatus = "unreplayable"
 	// VerifyGenesis means the link has no parent to replay from.
 	VerifyGenesis VerifyStatus = "genesis"
+	// VerifyBroken means the link has no parent because it abandoned one.
+	//
+	// It is told apart from genesis deliberately. Both have nothing to replay
+	// from, but genesis says the store began here and this says the store
+	// gave up here and started again — and reporting the second as the first
+	// is exactly the silent restart the record exists to prevent.
+	VerifyBroken VerifyStatus = "lineage_broken"
 )
 
 // LinkResult is one checkpoint's verdict.
@@ -168,9 +175,12 @@ func Verify(
 			// longer holds cannot be replayed from either, and saying so is
 			// different from claiming the link disagreed.
 			link.Status = VerifyGenesis
-			if checkpoint.Parent != "" {
+			switch {
+			case checkpoint.Parent != "":
 				link.Status = VerifyUnreplayable
 				result.Unreplayable++
+			case checkpoint.Break != nil:
+				link.Status = VerifyBroken
 			}
 			result.Links = append(result.Links, link)
 			continue

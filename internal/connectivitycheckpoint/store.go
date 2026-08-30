@@ -206,6 +206,31 @@ func (store *Store) Append(checkpoint Checkpoint) error {
 	pointer, err := store.pointerLocked()
 	switch {
 	case err == nil:
+		if checkpoint.Parent == "" {
+			// A read model that could not prove this lineage has to start
+			// again, and refusing that write leaves it unable to store
+			// anything ever again: every later attempt is the same parentless
+			// checkpoint against the same pointer. What may not happen is a
+			// silent restart, which would read ever after as though the
+			// lineage had always started there. So the break is required to
+			// name the pointer it does not continue.
+			if checkpoint.Break == nil {
+				return fmt.Errorf("%w: parent %q, latest is %q",
+					ErrGenerationGuard, checkpoint.Parent, pointer.ID)
+			}
+			if checkpoint.Break.AfterID != pointer.ID {
+				return fmt.Errorf("%w: break names %q, latest is %q",
+					ErrGenerationGuard, checkpoint.Break.AfterID, pointer.ID)
+			}
+			// Generation is deliberately not compared. A new lineage counts
+			// from its own beginning, and the break is what tells a reader
+			// why the number went backwards.
+			break
+		}
+		if checkpoint.Break != nil {
+			return fmt.Errorf("%w: a continued lineage carries a break",
+				ErrGenerationGuard)
+		}
 		if checkpoint.Parent != pointer.ID {
 			return fmt.Errorf("%w: parent %q, latest is %q",
 				ErrGenerationGuard, checkpoint.Parent, pointer.ID)
@@ -220,6 +245,10 @@ func (store *Store) Append(checkpoint Checkpoint) error {
 	case err == ErrNotFound:
 		if checkpoint.Parent != "" {
 			return fmt.Errorf("%w: first checkpoint claims a parent", ErrGenerationGuard)
+		}
+		if checkpoint.Break != nil {
+			return fmt.Errorf("%w: first checkpoint abandons a lineage that was never there",
+				ErrGenerationGuard)
 		}
 	default:
 		return err
