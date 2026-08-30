@@ -58,7 +58,16 @@ func newSoak(t *testing.T) *soak {
 	// comparison starts from whatever those said. Clearing it makes the first
 	// driven cycle the first comparison.
 	reader.now = reading{}
-	run.tick = 1000
+	// The evaluation tick has to come from the clock the collectors stamp
+	// their facts with. A number picked out of the air works only on a
+	// machine whose uptime is already past it: on a host that booted a minute
+	// ago every fact would arrive with a deadline below the tick judging it,
+	// and the whole picture would be stale before the test did anything.
+	base, err := continuousTick()
+	if err != nil {
+		t.Skipf("no continuous clock: %v", err)
+	}
+	run.tick = int64(base)
 	run.cycle()
 	return run
 }
@@ -68,7 +77,11 @@ func newSoak(t *testing.T) *soak {
 // snapshot the observer never saw.
 func (run *soak) cycle() {
 	run.t.Helper()
-	run.tick += 100
+	// One tick a cycle. The fake sleep moves the clocks the observer reads,
+	// not the one freshness is measured on, so a component that goes stale
+	// here went stale because the wake said so and not because a deadline
+	// quietly expired underneath.
+	run.tick++
 	if _, _, err := run.reader.Observe(reachedEvidence(),
 		connectivityreduce.PolicyDescriptor{}, control.Tick(run.tick)); err != nil {
 		run.t.Fatalf("observe: %v", err)
@@ -89,6 +102,18 @@ func (run *soak) advance(span time.Duration) {
 func (run *soak) sleep(span time.Duration) {
 	run.wall = run.wall.Add(span)
 	run.continuous += span
+}
+
+// observeNothing runs a cycle that reached nothing, so no owner restates
+// anything and whatever the wake invalidated stays invalidated.
+func (run *soak) observeNothing() {
+	run.t.Helper()
+	run.tick++
+	if _, _, err := run.reader.Observe(
+		Evidence{}, connectivityreduce.PolicyDescriptor{},
+		control.Tick(run.tick)); err != nil {
+		run.t.Fatalf("observe: %v", err)
+	}
 }
 
 func (run *soak) sample() {
@@ -189,10 +214,7 @@ func TestAWakeTheModelDoesNotRecoverFromIsRecordedAsADivergence(t *testing.T) {
 	run.sleep(2 * time.Hour)
 	run.advance(time.Minute)
 	// Nothing was observed, so nothing restates and the wake stands.
-	if _, _, err := run.reader.Observe(
-		Evidence{}, connectivityreduce.PolicyDescriptor{}, control.Tick(2000)); err != nil {
-		t.Fatalf("observe: %v", err)
-	}
+	run.observeNothing()
 	run.sample()
 	for _, record := range run.records() {
 		if record.Kind == connectivityqualification.KindSleepWake {
@@ -203,10 +225,7 @@ func TestAWakeTheModelDoesNotRecoverFromIsRecordedAsADivergence(t *testing.T) {
 	// It stays held until the settle window closes, and is then recorded for
 	// what it was.
 	run.advance(qualifyWakeSettle + time.Minute)
-	if _, _, err := run.reader.Observe(
-		Evidence{}, connectivityreduce.PolicyDescriptor{}, control.Tick(3000)); err != nil {
-		t.Fatalf("observe: %v", err)
-	}
+	run.observeNothing()
 	run.sample()
 
 	progress := run.progress()
@@ -337,10 +356,7 @@ func TestASleptHostDoesNotComeBackLookingFresh(t *testing.T) {
 	run.sleep(2 * time.Hour)
 	run.advance(time.Minute)
 	// The cycle observes nothing, so no owner restates anything.
-	if _, _, err := run.reader.Observe(
-		Evidence{}, connectivityreduce.PolicyDescriptor{}, control.Tick(2000)); err != nil {
-		t.Fatalf("observe: %v", err)
-	}
+	run.observeNothing()
 	// The aggregate would already be unwell from the empty cycle, so it
 	// proves nothing here. What the sleep has to change is the components
 	// that were fresh a moment ago on deadlines set before the host went
