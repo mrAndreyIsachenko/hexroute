@@ -217,6 +217,18 @@ func ensureShadowDirectory(path string, uid, gid uint32) error {
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return err
 	}
+	// A new directory inherits its parent's group on this platform, and the
+	// parent of the root store is root:admin. A store that only validated
+	// ownership it never set could therefore never open outside a temporary
+	// directory that happened to match — which is exactly where its tests ran.
+	//
+	// The group is corrected only when root already owns the directory and it
+	// is already private. Under a root-owned 0700 parent nothing else could
+	// have put it there, so this adjusts what this store made rather than
+	// adopting what somebody else did.
+	if err := adoptShadowGroup(path, uid, gid); err != nil {
+		return err
+	}
 	info, err := os.Lstat(path)
 	if err != nil {
 		return err
@@ -234,6 +246,21 @@ func ensureShadowDirectory(path string, uid, gid uint32) error {
 		return os.Chmod(path, 0o700)
 	}
 	return nil
+}
+
+func adoptShadowGroup(path string, uid, gid uint32) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return ErrShadowStore
+	}
+	if stat.Uid != uid || stat.Gid == gid || info.Mode().Perm()&0o077 != 0 {
+		return nil
+	}
+	return os.Chown(path, int(uid), int(gid))
 }
 
 func validateShadowFile(path string, uid, gid uint32) error {
