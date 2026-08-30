@@ -124,6 +124,7 @@ shell-test: shell-test-tools build-observe-root build-observe-user build-policy-
 	tests/emergency_restore_test.sh
 	tests/container_contract_test.sh
 	tests/observe_root_launchd_test.sh
+	tests/connectivity_read_model_rollback_test.sh
 	tests/observe_user_launchd_test.sh
 	tests/provider_b_documentation_test.sh
 	tests/policy_cli_boundary_test.sh
