@@ -588,3 +588,39 @@ func TestSubstitutedAncestorBreaksTheChain(t *testing.T) {
 		t.Fatalf("a checkpoint with a substituted ancestor was resumed: %s", resume)
 	}
 }
+
+// Falling back to an ancestor without saying why leaves an operator told only
+// that the newest checkpoint was not used. A shredded record, a deleted
+// ancestor and a substituted parent call for three different responses, and
+// the resume was reporting all three as "none".
+func TestRecoveringAnAncestorSaysWhyTheNewestWasRefused(t *testing.T) {
+	store, root := openStore(t, Options{})
+	chain := newLineage(t)
+	var newest Checkpoint
+	for step := 0; step < 3; step++ {
+		newest = chain.next(connectivity.ComponentDNS)
+		if err := store.Append(newest); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	path := filepath.Join(root, "checkpoints", newest.ID+".json")
+	if err := os.WriteFile(path, []byte("{\"schema\":\"truncated\""), 0o600); err != nil {
+		t.Fatalf("shred: %v", err)
+	}
+
+	restarted, err := Open(root, Options{})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	resume, err := restarted.Resume()
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if resume.Status != ResumeAncestor {
+		t.Fatalf("status %s, want recovered_ancestor", resume.Status)
+	}
+	if resume.Reason != ResumeReasonRecordInvalid {
+		t.Fatalf("recovered an ancestor citing %q; the record that was refused "+
+			"was unreadable, and nothing said so", resume.Reason)
+	}
+}

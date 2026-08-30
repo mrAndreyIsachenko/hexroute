@@ -467,3 +467,42 @@ func TestRestartFoldsFactsAcceptedAfterTheCheckpoint(t *testing.T) {
 		}
 	}
 }
+
+// A publication report folded stale arrivals into its rejected count, which
+// left a caller unable to tell a malformed publisher from a slow one. They are
+// different events: a rejected fact never entered the order and is not
+// reduced, while a stale one arrived late and is still folded as evidence.
+func TestALateArrivalIsCountedAsStaleRatherThanRejected(t *testing.T) {
+	h := newHarness(t, true)
+	if _, err := h.runtime.Publish(rootFacts(), policy.DomainRoot); err != nil {
+		t.Fatalf("baseline: %v", err)
+	}
+	source, _ := connectivity.FixtureSource(connectivity.ComponentRelays)
+	high := uint64(0)
+	for _, fact := range connectivity.FixtureBaselineSet() {
+		if fact.SourceID == source && fact.SourceSequence > high {
+			high = fact.SourceSequence
+		}
+	}
+	skip := connectivity.FixtureBaseline(connectivity.ComponentRelays, high+2)
+	skip.Baseline = false
+	skip.Reason = connectivity.ReasonProbeSucceeded
+	if _, err := h.runtime.Publish([]connectivity.Fact{skip}, policy.DomainRoot); err != nil {
+		t.Fatalf("skip: %v", err)
+	}
+	// The hole is now open, so the sequence it left behind is behind the
+	// watermark rather than a reuse of an accepted one.
+	late := connectivity.FixtureBaseline(connectivity.ComponentRelays, high+1)
+	late.Baseline = false
+	late.Reason = connectivity.ReasonProbeSucceeded
+	report, err := h.runtime.Publish([]connectivity.Fact{late}, policy.DomainRoot)
+	if err != nil {
+		t.Fatalf("late: %v", err)
+	}
+	if report.Stale != 1 {
+		t.Fatalf("report counts %d stale arrivals, want 1: %+v", report.Stale, report)
+	}
+	if report.Rejected != 0 {
+		t.Fatalf("a late arrival was reported as rejected: %+v", report)
+	}
+}

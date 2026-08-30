@@ -566,10 +566,19 @@ func summarize(snapshot Snapshot, conflictOverflow bool) Summary {
 			summary.AwaitingBaseline++
 		}
 	}
+	// A hole in a source's stream is a missing observation, and the spec is
+	// explicit that healthy aggregate output must not be inferred across one.
+	// Every surviving component can be fresh and ready precisely because the
+	// facts that would have said otherwise are the ones that went missing, so
+	// integrity degrades the summary on its own rather than only through the
+	// components that happen to have been observed.
+	integrity := summary.OpenGaps > 0 || summary.GapOverflow ||
+		summary.AwaitingBaseline > 0 || summary.SourceConflicts > 0
 	switch {
 	case summary.Failed > 0:
 		summary.State = AggregateFailed
-	case summary.Degraded > 0 || summary.Stale > 0 || summary.Conflicted > 0:
+	case summary.Degraded > 0 || summary.Stale > 0 || summary.Conflicted > 0 ||
+		integrity:
 		summary.State = AggregateDegraded
 	case summary.Unknown > 0:
 		summary.State = AggregateUnknown

@@ -45,7 +45,13 @@ const (
 	// superseded. All three change the snapshot a given journal reduces to,
 	// so a version 1 checkpoint is output from different rules and replaying
 	// it here would compare digests that were never meant to match.
-	ReducerVersion uint16 = 2
+	//
+	// Version 3 stops the operator summary reporting ready while a source
+	// stream has a hole, owes a restatement or holds a conflict. The
+	// components can all be fresh and ready in that state, and reporting the
+	// host as ready is healthy output inferred across the observations that
+	// went missing.
+	ReducerVersion uint16 = 3
 
 	// MaxCorroborations bounds retained evidence per component.
 	MaxCorroborations = 8
