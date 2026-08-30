@@ -21,7 +21,8 @@ const modulePath = "github.com/mrAndreyIsachenko/hexroute"
 var connectivityPackages = []string{
 	"connectivity", "connectivityaccept", "connectivitycheckpoint",
 	"connectivitycollect", "connectivityhost", "connectivityjournal",
-	"connectivityreduce", "connectivityruntime", "connectivitytrace",
+	"connectivityqualification", "connectivityreduce", "connectivityruntime",
+	"connectivitytrace",
 	"connectivityview",
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivitycheckpoint"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityjournal"
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityqualification"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivitytrace"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
@@ -30,8 +31,9 @@ type report struct {
 	Schema string `json:"schema"`
 	Store  string `json:"store,omitempty"`
 
-	Verify *connectivitycheckpoint.VerifyResult `json:"verify,omitempty"`
-	Traces []traceReport                        `json:"traces,omitempty"`
+	Verify   *connectivitycheckpoint.VerifyResult `json:"verify,omitempty"`
+	Traces   []traceReport                        `json:"traces,omitempty"`
+	Progress *connectivityqualification.Progress  `json:"qualification,omitempty"`
 }
 
 type traceReport struct {
@@ -52,6 +54,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	showVersion := flags.Bool("version", false, "print version")
 	root := flags.String("store", "", "connectivity read-model store root")
 	listTraces := flags.Bool("traces", false, "list the canonical fault traces")
+	chain := flags.String("qualification", "", "qualification chain root to inspect")
+	session := flags.String("session", "", "qualification session identity")
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
 		fmt.Fprintln(stderr, "error: invalid arguments")
 		return 2
@@ -61,8 +65,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 			buildinfo.Version, buildinfo.Commit)
 		return 0
 	}
-	if *root == "" && !*listTraces {
-		fmt.Fprintln(stderr, "error: --store or --traces is required")
+	if *root == "" && !*listTraces && *chain == "" {
+		fmt.Fprintln(stderr, "error: --store, --traces or --qualification is required")
+		return 2
+	}
+	if *chain != "" && *session == "" {
+		// A chain read without naming the session it belongs to would accept
+		// whichever run happened to be there, which is the mistake the chain
+		// refuses internally.
+		fmt.Fprintln(stderr, "error: --qualification requires --session")
 		return 2
 	}
 
@@ -84,6 +95,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 				Visible: trace.Expectation.Visible,
 			})
 		}
+	}
+
+	if *chain != "" {
+		progress, err := inspect(*chain, *session)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		out.Progress = &progress
 	}
 
 	unsound := false
@@ -108,6 +128,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// inspect derives what a qualification chain amounts to. It never writes: the
+// question is what the evidence says, and asking it must not change it.
+func inspect(root, session string) (connectivityqualification.Progress, error) {
+	records, err := connectivityqualification.ReadRecords(root)
+	if err != nil {
+		return connectivityqualification.Progress{}, err
+	}
+	if len(records) == 0 {
+		return connectivityqualification.Progress{}, fmt.Errorf(
+			"qualification chain at %s is empty", root)
+	}
+	// The binding comes from the chain's own first record, with the session
+	// supplied by the caller. Reading it out of the chain and then checking
+	// the chain against it would prove only that the chain agrees with
+	// itself; the session is what an operator asserts from outside.
+	binding := records[0].Binding
+	binding.SessionID = metadata.UUID(session)
+	return connectivityqualification.Inspect(root, binding)
 }
 
 func verify(root string) (connectivitycheckpoint.VerifyResult, error) {
