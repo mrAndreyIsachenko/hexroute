@@ -30,15 +30,20 @@ type soak struct {
 
 func newSoak(t *testing.T) *soak {
 	t.Helper()
+	// Every evaluation tick has to come from the clock the collectors stamp
+	// their facts with, including the very first one. A number picked out of
+	// the air only works on a machine whose uptime is already past it: on a
+	// host that booted a minute ago the picture is stale before the test has
+	// done anything, and a first reduction above the clock makes every later
+	// one look like time running backwards.
+	base, err := continuousTick()
+	if err != nil {
+		t.Skipf("no continuous clock: %v", err)
+	}
 	root := t.TempDir()
 	reader, err := Open(root, "boot-0000000000000000")
 	if err != nil {
 		t.Fatalf("open: %v", err)
-	}
-	// Something has to be checkpointed before a record has evidence to name.
-	if _, _, err := reader.Observe(
-		reachedEvidence(), connectivityreduce.PolicyDescriptor{}, 1000); err != nil {
-		t.Fatalf("observe: %v", err)
 	}
 	chain := filepath.Join(root, "qualification")
 	if err := reader.AttachQualifier(chain, testSession); err != nil {
@@ -50,24 +55,15 @@ func newSoak(t *testing.T) *soak {
 		continuous: 4 * time.Hour,
 		awake:      3 * time.Hour,
 		boot:       "boot-0000000000000000",
+		tick:       int64(base),
 	}
 	reader.clocks = func() (reading, error) {
 		return reading{Wall: run.wall, Continuous: run.continuous, Awake: run.awake}, nil
 	}
-	// The reader has already seen one cycle on the real clocks, so its
-	// comparison starts from whatever those said. Clearing it makes the first
-	// driven cycle the first comparison.
-	reader.now = reading{}
-	// The evaluation tick has to come from the clock the collectors stamp
-	// their facts with. A number picked out of the air works only on a
-	// machine whose uptime is already past it: on a host that booted a minute
-	// ago every fact would arrive with a deadline below the tick judging it,
-	// and the whole picture would be stale before the test did anything.
-	base, err := continuousTick()
-	if err != nil {
-		t.Skipf("no continuous clock: %v", err)
-	}
-	run.tick = int64(base)
+	// One cycle to start. It checkpoints something for a record to bind to
+	// and gives both the reader and the observer a reading to compare the
+	// next cycle against, without claiming a span across the moment the
+	// daemon came up.
 	run.cycle()
 	return run
 }
