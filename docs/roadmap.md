@@ -32,10 +32,13 @@ Status date: 2026-08-30.
 - The telemetry-only cloud API, worker and migrator implement PostgreSQL-backed
   ingestion, incidents, retention, Telegram alerts, the redacted connectivity
   projection and a passkey-protected read-only dashboard.
-- SLO calculation and incident-bundle expiry are implemented and **not
-  scheduled**: the worker runs neither job, so the dashboard's SLO section is
-  empty and no bundle is ever created or expired. Incident bundles additionally
-  need private object storage that is configured outside this repository.
+- SLO availability is calculated hourly per node from stored evidence and
+  upserted, so the dashboard's SLO section reports measured availability. A
+  window whose opening state cannot be established, or whose failed time no
+  incident explains, is left uncomputed rather than filled in.
+- Incident-bundle creation and expiry are implemented and **not scheduled**:
+  nothing creates a bundle, so expiry has nothing to expire, and creation needs
+  private object storage configured outside this repository.
 - Public reusable Terraform modules exist; live roots and deployment evidence
   remain in the private `hexroute-infra` repository.
 - The first cloud foundation is live behind `status.hexroute.app` with external
@@ -106,8 +109,6 @@ Code that exists and no binary contains. Each entry is a claim this repository
 has made and not yet kept; the list is enforced by `make check`, so it cannot
 grow in silence.
 
-- `slo` — SLO calculation. The dashboard renders an SLO section that is empty
-  because the worker schedules no job to fill it.
 - `incidentbundle` — bundle creation and expiry. Nothing creates a bundle, so
   expiry has nothing to expire; creation needs private object storage
   configured outside this repository.
@@ -115,6 +116,6 @@ grow in silence.
 - `resumeexecutor` — operator resume enforcement.
 - `policyadvisor` — redacted policy observability.
 
-`reconciler` left this list on 2026-08-30 when its shadow status became
-answerable. It still compares nothing: correlating its planner output with the
+`reconciler` and `slo` left this list on 2026-08-30, the first when its shadow
+status became answerable and the second when its calculation was scheduled. It still compares nothing: correlating its planner output with the
 read model's proposals is part of item 2.

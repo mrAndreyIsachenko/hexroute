@@ -27,9 +27,9 @@ test_only=(
 unwired=(
   # connectivityhost is the seam; it is reachable. Nothing else here is.
 
-  # Cloud features the worker does not schedule. docs/roadmap.md claims the
-  # cloud implements SLOs and incident bundles; the worker runs neither job.
-  slo
+  # incidentbundle: nothing creates a bundle, so expiry has nothing to expire.
+  # Creation needs private object storage configured outside this repository,
+  # which is why wiring only the expiry job would be motion without effect.
   incidentbundle
 
   # Local capabilities held behind their own cutover gates.
