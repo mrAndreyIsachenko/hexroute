@@ -31,7 +31,7 @@ func TestReaderTurnsOneCycleIntoASnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	status, err := reader.Observe(reachedEvidence(), connectivityreduce.PolicyDescriptor{}, 1000)
+	status, _, err := reader.Observe(reachedEvidence(), connectivityreduce.PolicyDescriptor{}, 1000)
 	if err != nil {
 		t.Fatalf("observe: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestEarlyReturningCycleStillProducesASnapshot(t *testing.T) {
 		ConfiguredRoutes: 1,
 		TUNError:         errNoManagedTUN,
 	}
-	status, err := reader.Observe(evidence, connectivityreduce.PolicyDescriptor{}, 1000)
+	status, _, err := reader.Observe(evidence, connectivityreduce.PolicyDescriptor{}, 1000)
 	if err != nil {
 		t.Fatalf("observe: %v", err)
 	}

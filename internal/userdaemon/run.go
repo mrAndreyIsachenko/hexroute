@@ -406,6 +406,8 @@ func observeLoop(
 	logger *logging.Logger,
 	publisher *factPublisher,
 ) error {
+	// The log records what happened; the state file records that the loop ran.
+	gate := logging.NewChangeGate()
 	if ctx == nil ||
 		interval <= 0 ||
 		nowTick == nil ||
@@ -453,7 +455,7 @@ func observeLoop(
 			logger,
 		)
 		lastState = summary.Plan.Snapshot.State
-		if err := emitSummary(logger, summary); err != nil {
+		if err := emitSummary(logger, gate, summary); err != nil {
 			return err
 		}
 		if once {
@@ -581,7 +583,11 @@ func operatorReason(reason pritunlplan.Reason) control.Reason {
 	}
 }
 
-func emitSummary(logger *logging.Logger, summary Summary) error {
+func emitSummary(
+	logger *logging.Logger,
+	gate *logging.ChangeGate,
+	summary Summary,
+) error {
 	result := logging.ResultDegraded
 	switch {
 	case summary.Plan.State == control.StateSuspended:
@@ -591,15 +597,23 @@ func emitSummary(logger *logging.Logger, summary Summary) error {
 		summary.Plan.Action == pritunlplan.ActionNone:
 		result = logging.ResultOK
 	}
-	if err := logger.Emit(
-		logging.LevelInfo,
-		logging.EventObservationCycle,
-		result,
-		"",
-	); err != nil {
-		return err
+	if gate.Changed(logging.EventObservationCycle, string(result)) {
+		if err := logger.Emit(
+			logging.LevelInfo,
+			logging.EventObservationCycle,
+			result,
+			"",
+		); err != nil {
+			return err
+		}
 	}
 	if summary.Plan.Action == pritunlplan.ActionReconnect {
+		// A standing proposal is one proposal. It is reported when it appears
+		// and again if it lapses and returns, not once a minute for as long as
+		// the condition holds.
+		if !gate.Changed(logging.EventPritunlReconnect, string(pritunlplan.ActionReconnect)) {
+			return nil
+		}
 		return logger.Emit(
 			logging.LevelInfo,
 			logging.EventPritunlReconnect,
@@ -607,6 +621,7 @@ func emitSummary(logger *logging.Logger, summary Summary) error {
 			"",
 		)
 	}
+	gate.Changed(logging.EventPritunlReconnect, "")
 	if summary.Plan.Action != pritunlplan.ActionNone {
 		return ErrInvalidConfig
 	}
