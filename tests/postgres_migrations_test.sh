@@ -91,6 +91,8 @@ required_tables=(
   incident_events incident_transitions incident_bundles config_versions
   deployments worker_heartbeats dashboard_principals passkey_credentials
   alert_deliveries incident_alert_outbox slo_aggregates slo_incident_links
+  connectivity_snapshots connectivity_snapshot_components
+  connectivity_snapshot_proposal_classes
   hexroute_schema_migrations cutover_write_control
 )
 for table in "${required_tables[@]}"; do
@@ -251,6 +253,32 @@ expect_denied hexroute_dashboard \
    ) VALUES (
      '30000000-0000-4000-8000-000000000003', 'schema', 'forbidden'
    )"
+expect_allowed hexroute_dashboard \
+  'SELECT aggregate_state, open_gaps FROM connectivity_snapshots LIMIT 0'
+expect_allowed hexroute_dashboard \
+  'SELECT component, component_state FROM connectivity_snapshot_components LIMIT 0'
+expect_allowed hexroute_maintenance \
+  "UPDATE connectivity_snapshots SET aggregate_state = 'ready' WHERE FALSE"
+
+# The read model is derived by the worker and read by the page. Neither the
+# ingest role nor the dashboard may write it: ingestion stores signed events
+# and nothing more, and a rendering path that could write is a control path.
+expect_denied hexroute_ingest \
+  'SELECT aggregate_state FROM connectivity_snapshots LIMIT 0'
+expect_denied hexroute_dashboard \
+  "UPDATE connectivity_snapshots SET aggregate_state = 'ready' WHERE FALSE"
+expect_denied hexroute_dashboard \
+  'DELETE FROM connectivity_snapshot_components WHERE FALSE'
+
+# The projection alphabet is enforced by the schema, not only by the encoder.
+expect_denied hexroute_maintenance \
+  "INSERT INTO connectivity_snapshot_components (
+     node_id, component, component_state, freshness, diff_reason
+   ) VALUES (
+     '50000000-0000-4000-8000-000000000005',
+     '198.51.100.7', 'ready', 'fresh', 'none'
+   )"
+
 expect_denied hexroute_maintenance \
   'SELECT credential_id FROM passkey_credentials LIMIT 0'
 expect_denied hexroute_maintenance \

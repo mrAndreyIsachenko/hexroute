@@ -98,6 +98,31 @@ observations survived, and only a complete baseline puts it back. Scoped routes
 are the exception: a route table does not stop being installed because the
 machine slept.
 
+## What the cloud gets, and what it can do with it
+
+The projection travels as an ordinary signed event and lands in the same
+`events` table as everything else. A worker pass folds it into a per-node read
+model that the dashboard renders; nothing else reads it, and no host ever does.
+
+Two things make that more than an intention. The cloud read model may not
+import the acceptor, the reducer or the checkpoint store, so it can only store
+what a host concluded and never recompute it — a dependency test asserts this
+and would fail if the import appeared. And the stored schema constrains every
+text column to the projection's own bounded-token alphabet, so an address, a
+path or a digest is unstorable there even if an encoder regressed.
+
+Ordering is the part worth stating plainly. A projection describing an earlier
+host position never replaces a stored later one: the pass does not select it,
+and the write is guarded besides. A host that could not recover its lineage
+restarts its snapshot generation, and that case is stored as a lineage reset
+rather than either being refused forever or quietly smoothed over.
+
+Losing the cloud — the API, PostgreSQL, the worker, the dashboard — is one
+event from the host's side: an upload that does not complete. Reduction keeps
+advancing, proposals keep being produced, and the undeliverable projection
+waits in the bounded spool at a priority below retained evidence, so a lost
+sample never evicts a baseline.
+
 ## Rollback
 
 Set the gate to off. The runtime then opens no store, holds no state and

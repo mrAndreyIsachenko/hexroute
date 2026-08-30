@@ -55,6 +55,24 @@ const dashboardHTML = `<!doctype html>
       </table></div>
     </section>
     <section>
+      <div class="section-title"><h2>Connectivity read model</h2><span class="muted">observe-only</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Node</th><th>Aggregate</th><th>Authorization</th><th>Integrity</th><th>Generations</th><th>Components</th><th>Proposals</th><th>Reported</th></tr></thead>
+        <tbody>{{range .Snapshot.Connectivities}}<tr>
+          <td>{{.Name}}</td>
+          <td><span class="state {{class .Aggregate}}">{{.Aggregate}}</span></td>
+          <td>{{.Authorization}}{{if ne .AuthorizationReason "none"}} <span class="muted">({{.AuthorizationReason}})</span>{{end}}</td>
+          <td>{{.OpenGaps}} gaps{{if .GapOverflow}} <span class="state bad">dropped</span>{{end}},
+              {{.SourceConflicts}} conflicts{{if .ConflictOverflow}} <span class="state bad">evicted</span>{{end}},
+              {{.AwaitingBaseline}} awaiting baseline{{if .LineageReset}} <span class="state bad">lineage reset</span>{{end}}</td>
+          <td>snapshot {{.SnapshotGeneration}} / bundle {{.BundleGeneration}} / root {{.RootGeneration}} / user {{.UserGeneration}}</td>
+          <td>{{range .Components}}<span class="state {{class .State}}">{{.Name}}: {{.State}}/{{.Freshness}}</span> {{end}}</td>
+          <td>{{range .ProposalClasses}}<span class="state">{{.Class}}: {{.Count}}</span> {{else}}<span class="muted">none</span>{{end}}</td>
+          <td><span class="state {{if .Stale}}bad{{else}}ok{{end}}">{{time .ObservedAt}}</span></td>
+        </tr>{{else}}<tr><td colspan="8" class="empty">No connectivity projections</td></tr>{{end}}</tbody>
+      </table></div>
+    </section>
+    <section>
       <div class="section-title"><h2>Incidents</h2></div>
       <div class="table-wrap"><table>
         <thead><tr><th>Status</th><th>Severity</th><th>Component</th><th>Category</th><th>Generation</th><th>Observed</th></tr></thead>

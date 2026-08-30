@@ -1,0 +1,4 @@
+DROP INDEX connectivity_projection_pending_idx;
+DROP TABLE connectivity_snapshot_proposal_classes;
+DROP TABLE connectivity_snapshot_components;
+DROP TABLE connectivity_snapshots;

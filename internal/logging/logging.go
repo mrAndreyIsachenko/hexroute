@@ -55,6 +55,9 @@ const (
 	EventCloudAlertQueue    EventName = "cloud_alert_queue"
 	EventCloudAlertDelivery EventName = "cloud_alert_delivery"
 	EventCloudRetention     EventName = "cloud_retention"
+	// EventCloudConnectivity names the pass that folds uploaded connectivity
+	// projections into the cloud read model.
+	EventCloudConnectivity EventName = "cloud_connectivity_projection"
 )
 
 type Result string
@@ -181,7 +184,7 @@ func validEvent(value EventName) bool {
 		EventCloudAPIStopped, EventCloudWorkerStarted, EventCloudWorkerStopped,
 		EventCloudMigration,
 		EventCloudHeartbeat, EventCloudReconcile, EventCloudAlertQueue,
-		EventCloudAlertDelivery, EventCloudRetention:
+		EventCloudAlertDelivery, EventCloudRetention, EventCloudConnectivity:
 		return true
 	default:
 		return false
