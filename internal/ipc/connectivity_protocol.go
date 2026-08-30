@@ -92,3 +92,15 @@ func validBootID(value string) bool {
 	}
 	return true
 }
+
+// valid reports whether a publication result could have come from an
+// aggregate that folded a publication.
+//
+// A response is checked on its own, so this cannot compare the counts against
+// what was sent. What it can refuse is a result that accounts for nothing, or
+// for more facts than a publication may carry.
+func (result PublishConnectivityFactsResult) valid() bool {
+	total := int(result.Accepted) + int(result.Duplicates) +
+		int(result.Conflicts) + int(result.Rejected)
+	return total > 0 && total <= MaxPublishedFacts
+}
