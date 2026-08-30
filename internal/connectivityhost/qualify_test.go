@@ -362,3 +362,19 @@ func TestASleptHostDoesNotComeBackLookingFresh(t *testing.T) {
 		t.Fatalf("nothing went stale across a two-hour sleep: %+v", snapshot.Summary)
 	}
 }
+
+// Asking for a soak and getting none, silently, is the failure this refuses.
+// The run and the configuration check have to agree about it, or the check
+// stops being a check.
+func TestASessionWithNoChainIsRefusedRatherThanIgnored(t *testing.T) {
+	reader, err := Open(t.TempDir(), "boot-0000000000000000")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := reader.AttachQualifier("", testSession); err == nil {
+		t.Fatal("a session with nowhere to record was accepted and dropped")
+	}
+	if err := ValidateQualification("", testSession); err == nil {
+		t.Fatal("the check accepts what the run refuses")
+	}
+}

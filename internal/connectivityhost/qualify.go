@@ -117,6 +117,31 @@ type Qualifier struct {
 	userJournal *connectivityjournal.Journal
 }
 
+// ValidateQualification reports whether these arguments could open an
+// observer, without opening one.
+//
+// It exists so a configuration check refuses exactly what a run would. The
+// daemon is bootstrapped under KeepAlive, so an argument only the run rejects
+// turns a message to whoever installed it into a restart loop.
+func ValidateQualification(chainRoot, session string) error {
+	if chainRoot == "" && session == "" {
+		return nil
+	}
+	if chainRoot == "" {
+		// Someone asked for a soak to be recorded. Starting without one and
+		// saying nothing would leave them believing hours were being written
+		// down that were not.
+		return fmt.Errorf("%w: a session without a chain records nothing",
+			ErrQualification)
+	}
+	// Without a session there is nothing keeping two runs apart, and a chain
+	// holding two runs adds up to a number about neither.
+	if _, err := metadata.ParseUUID(session); err != nil {
+		return fmt.Errorf("%w: session must be a UUID", ErrQualification)
+	}
+	return nil
+}
+
 // OpenQualifier prepares the observer, or returns nil when no chain root is
 // configured. A daemon started without one behaves exactly as it did before.
 func OpenQualifier(
@@ -126,13 +151,14 @@ func OpenQualifier(
 	rootJournal *connectivityjournal.Journal,
 	userJournal *connectivityjournal.Journal,
 ) (*Qualifier, error) {
+	if err := ValidateQualification(chainRoot, session); err != nil {
+		return nil, err
+	}
 	if chainRoot == "" {
 		return nil, nil
 	}
 	identity, err := metadata.ParseUUID(session)
 	if err != nil {
-		// Without a session there is nothing keeping two runs apart, and a
-		// chain holding two runs adds up to a number about neither.
 		return nil, fmt.Errorf("%w: session must be a UUID", ErrQualification)
 	}
 	if store == nil {
