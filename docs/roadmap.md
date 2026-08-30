@@ -1,6 +1,6 @@
 # Hexroute Roadmap
 
-Status date: 2026-08-15.
+Status date: 2026-08-30.
 
 ## Current Baseline
 
@@ -16,13 +16,26 @@ Status date: 2026-08-15.
   private artifacts and evidence remain outside public Git.
 - Atomic policy generations and the generation-bound network reconciler are
   synced into baseline specs. They remain pre-cutover and grant no production
-  mutation authority.
+  mutation authority. The reconciler is reachable from `hexrouted` only far
+  enough to answer what its shadow store holds; it compares nothing against the
+  host and cannot, because its dependencies forbid every package that could
+  reach one.
+- The observable connectivity read model runs on the host behind an off-by-
+  default gate. Root adapts its existing network, default-path, scoped-route,
+  transport and relay observations into facts; the user daemon publishes what
+  only it can see over authenticated IPC; the aggregate reduces both into one
+  snapshot and checkpoints it on effective change. DNS has no observer, so that
+  component reports `unknown`. Nothing in this path can mutate anything.
 - Deterministic lifecycle policy, typed peer-authenticated IPC, bounded local
   journals, signed ingestion and redacted diagnostics are implemented and
   covered by synthetic tests.
 - The telemetry-only cloud API, worker and migrator implement PostgreSQL-backed
-  ingestion, incidents, retention, SLOs, Telegram alerts, incident bundles and
-  a passkey-protected read-only dashboard.
+  ingestion, incidents, retention, Telegram alerts, the redacted connectivity
+  projection and a passkey-protected read-only dashboard.
+- SLO calculation and incident-bundle expiry are implemented and **not
+  scheduled**: the worker runs neither job, so the dashboard's SLO section is
+  empty and no bundle is ever created or expired. Incident bundles additionally
+  need private object storage that is configured outside this repository.
 - Public reusable Terraform modules exist; live roots and deployment evidence
   remain in the private `hexroute-infra` repository.
 - The first cloud foundation is live behind `status.hexroute.app` with external
@@ -37,28 +50,40 @@ Status date: 2026-08-15.
   fact claims a workload is deployed, qualified, inventory-admitted or
   failover-enabled. See
   [`docs/architecture/provider-b-ingress.md`](architecture/provider-b-ingress.md).
-- The immediate next gate is the operational acceptance drill in
-  [`docs/testing/operational-acceptance.md`](testing/operational-acceptance.md):
-  it proves the operator-visible work path before any further runtime or
-  cutover step.
+- Repository checks run in CI on every pull request and on `main`: `make check`
+  on macOS, the Go gate on Linux, and `make postgres-test`. A package that no
+  binary contains fails `make check`, so code cannot be written, marked done
+  and left reachable from nothing without saying so. Six packages are currently
+  recorded as unwired.
+- The operational acceptance drill in
+  [`docs/testing/operational-acceptance.md`](testing/operational-acceptance.md)
+  is complete and archived.
 
 ## Active Changes
 
-`add-operational-acceptance-drill` is active. It defines and implements the
-user-visible operational acceptance drill before further runtime/cutover work.
-It is non-mutating and writes only redacted local evidence.
+`add-observable-connectivity-state-machine` is active. Sections 1 through 8 are
+implemented and running observe-only on the host; sections 9 and 10 — replay
+and shadow qualification, then documentation and baseline sync — are open. Its
+qualification gate requires 72 eligible hours of shadow evidence, two
+sleep/wake cycles, one reboot and every mandatory injected failure. That
+evidence is produced by running the host, not by this repository, and it is
+retained privately.
 
-`add-observable-connectivity-state-machine` is planned next. It will normalize
-peer, relay, DNS, SSH and session state and drive only observe-only proposed
-mutations until its own qualification gates pass. It cannot absorb the current
-operational acceptance drill or take ownership from Twilight.
+`add-local-event-archive` is proposed and unstarted. It would retain typed
+events locally by age and size rather than by upload state, so the host can
+answer questions about last week. It cannot begin while the connectivity change
+is mid-qualification.
 
 ## Ordered Changes
 
-1. Complete and run the operational acceptance drill for the current working
-   path, including baseline and recovery evidence.
-2. Implement and qualify the observable connectivity state machine without
-   enabling production mutations.
+1. ~~Complete and run the operational acceptance drill for the current working
+   path, including baseline and recovery evidence.~~ Done. See the archived
+   `add-operational-acceptance-drill` change and
+   [`docs/testing/operational-acceptance.md`](testing/operational-acceptance.md).
+2. Qualify the observable connectivity state machine without enabling
+   production mutations. Implementation is complete and running observe-only;
+   what remains is the replay harness, the synthetic fault traces, the shadow
+   comparison recorder and the evidence chain the gate requires.
 3. Complete root observe-only soak and resolve every materially divergent
    proposed action without enabling mutations.
 4. Run an evidence-based provider-B bake-off and deploy an independent
@@ -74,3 +99,22 @@ operational acceptance drill or take ownership from Twilight.
 Each numbered item requires its own grill session and bounded OpenSpec change.
 No future item may be bundled into an earlier cutover merely because
 supporting code already exists.
+
+## Debt
+
+Code that exists and no binary contains. Each entry is a claim this repository
+has made and not yet kept; the list is enforced by `make check`, so it cannot
+grow in silence.
+
+- `slo` — SLO calculation. The dashboard renders an SLO section that is empty
+  because the worker schedules no job to fill it.
+- `incidentbundle` — bundle creation and expiry. Nothing creates a bundle, so
+  expiry has nothing to expire; creation needs private object storage
+  configured outside this repository.
+- `credentials`, `pritunlrescue` — held behind the user-domain cutover, item 8.
+- `resumeexecutor` — operator resume enforcement.
+- `policyadvisor` — redacted policy observability.
+
+`reconciler` left this list on 2026-08-30 when its shadow status became
+answerable. It still compares nothing: correlating its planner output with the
+read model's proposals is part of item 2.
