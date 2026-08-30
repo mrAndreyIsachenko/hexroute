@@ -1,6 +1,7 @@
 package connectivityhost
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -376,5 +377,63 @@ func TestASessionWithNoChainIsRefusedRatherThanIgnored(t *testing.T) {
 	}
 	if err := ValidateQualification("", testSession); err == nil {
 		t.Fatal("the check accepts what the run refuses")
+	}
+}
+
+// A soak outlives the process watching it. The daemon is restarted by an
+// install, a crash or a reboot, and the state that says where the last window
+// ended is the only thing that keeps the next one from being measured against
+// nothing.
+func TestTheObserverPicksUpWhereTheLastProcessLeftOff(t *testing.T) {
+	run := newSoak(t)
+	run.advance(2 * time.Minute)
+	run.cycle()
+	before := run.progress().EligibleSeconds
+	if before != 120 {
+		t.Fatalf("%d eligible seconds before the restart, want 120", before)
+	}
+
+	// A new process against the same chain, exactly as launchd would.
+	restarted, err := OpenQualifier(run.chain, testSession,
+		run.reader.store, run.reader.rootJournal, run.reader.userJournal)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if restarted.state.BootID != run.boot {
+		t.Fatalf("the restarted observer read boot %q, want %q",
+			restarted.state.BootID, run.boot)
+	}
+	run.reader.qualifier = restarted
+
+	run.advance(3 * time.Minute)
+	run.cycle()
+
+	// Three more minutes, measured from where the last process stopped. A
+	// restart that seeded afresh would have claimed nothing for them.
+	if after := run.progress().EligibleSeconds; after != before+180 {
+		t.Fatalf("%d eligible seconds after the restart, want %d",
+			after, before+180)
+	}
+	if diverged := run.progress().Diverged; diverged != 0 {
+		t.Fatalf("%d divergences across a clean restart", diverged)
+	}
+}
+
+// The state beside a chain says where a run got to. If it cannot be read, the
+// safe move is to refuse: seeding afresh over an unreadable file would leave
+// the next window measured against nothing and say so nowhere.
+func TestAnUnreadableObserverStateIsRefused(t *testing.T) {
+	run := newSoak(t)
+	run.advance(time.Minute)
+	run.cycle()
+
+	if err := os.WriteFile(
+		filepath.Join(run.chain, qualifyStateFilename),
+		[]byte(`{"schema":"something else"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenQualifier(run.chain, testSession,
+		run.reader.store, run.reader.rootJournal, run.reader.userJournal); err == nil {
+		t.Fatal("an unreadable observer state was opened over")
 	}
 }
