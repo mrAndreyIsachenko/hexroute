@@ -288,17 +288,17 @@ func (reader *Reader) Observe(
 	evidence Evidence,
 	descriptor connectivityreduce.PolicyDescriptor,
 	at control.Tick,
-) (connectivityview.LocalStatus, error) {
+) (connectivityview.LocalStatus, bool, error) {
 	if reader == nil || reader.runtime == nil {
-		return connectivityview.LocalStatus{}, nil
+		return connectivityview.LocalStatus{}, false, nil
 	}
 	if evidence.Reached {
 		facts, err := reader.facts(evidence)
 		if err != nil {
-			return connectivityview.LocalStatus{}, err
+			return connectivityview.LocalStatus{}, false, err
 		}
 		if _, err := reader.runtime.Publish(facts, policy.DomainRoot); err != nil {
-			return connectivityview.LocalStatus{}, err
+			return connectivityview.LocalStatus{}, false, err
 		}
 		reader.baseline = true
 	}
@@ -307,9 +307,13 @@ func (reader *Reader) Observe(
 		EvaluationTick: at,
 	})
 	if err != nil {
-		return connectivityview.LocalStatus{}, err
+		return connectivityview.LocalStatus{}, false, err
 	}
-	return connectivityview.Local(output.Snapshot, output.Diff, output.Proposals), nil
+	// Changed is the reducer's own answer about whether this reduction meant
+	// anything. Comparing aggregates here would miss a component that moved
+	// underneath one that did not.
+	return connectivityview.Local(output.Snapshot, output.Diff, output.Proposals),
+		output.Changed, nil
 }
 
 // facts maps one cycle's evidence onto the components this daemon owns.
@@ -372,7 +376,7 @@ func Fold(
 	// the reason vocabulary is a closed allowlist and widening it to carry a
 	// read-model conclusion would make it a second status surface. The
 	// operator view is where component detail lives.
-	status, observeErr := reader.Observe(evidence, unauthorizedPolicy(), at)
+	status, changed, observeErr := reader.Observe(evidence, unauthorizedPolicy(), at)
 	if observeErr != nil {
 		return logger.Emit(
 			logging.LevelWarn,
@@ -380,6 +384,12 @@ func Fold(
 			logging.ResultDegraded,
 			"",
 		)
+	}
+	if !changed {
+		// The reduction meant nothing. Saying so every cycle would make the
+		// log a record of how often the host was checked rather than of what
+		// it did.
+		return nil
 	}
 	result := logging.ResultOK
 	if status.Aggregate != connectivityreduce.AggregateReady {

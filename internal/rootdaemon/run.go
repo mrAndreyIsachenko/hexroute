@@ -335,6 +335,9 @@ func observeLoop(
 	logger *logging.Logger,
 	reader *connectivityhost.Reader,
 ) error {
+	// The gate keeps the log a record of what happened rather than of how
+	// often it was checked. Liveness lives in the heartbeat file.
+	gate := logging.NewChangeGate()
 	if ctx == nil ||
 		interval <= 0 ||
 		nowTick == nil ||
@@ -350,7 +353,7 @@ func observeLoop(
 	operatorSnapshot := control.NewSnapshot(control.StateSuspended)
 	for {
 		summary := cycler.Observe(ctx)
-		if err := emitSummary(logger, summary); err != nil {
+		if err := emitSummary(logger, gate, summary); err != nil {
 			return err
 		}
 		at := nowTick()
@@ -440,7 +443,7 @@ func rootOperatorReason(state CycleState) control.Reason {
 	}
 }
 
-func emitSummary(logger *logging.Logger, summary Summary) error {
+func emitSummary(logger *logging.Logger, gate *logging.ChangeGate, summary Summary) error {
 	result := logging.ResultDegraded
 	switch summary.State {
 	case CycleHealthy:
@@ -451,19 +454,49 @@ func emitSummary(logger *logging.Logger, summary Summary) error {
 	default:
 		return ErrInvalidConfig
 	}
-	if err := logger.Emit(logging.LevelInfo, logging.EventObservationCycle, result, ""); err != nil {
-		return err
+	if gate.Changed(logging.EventObservationCycle, string(result)) {
+		if err := logger.Emit(
+			logging.LevelInfo, logging.EventObservationCycle, result, ""); err != nil {
+			return err
+		}
 	}
+	// A route proposal that has not changed is the same proposal, not a new
+	// one. Each route event carries its own state so a plan that gains or
+	// loses one operation is still reported.
 	for _, operation := range summary.Plan.Operations {
 		event, err := routeEvent(operation)
 		if err != nil {
 			return err
 		}
+		if !gate.Changed(event, string(logging.ResultProposed)) {
+			continue
+		}
 		if err := logger.Emit(logging.LevelInfo, event, logging.ResultProposed, ""); err != nil {
 			return err
 		}
 	}
+	// A route that stopped being proposed has to clear, or the next proposal
+	// for it would be suppressed as a repeat of one that has since lapsed.
+	proposed := make(map[logging.EventName]struct{}, len(summary.Plan.Operations))
+	for _, operation := range summary.Plan.Operations {
+		if event, err := routeEvent(operation); err == nil {
+			proposed[event] = struct{}{}
+		}
+	}
+	for _, event := range routeEvents() {
+		if _, still := proposed[event]; !still {
+			gate.Changed(event, "")
+		}
+	}
 	return nil
+}
+
+// routeEvents is every route event a plan can propose.
+func routeEvents() []logging.EventName {
+	return []logging.EventName{
+		logging.EventIngressRoute, logging.EventCorporateRoute,
+		logging.EventGitLabHTTPSRoute, logging.EventCodexRoute,
+	}
 }
 
 func routeEvent(operation routeplan.Operation) (logging.EventName, error) {
