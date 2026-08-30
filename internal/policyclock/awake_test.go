@@ -56,3 +56,42 @@ func TestBothClocksAdvance(t *testing.T) {
 			firstAwake, secondAwake)
 	}
 }
+
+// The two clocks are read one after the other, so how far each advanced over
+// the same interval differs by whatever happened between the calls. Anything
+// comparing them needs a tolerance, and this is what sizes it: if a platform
+// ever skewed by more than a moment, a tolerance chosen for microseconds would
+// be the wrong tolerance.
+func TestTheTwoClocksAgreeAboutAnIntervalToWithinAMoment(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("no continuous clock on this platform")
+	}
+	previousContinuous, err := ContinuousNow()
+	if err != nil {
+		t.Fatalf("continuous: %v", err)
+	}
+	previousAwake, err := AwakeNow()
+	if err != nil {
+		t.Fatalf("awake: %v", err)
+	}
+	worst := time.Duration(0)
+	for round := 0; round < 200; round++ {
+		time.Sleep(time.Millisecond)
+		continuous, _ := ContinuousNow()
+		awake, _ := AwakeNow()
+		skew := (awake - previousAwake) - (continuous - previousContinuous)
+		if skew < 0 {
+			skew = -skew
+		}
+		if skew > worst {
+			worst = skew
+		}
+		previousContinuous, previousAwake = continuous, awake
+	}
+	// Well inside the second that the connectivity observer allows, and this
+	// machine is not idle while the tests run.
+	if worst > 100*time.Millisecond {
+		t.Fatalf("the clocks disagreed about one interval by %v; anything "+
+			"comparing them needs a larger tolerance than a second", worst)
+	}
+}

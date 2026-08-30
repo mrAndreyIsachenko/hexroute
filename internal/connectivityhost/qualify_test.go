@@ -437,3 +437,43 @@ func TestAnUnreadableObserverStateIsRefused(t *testing.T) {
 		t.Fatal("an unreadable observer state was opened over")
 	}
 }
+
+// Measured on the host this ran on: the awake clock advances further than the
+// continuous one in about half of all reads, by tens of microseconds, because
+// the two are read one after the other. With no tolerance every second cycle
+// was filed as two clocks that could not both be right — and one divergence
+// anywhere blocks the gate, so a 72-hour soak could never finish.
+func TestMicrosecondsBetweenTwoClockReadsAreNotAnAnomaly(t *testing.T) {
+	run := newSoak(t)
+	for cycle := 0; cycle < 6; cycle++ {
+		run.advance(time.Minute)
+		// The awake clock lands a hair ahead, exactly as it does in half of
+		// the real reads.
+		run.awake += 25 * time.Microsecond
+		run.cycle()
+	}
+	progress := run.progress()
+	if progress.Diverged != 0 {
+		t.Fatalf("%d divergences from reading two clocks in sequence: %v",
+			progress.Diverged, kinds(run.records()))
+	}
+	if progress.EligibleSeconds != 360 {
+		t.Fatalf("%d eligible seconds, want 360", progress.EligibleSeconds)
+	}
+}
+
+// The tolerance must not swallow the thing it exists beside. A clock that
+// disagrees by more than a moment is still two clocks that cannot both be
+// right, and every measurement around them is read off those readings.
+func TestClocksThatDisagreeByMoreThanAMomentStillCount(t *testing.T) {
+	run := newSoak(t)
+	run.wall = run.wall.Add(time.Minute)
+	run.continuous += time.Minute
+	run.awake += time.Minute + 2*clockSkewTolerance
+	run.cycle()
+
+	records := run.records()
+	if len(records) != 1 || records[0].Kind != connectivityqualification.KindClockAnomaly {
+		t.Fatalf("chain holds %v, want one clock anomaly", kinds(records))
+	}
+}
