@@ -220,3 +220,65 @@ func (reporter *shadowReporter) reports() []error {
 	defer reporter.mu.Unlock()
 	return append([]error(nil), reporter.errors...)
 }
+
+// The store creates its own directory and then demands an ownership it never
+// set. On this platform a new directory inherits its parent's group, and the
+// root store's parent is root:admin — so a store that only validated could
+// never open where it actually lives. This reproduces that parent.
+func TestShadowStoreOpensUnderAParentWithADifferentGroup(t *testing.T) {
+	base := t.TempDir()
+	parent := filepath.Join(base, "Hexroute")
+	if err := os.Mkdir(parent, 0o700); err != nil {
+		t.Fatalf("parent: %v", err)
+	}
+	groups, err := os.Getgroups()
+	if err != nil || len(groups) < 2 {
+		t.Skip("no second group to inherit from")
+	}
+	// A group this process belongs to but which is not its primary one, so the
+	// directory the store creates inherits something it did not choose.
+	other := groups[0]
+	if uint32(other) == uint32(os.Getgid()) {
+		other = groups[1]
+	}
+	if err := os.Chown(parent, os.Getuid(), other); err != nil {
+		t.Skipf("cannot set a differing parent group: %v", err)
+	}
+
+	store, err := OpenShadowStore(ShadowStoreConfig{
+		Domain:      policy.DomainRoot,
+		RootPath:    filepath.Join(parent, "reconciler-root"),
+		ExpectedUID: uint32(os.Getuid()),
+		ExpectedGID: uint32(os.Getgid()),
+		PeerUID:     uint32(os.Getuid()),
+		Registry:    DefaultSyntheticRegistry(),
+	})
+	if err != nil {
+		t.Fatalf("the store refused a directory it had just created: %v", err)
+	}
+	if store.Domain() != policy.DomainRoot {
+		t.Fatalf("domain %q", store.Domain())
+	}
+}
+
+// A directory somebody else owns is refused, not adopted.
+func TestShadowStoreRefusesADirectoryItDoesNotOwn(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root cannot demonstrate a foreign owner")
+	}
+	root := filepath.Join(t.TempDir(), "reconciler-root")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	_, err := OpenShadowStore(ShadowStoreConfig{
+		Domain:      policy.DomainRoot,
+		RootPath:    root,
+		ExpectedUID: 0,
+		ExpectedGID: 0,
+		PeerUID:     uint32(os.Getuid()),
+		Registry:    DefaultSyntheticRegistry(),
+	})
+	if err == nil {
+		t.Fatal("a directory owned by somebody else was adopted")
+	}
+}
