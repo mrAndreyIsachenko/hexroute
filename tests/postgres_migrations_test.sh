@@ -16,16 +16,52 @@ docker run --detach --rm \
   --publish 127.0.0.1::5432 \
   postgres:17-alpine >/dev/null
 
+# Both waits below say what they saw when they give up. This script used to
+# fail here without printing anything: it ran `docker exec` before the
+# container was necessarily running, and its readiness check discarded stdout —
+# which is exactly where pg_isready writes its diagnosis. An intermittent
+# failure that explains nothing is worse than a slower one that does, because
+# the next person has to reproduce it before they can start.
+
+report_container_state() {
+  printf '  status: %s\n' \
+    "$(docker inspect --format '{{.State.Status}}' "$container" 2>&1)" >&2
+  docker logs --tail 50 "$container" 2>&1 | sed 's/^/  /' >&2 || true
+}
+
+wait_for_container() {
+  local deadline=$((SECONDS + 60))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if [ "$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null)" \
+      = running ]; then
+      return 0
+    fi
+    sleep 1
+  done
+  printf 'container %s never reached the running state\n' "$container" >&2
+  report_container_state
+  return 1
+}
+
+wait_for_postgres() {
+  local deadline=$((SECONDS + 60))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if docker exec "$container" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  printf 'PostgreSQL in %s did not accept connections within 60s\n' "$container" >&2
+  docker exec "$container" pg_isready -U postgres -d postgres 2>&1 \
+    | sed 's/^/  /' >&2 || true
+  report_container_state
+  return 1
+}
+
+wait_for_container
 docker exec "$container" mkdir -p /migrations
 docker cp "$migration_dir/." "$container:/migrations"
-
-for _ in $(seq 1 60); do
-  if docker exec "$container" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
-docker exec "$container" pg_isready -U postgres -d postgres >/dev/null
+wait_for_postgres
 
 mapfile_compat() {
   local pattern="$1"
