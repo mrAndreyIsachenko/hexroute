@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt fuzz ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-summary policy-qualification-arm-sleep postgres-test race secret-test shell-test shell-test-tools spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
+.PHONY: build build-connectivity-replay build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt fuzz ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-summary policy-qualification-arm-sleep postgres-test race secret-test shell-test shell-test-tools spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
 
 build:
 	go build ./cmd/...
@@ -18,6 +18,10 @@ build-observe-user:
 build-ctl:
 	mkdir -p bin
 	go build -o bin/hexroutectl ./cmd/hexroutectl
+
+build-connectivity-replay:
+	mkdir -p bin
+	go build -o bin/hexroute-connectivity-replay ./cmd/hexroute-connectivity-replay
 
 build-policy:
 	mkdir -p bin
