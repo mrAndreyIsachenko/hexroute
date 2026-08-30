@@ -83,6 +83,17 @@ func (recorder *Recorder) Append(
 	if fill != nil {
 		fill(&record)
 	}
+	// A record binds to the evidence it describes, and each fault injection
+	// produces its own checkpoint, snapshot, diff and proposals. So the
+	// opening binding is a default the caller may replace, not a stamp —
+	// otherwise every fault result would name the same evidence and none of
+	// them would name the run that produced it.
+	//
+	// The session is the exception. It is what separates one qualification
+	// from another, and a caller that could move it would be writing records
+	// this recorder will refuse to reopen, with the run looking healthy right
+	// up to the moment somebody reads the chain.
+	record.Binding.SessionID = recorder.binding.SessionID
 	digest, err := seal(record)
 	if err != nil {
 		return EvidenceRecord{}, err
