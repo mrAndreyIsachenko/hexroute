@@ -24,7 +24,13 @@ const (
 	// SnapshotSchema names the wire contract for a connectivity snapshot.
 	SnapshotSchema = "hexroute.connectivity-snapshot.v1"
 	// SnapshotSchemaVersion is bumped only for an incompatible change.
-	SnapshotSchemaVersion uint16 = 1
+	//
+	// Version 2 replaced a source watermark's `awaiting_baseline` flag with
+	// the `pending_baseline` set it is derived from. Persisted snapshots are
+	// decoded with unknown fields refused, so a version 1 record cannot be
+	// read here and must be rejected by identity rather than by a decode
+	// error that says nothing about why.
+	SnapshotSchemaVersion uint16 = 2
 
 	// ReducerID identifies the reduction rules that produced a snapshot. A
 	// checkpoint binds it, so output from different rules is never mistaken
@@ -32,7 +38,14 @@ const (
 	ReducerID = "hexroute.connectivity-reducer"
 	// ReducerVersion changes whenever reduction could produce a different
 	// snapshot from identical inputs.
-	ReducerVersion uint16 = 1
+	//
+	// Version 2 closes a source's gap only once every component that source
+	// speaks for has restated itself, adopts the acceptor's gap bounds rather
+	// than keeping its own, and retires conflict evidence a baseline has
+	// superseded. All three change the snapshot a given journal reduces to,
+	// so a version 1 checkpoint is output from different rules and replaying
+	// it here would compare digests that were never meant to match.
+	ReducerVersion uint16 = 2
 
 	// MaxCorroborations bounds retained evidence per component.
 	MaxCorroborations = 8
