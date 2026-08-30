@@ -125,7 +125,44 @@ sample never evicts a baseline.
 
 ## Rollback
 
-Set the gate to off. The runtime then opens no store, holds no state and
+Stop passing the arguments. The runtime then opens no store, holds no state and
 refuses every entry point; the path that ran before this change runs exactly as
 it did. Nothing needs to be undone on the network, because nothing was done to
 it.
+
+The sequence below depends on nothing that is being rolled back: it edits a
+property list and reloads a daemon, and it works whether or not the read model
+is functioning, corrupt or wedged.
+
+```
+sudo launchctl bootout system/com.hexroute.observe.hexrouted
+sudo /usr/libexec/PlistBuddy \
+  -c "Delete :ProgramArguments:13" -c "Delete :ProgramArguments:12" \
+  -c "Delete :ProgramArguments:11" -c "Delete :ProgramArguments:10" \
+  -c "Delete :ProgramArguments:9" -c "Delete :ProgramArguments:8" \
+  /Library/LaunchDaemons/com.hexroute.observe.hexrouted.plist
+sudo launchctl bootstrap system \
+  /Library/LaunchDaemons/com.hexroute.observe.hexrouted.plist
+```
+
+The indices are deleted from the end so the earlier ones do not move: eight and
+nine are the read-model flag and its root, ten through thirteen the
+qualification chain and its session. A daemon installed without a session has
+only eight and nine, and the two extra deletions then fail harmlessly — but
+confirm what is there before running it rather than after:
+
+```
+/usr/libexec/PlistBuddy -c "Print :ProgramArguments" \
+  /Library/LaunchDaemons/com.hexroute.observe.hexrouted.plist
+```
+
+Nothing else changes. The observation cycle, the heartbeat, the operator socket
+and the policy surface are all argument-for-argument what they were, and the
+state the read model wrote stays on disk: rolling back is not deleting the
+evidence, and a later roll-forward resumes from it or records that it could
+not.
+
+Twilight, AdGuard and both Codex paths are untouched by construction rather
+than by this procedure. The read model cannot run a command or open a socket —
+an architectural test refuses the imports that would let it — so there is
+nothing it could have changed about them to undo.

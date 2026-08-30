@@ -34,6 +34,16 @@ type report struct {
 	Verify   *connectivitycheckpoint.VerifyResult `json:"verify,omitempty"`
 	Traces   []traceReport                        `json:"traces,omitempty"`
 	Progress *connectivityqualification.Progress  `json:"qualification,omitempty"`
+	// Gate is the answer a later mutation change has to ask for. It is
+	// reported beside the progress rather than left to be inferred from it,
+	// because a reader deciding for itself what the numbers add up to is the
+	// aggregate judgement the spec refuses.
+	Gate *gateReport `json:"gate,omitempty"`
+}
+
+type gateReport struct {
+	Passing bool   `json:"passing"`
+	Refusal string `json:"refusal,omitempty"`
 }
 
 type traceReport struct {
@@ -97,6 +107,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
+	gateRefused := false
 	if *chain != "" {
 		progress, err := inspect(*chain, *session)
 		if err != nil {
@@ -104,6 +115,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		out.Progress = &progress
+		gate := gateFor(*chain, *session)
+		out.Gate = &gateReport{Passing: gate.Passing(), Refusal: gate.Refusal()}
+		gateRefused = !gate.Passing()
 	}
 
 	unsound := false
@@ -127,6 +141,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error: lineage diverged from its retained evidence")
 		return 1
 	}
+	if gateRefused {
+		// Anything wiring this into a gate reads the status, not the JSON. A
+		// qualification that has not passed must not leave a success behind
+		// for something that only checked whether the command ran.
+		fmt.Fprintln(stderr, "error: connectivity qualification is not a passing gate")
+		return 1
+	}
 	return 0
 }
 
@@ -148,6 +169,18 @@ func inspect(root, session string) (connectivityqualification.Progress, error) {
 	binding := records[0].Binding
 	binding.SessionID = metadata.UUID(session)
 	return connectivityqualification.Inspect(root, binding)
+}
+
+// gateFor answers whether this chain may back a later change. Every way of
+// not knowing is a refusal, including a chain nobody could read.
+func gateFor(root, session string) connectivityqualification.Gate {
+	records, err := connectivityqualification.ReadRecords(root)
+	if err != nil || len(records) == 0 {
+		return connectivityqualification.Gate{}
+	}
+	bound := records[0].Binding
+	bound.SessionID = metadata.UUID(session)
+	return connectivityqualification.GateFor(root, bound)
 }
 
 func verify(root string) (connectivitycheckpoint.VerifyResult, error) {

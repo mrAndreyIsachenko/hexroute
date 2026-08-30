@@ -159,6 +159,17 @@ type Verification struct {
 	Reproduced   int `json:"reproduced"`
 	Diverged     int `json:"diverged"`
 	Unreplayable int `json:"unreplayable"`
+	// Unbound is how many checkpoints this chain actually rests on could not
+	// be reproduced from retained facts.
+	//
+	// It is counted apart from Unreplayable because the two mean different
+	// things. A journal is bounded, so old ranges are evicted and links that
+	// no result was ever bound to become unverifiable in the ordinary course
+	// of running; blocking on that would make the gate impossible to finish.
+	// A checkpoint a recorded result names is different: its evidence is what
+	// the result was derived from, and without it the result stands on
+	// nothing.
+	Unbound int `json:"unbound"`
 }
 
 // EvidenceRecord is one link in the chain.
@@ -205,6 +216,9 @@ type Progress struct {
 	// Diverged counts records whose outcome contradicted its expectation.
 	// Any of these prevents completion.
 	Diverged uint32 `json:"diverged"`
+	// Unbound counts results whose own evidence can no longer be replayed.
+	// A result read against evidence nobody can reproduce is not evidence.
+	Unbound uint32 `json:"unbound"`
 	// GuessedHealthy records that some injection produced a healthy-looking
 	// state it had no right to. It ends the run rather than reducing a score.
 	GuessedHealthy bool `json:"guessed_healthy"`

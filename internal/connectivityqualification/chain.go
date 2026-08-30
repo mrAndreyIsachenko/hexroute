@@ -243,8 +243,14 @@ func Inspect(root string, binding Binding) (Progress, error) {
 				progress.GuessedHealthy = true
 			}
 		case KindVerification:
-			if record.Verification != nil && record.Verification.Diverged > 0 {
+			if record.Verification == nil {
+				continue
+			}
+			if record.Verification.Diverged > 0 {
 				progress.Diverged++
+			}
+			if record.Verification.Unbound > 0 {
+				progress.Unbound++
 			}
 		case KindClockAnomaly:
 			// Already counted: an anomaly record is diverged by construction.
@@ -268,6 +274,8 @@ func complete(progress Progress) (bool, string) {
 		return false, "an injected fault produced a healthy-looking state"
 	case progress.Diverged > 0:
 		return false, "an outcome contradicted its expectation"
+	case progress.Unbound > 0:
+		return false, "a recorded result rests on evidence that cannot be replayed"
 	case progress.EligibleSeconds < EligibleHours*3600:
 		return false, "not enough eligible time"
 	case progress.SleepWakeCycles < RequiredSleepWakeCycles:

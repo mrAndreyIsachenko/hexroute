@@ -231,3 +231,106 @@ func TestRecorderRefusesToExtendATamperedChain(t *testing.T) {
 		t.Fatal("a recorder opened onto a tampered chain")
 	}
 }
+
+// The spec is explicit about what an unreproducible result costs:
+//
+//	no later mutation change may use that evidence as a passing gate
+//
+// which is a statement about a reader that does not exist yet. What can be
+// tested now is that the answer it will ask for refuses.
+func TestAGateRefusesEveryWayOfNotKnowing(t *testing.T) {
+	cases := []struct {
+		name    string
+		prepare func(t *testing.T) (string, Binding)
+	}{
+		{"a chain that was never started", func(t *testing.T) (string, Binding) {
+			return filepath.Join(t.TempDir(), "absent"), binding()
+		}},
+		{"a chain from another session", func(t *testing.T) (string, Binding) {
+			root := t.TempDir()
+			window(t, recorder(t, root), 60)
+			other := binding()
+			other.SessionID = "11111111-2222-4333-8444-555555555555"
+			return root, other
+		}},
+		{"a chain that is merely unfinished", func(t *testing.T) (string, Binding) {
+			root := t.TempDir()
+			window(t, recorder(t, root), 60)
+			return root, binding()
+		}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root, binding := testCase.prepare(t)
+			gate := GateFor(root, binding)
+			if gate.Passing() {
+				t.Fatal("the gate passed")
+			}
+			if gate.Refusal() == "" {
+				t.Fatal("the gate refused without saying why")
+			}
+		})
+	}
+}
+
+// A caller that forgets to ask must be refused, not admitted. That is why the
+// answer carries no exported field a half-built value could set.
+func TestAGateNobodyAskedForRefuses(t *testing.T) {
+	var unasked Gate
+	if unasked.Passing() {
+		t.Fatal("a gate nobody asked for passed")
+	}
+	if unasked.String() != "refused: nothing was asked" {
+		t.Fatalf("an unasked gate reads as %q", unasked.String())
+	}
+}
+
+// A result whose own evidence can no longer be replayed is not evidence, and
+// the difference from an ordinary evicted link matters: journals are bounded,
+// so links nobody bound a result to fall out of reach in the normal course of
+// running and must not block anything.
+func TestOnlyEvidenceTheChainRestsOnBlocksTheGate(t *testing.T) {
+	root := t.TempDir()
+	made := recorder(t, root)
+
+	if _, err := made.Append(KindVerification, ResultObserved,
+		"2026-08-31T00:00:00Z", 1,
+		func(record *EvidenceRecord) {
+			// Links nobody bound anything to have aged out. That is a bounded
+			// journal working, not a finding.
+			record.Verification = &Verification{Reproduced: 4, Unreplayable: 9}
+		}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	progress, err := Inspect(root, binding())
+	if err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	if progress.Unbound != 0 {
+		t.Fatalf("evicted links nobody rests on counted as unbound: %+v", progress)
+	}
+	if progress.Blocking == "a recorded result rests on evidence that cannot be replayed" {
+		t.Fatal("a bounded journal blocked the gate on its own")
+	}
+
+	if _, err := made.Append(KindVerification, ResultDiverged,
+		"2026-08-31T01:00:00Z", 2,
+		func(record *EvidenceRecord) {
+			record.Verification = &Verification{Reproduced: 3, Unbound: 1}
+		}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	progress, err = Inspect(root, binding())
+	if err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	if progress.Unbound != 1 {
+		t.Fatalf("a result standing on nothing was not counted: %+v", progress)
+	}
+	if progress.Complete {
+		t.Fatal("the gate completed on evidence that cannot be replayed")
+	}
+	if GateFor(root, binding()).Passing() {
+		t.Fatal("the gate passed on evidence that cannot be replayed")
+	}
+}

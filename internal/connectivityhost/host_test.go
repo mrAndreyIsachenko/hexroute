@@ -2,6 +2,7 @@ package connectivityhost
 
 import (
 	"errors"
+	"io"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivitycheckpoint"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityreduce"
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 )
 
@@ -304,5 +306,50 @@ func TestALostPointerDoesNotStopTheReadModelStoring(t *testing.T) {
 				t.Fatalf("the pointer was never rewritten: %v", err)
 			}
 		})
+	}
+}
+
+// The rollback for this whole change is to stop passing the arguments. That
+// claim is only worth as much as the evidence for it, and the evidence is
+// that with them absent nothing of the read model exists: no reader, no store,
+// no journals, no chain, and not one file where they would have been.
+func TestRolledBackReadModelTouchesNothing(t *testing.T) {
+	root := t.TempDir()
+
+	reader, err := Open("", "boot-0000000000000000")
+	if err != nil {
+		t.Fatalf("a reader with no root refused instead of standing aside: %v", err)
+	}
+	if reader != nil {
+		t.Fatal("a reader was built with no root configured")
+	}
+
+	// Every entry point the daemon uses, against the reader it actually has.
+	if err := reader.AttachQualifier("", ""); err != nil {
+		t.Fatalf("attaching nothing: %v", err)
+	}
+	status, changed, err := reader.Observe(reachedEvidence(),
+		connectivityreduce.PolicyDescriptor{}, 1000)
+	if err != nil || changed || len(status.Components) != 0 {
+		t.Fatalf("a rolled-back reader produced a status: %+v %v %v",
+			status, changed, err)
+	}
+	if _, err := reader.PublishUser(nil); err == nil {
+		t.Fatal("a rolled-back reader accepted a publication")
+	}
+	quiet, err := logging.New(io.Discard, logging.ComponentDaemon)
+	if err != nil {
+		t.Fatalf("logger: %v", err)
+	}
+	if err := Fold(reader, reachedEvidence(), nil, quiet); err != nil {
+		t.Fatalf("folding into nothing: %v", err)
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("the rolled-back path left %d entries on disk", len(entries))
 	}
 }

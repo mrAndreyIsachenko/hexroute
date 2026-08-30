@@ -417,8 +417,12 @@ func (qualifier *Qualifier) verify(
 	if err != nil {
 		return fmt.Errorf("%w: verify: %v", ErrQualification, err)
 	}
+	unbound, err := qualifier.unboundEvidence(result)
+	if err != nil {
+		return err
+	}
 	outcome := connectivityqualification.ResultObserved
-	if !result.Sound() {
+	if !result.Sound() || unbound > 0 {
 		outcome = connectivityqualification.ResultDiverged
 	}
 	if _, err := qualifier.append(recorder, binding, wall, continuous,
@@ -428,12 +432,45 @@ func (qualifier *Qualifier) verify(
 				Reproduced:   result.Reproduced,
 				Diverged:     result.Diverged,
 				Unreplayable: result.Unreplayable,
+				Unbound:      unbound,
 			}
 		}); err != nil {
 		return err
 	}
 	qualifier.state.LastVerifyAwakeNS = awake.Nanoseconds()
 	return nil
+}
+
+// unboundEvidence counts the checkpoints this chain rests on that can no
+// longer be reproduced from retained facts.
+//
+// A journal is bounded, so links nobody bound a result to fall out of reach in
+// the ordinary course of running and that is not a finding. A link a recorded
+// result names is different: it is what the result was derived from, and a
+// result read against evidence nobody can reproduce is not evidence.
+func (qualifier *Qualifier) unboundEvidence(
+	result connectivitycheckpoint.VerifyResult,
+) (int, error) {
+	records, err := connectivityqualification.ReadRecords(qualifier.chainRoot)
+	if err != nil {
+		return 0, fmt.Errorf("%w: chain: %v", ErrQualification, err)
+	}
+	bound := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		bound[record.Binding.CheckpointID] = struct{}{}
+	}
+	unbound := 0
+	for _, link := range result.Links {
+		if _, rests := bound[link.ID]; !rests {
+			continue
+		}
+		switch link.Status {
+		case connectivitycheckpoint.VerifyUnreplayable,
+			connectivitycheckpoint.VerifyDiverged:
+			unbound++
+		}
+	}
+	return unbound, nil
 }
 
 func (qualifier *Qualifier) append(
