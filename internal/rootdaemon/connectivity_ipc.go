@@ -5,6 +5,8 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityhost"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
+	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
+	"github.com/mrAndreyIsachenko/hexroute/internal/reconciler"
 )
 
 // connectivityPublisher receives what the user domain observed.
@@ -43,4 +45,16 @@ func (publisher connectivityPublisher) Publish(
 		HighWatermark: report.Watermark,
 	}
 	return response
+}
+
+// shadowHandler avoids handing the dispatcher a typed nil.
+//
+// A nil *ShadowStore inside a non-nil interface would pass the dispatcher's
+// presence check and then answer for a store that does not exist. The absence
+// has to survive being put in an interface.
+func shadowHandler(store *reconciler.ShadowStore) operator.ShadowHandler {
+	if store == nil {
+		return nil
+	}
+	return store
 }

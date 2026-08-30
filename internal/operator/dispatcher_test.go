@@ -76,7 +76,7 @@ func TestDispatcherSeparatesReadOnlyAndMutatingRequests(t *testing.T) {
 	readOnly := &countingReadHandler{}
 	mutating := &countingMutationHandler{}
 	policyHandler := &countingPolicyHandler{allowed: true}
-	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler, nil)
+	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler, nil, nil)
 	if err != nil {
 		t.Fatalf("NewDispatcher() error: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestDispatcherBlocksMutationsDuringPolicyMismatch(t *testing.T) {
 	readOnly := &countingReadHandler{}
 	mutating := &countingMutationHandler{}
 	policyHandler := &countingPolicyHandler{allowed: false}
-	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler, nil)
+	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestDispatcherAddsMatchingPolicySnapshotToReadStatus(t *testing.T) {
 	}
 	policyHandler := &countingPolicyHandler{status: policyStatus}
 	dispatcher, err := NewDispatcher(
-		successfulReadHandler{}, &countingMutationHandler{}, policyHandler, nil)
+		successfulReadHandler{}, &countingMutationHandler{}, policyHandler, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,5 +166,68 @@ func TestDispatcherAddsMatchingPolicySnapshotToReadStatus(t *testing.T) {
 	}
 	if err := response.Validate(); err != nil {
 		t.Fatalf("response validation error = %v", err)
+	}
+}
+
+type recordingShadowHandler struct{ calls int }
+
+func (handler *recordingShadowHandler) HandleIPC(
+	_ context.Context, request ipc.Request,
+) ipc.Response {
+	handler.calls++
+	return ipc.Response{
+		Version: ipc.ProtocolVersion, RequestID: request.RequestID, OK: true,
+		ReconcilerShadowStatus: &ipc.ReconcilerShadowStatusResult{
+			Domain: policy.DomainRoot, Role: ipc.RoleRoot,
+			StoreSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			ShadowIPC:   true, SyntheticOnly: true,
+			CapabilityIDs: []string{"synthetic.reconciler.noop"},
+		},
+	}
+}
+
+func shadowRequest() ipc.Request {
+	return ipc.Request{
+		Version: ipc.ProtocolVersion, RequestID: "shadow-status",
+		Action:                 ipc.ActionReconcilerShadowStatus,
+		ReconcilerShadowStatus: &ipc.ReconcilerShadowStatusRequest{},
+	}
+}
+
+// The route has to exist for the question to be answerable at all. Without it
+// the action was defined, served by a method nothing constructed, and asked by
+// nobody.
+func TestShadowStatusReachesItsHandler(t *testing.T) {
+	shadow := &recordingShadowHandler{}
+	dispatcher, err := NewDispatcher(
+		successfulReadHandler{}, &countingMutationHandler{},
+		&countingPolicyHandler{}, nil, shadow)
+	if err != nil {
+		t.Fatalf("NewDispatcher: %v", err)
+	}
+	response := dispatcher.HandleIPC(context.Background(), shadowRequest())
+	if shadow.calls != 1 {
+		t.Fatalf("handler called %d times, want 1", shadow.calls)
+	}
+	if !response.OK || response.ReconcilerShadowStatus == nil {
+		t.Fatalf("response = %+v", response)
+	}
+	if err := response.Validate(); err != nil {
+		t.Fatalf("the answer would be refused on the wire: %v", err)
+	}
+}
+
+// A daemon without a shadow store says so, rather than answering emptily: no
+// store and a store holding nothing are different answers.
+func TestShadowStatusWithoutAStoreIsRefused(t *testing.T) {
+	dispatcher, err := NewDispatcher(
+		successfulReadHandler{}, &countingMutationHandler{},
+		&countingPolicyHandler{}, nil, nil)
+	if err != nil {
+		t.Fatalf("NewDispatcher: %v", err)
+	}
+	response := dispatcher.HandleIPC(context.Background(), shadowRequest())
+	if response.OK || response.Error != ipc.ErrorPrecondition {
+		t.Fatalf("response = %+v", response)
 	}
 }

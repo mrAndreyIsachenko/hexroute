@@ -22,6 +22,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policycontrol"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
+	"github.com/mrAndreyIsachenko/hexroute/internal/reconciler"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 )
 
@@ -155,6 +156,27 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return rejected(errorLog, logging.ReasonInvalidConfiguration)
 	}
+	// The reconciler's shadow store is opened so its status is answerable. It
+	// is synthetic-only and exports no execution path.
+	//
+	// A store that will not open is reported and left absent. It must not stop
+	// the daemon: observation, the read model and the operator surface do not
+	// depend on it, and a host that stops watching its own network because a
+	// status surface could not open has traded something that matters for
+	// something that does not.
+	shadowStore, shadowErr := reconciler.OpenShadowStore(
+		reconciler.RootShadowStoreConfig(uint32(config.OperatorUID)))
+	if shadowErr != nil {
+		shadowStore = nil
+		if err := infoLog.Emit(
+			logging.LevelWarn,
+			logging.EventReconcilerShadowUnavailable,
+			logging.ResultDegraded,
+			"",
+		); err != nil {
+			return 1
+		}
+	}
 	initial := control.NewSnapshot(control.StateSuspended)
 	controller, err := operator.NewController(
 		ipc.RoleRoot,
@@ -199,7 +221,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		dispatcher, err := operator.NewDispatcher(
-			controller, broker, policyHandler, connectivityPublisher{reader: reader})
+			controller, broker, policyHandler,
+			connectivityPublisher{reader: reader}, shadowHandler(shadowStore))
 		if err != nil {
 			return 1
 		}

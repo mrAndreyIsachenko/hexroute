@@ -27,11 +27,6 @@ test_only=(
 unwired=(
   # connectivityhost is the seam; it is reachable. Nothing else here is.
 
-  # The generation-bound network reconciler. Archived as complete on
-  # 2026-08-15. It has a shadow mode and shadow tests and has never run in
-  # shadow, because no binary contains it.
-  reconciler
-
   # Cloud features the worker does not schedule. docs/roadmap.md claims the
   # cloud implements SLOs and incident bundles; the worker runs neither job.
   slo
