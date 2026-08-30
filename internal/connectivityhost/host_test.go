@@ -170,3 +170,65 @@ func TestALineageItCannotProveDoesNotWedgeTheReadModel(t *testing.T) {
 		t.Fatal("the read model started a new lineage without recording that it had")
 	}
 }
+
+// A host sequence orders every fact this host ever accepted, and the journals
+// hold the ones it issued. When the lineage is lost but the journals survive —
+// a store restored from a partial backup, a lineage evicted, every checkpoint
+// unreadable, or an operator moving the refused lineage out of the way — a
+// read model starting its count from zero mints a second fact for a position
+// already taken.
+//
+// Nothing notices at the time. The facts are written, the model folds them and
+// the daemon looks well. It is the next restart that fails, when replay reaches
+// the journal and finds one sequence with two meanings, and it fails at
+// startup, so under launchd the daemon never comes up again.
+func TestALostLineageDoesNotReissueSequencesTheJournalsHold(t *testing.T) {
+	root := t.TempDir()
+	base, err := continuousTick()
+	if err != nil {
+		t.Skipf("no continuous clock: %v", err)
+	}
+	reader, err := Open(root, "boot-0000000000000000")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	for cycle := 0; cycle < 3; cycle++ {
+		if _, _, err := reader.Observe(reachedEvidence(),
+			connectivityreduce.PolicyDescriptor{}, base+control.Tick(cycle)); err != nil {
+			t.Fatalf("building the journals, cycle %d: %v", cycle, err)
+		}
+	}
+	// The lineage goes; the journals stay exactly where they were.
+	if err := os.Rename(filepath.Join(root, "readmodel"),
+		filepath.Join(root, "readmodel.gone")); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted, err := Open(root, "boot-0000000000000000")
+	if err != nil {
+		t.Fatalf("restart refused: %v", err)
+	}
+	for cycle := 0; cycle < 3; cycle++ {
+		if _, _, err := restarted.Observe(reachedEvidence(),
+			connectivityreduce.PolicyDescriptor{},
+			base+control.Tick(10+cycle)); err != nil {
+			t.Fatalf("cannot observe after the lineage was lost: %v", err)
+		}
+	}
+
+	// This is the part that failed on the host. launchd restarts this daemon
+	// on every install, crash and reboot, so one restart proving nothing is
+	// the difference between a working read model and one that never comes
+	// back.
+	for restart := 0; restart < 3; restart++ {
+		again, err := Open(root, "boot-0000000000000000")
+		if err != nil {
+			t.Fatalf("restart %d refuses to start: %v", restart+2, err)
+		}
+		if _, _, err := again.Observe(reachedEvidence(),
+			connectivityreduce.PolicyDescriptor{},
+			base+control.Tick(20+control.Tick(restart))); err != nil {
+			t.Fatalf("restart %d cannot observe: %v", restart+2, err)
+		}
+	}
+}
