@@ -3,6 +3,7 @@ package rootdaemon
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -234,5 +235,72 @@ func TestCheckAcceptsAWellFormedQualification(t *testing.T) {
 		"--connectivity-qualification-session", "49ad4f4c-33e1-42f8-a752-b31be7745836",
 	}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("the check refused a well-formed qualification: %d", code)
+	}
+}
+
+// A daemon under KeepAlive that reports one reason for every startup failure
+// leaves whoever installed it bisecting by hand. That is not hypothetical:
+// diagnosing a crash loop on this host took three rounds of running the binary
+// with arguments removed one at a time, because the config, the heartbeat, the
+// read model, the qualification chain and the operator socket all refused the
+// same way in the log.
+//
+// Each reason names a subsystem and nothing else. No path, no identity, no
+// value — knowing which door was shut is not knowing where it is.
+func TestEachStartupRefusalNamesItsOwnSubsystem(t *testing.T) {
+	reasonOf := func(t *testing.T, args []string) string {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		if code := Run(args, &stdout, &stderr); code == 0 {
+			t.Fatalf("expected a refusal, got success: %s", stdout.String())
+		}
+		// A refusal is reported on the error stream; success is on the other.
+		for _, line := range strings.Split(strings.TrimSpace(stderr.String()), "\n") {
+			var event struct {
+				Reason string `json:"reason"`
+			}
+			if json.Unmarshal([]byte(line), &event) == nil && event.Reason != "" {
+				return event.Reason
+			}
+		}
+		t.Fatalf("no reason was reported: %s", stderr.String())
+		return ""
+	}
+
+	config := observeConfigFile(t)
+
+	// A heartbeat whose file is there and cannot be read. This refusal
+	// happens before any observer is built, which is what makes it testable
+	// on a machine that is not the one being observed.
+	corrupt := filepath.Join(t.TempDir(), "control-loop.heartbeat.json")
+	if err := os.WriteFile(corrupt, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if reason := reasonOf(t, []string{
+		"--observe", "--once", "--config", config, "--heartbeat", corrupt,
+	}); reason != string(logging.ReasonHeartbeatUnavailable) {
+		t.Fatalf("a broken heartbeat reported %q", reason)
+	}
+
+	if reason := reasonOf(t, []string{
+		"--check", "--config", config,
+		"--connectivity-qualification", t.TempDir(),
+		"--connectivity-qualification-session", "not-a-uuid",
+	}); reason != string(logging.ReasonQualificationUnavailable) {
+		t.Fatalf("a broken qualification reported %q", reason)
+	}
+
+	if reason := reasonOf(t, []string{
+		"--check", "--config", config,
+		"--socket", filepath.Join(t.TempDir(), "nowhere", "hexrouted.sock"),
+	}); reason != string(logging.ReasonSocketUnavailable) {
+		t.Fatalf("an unusable socket reported %q", reason)
+	}
+
+	// And the config itself keeps the reason that was always its own.
+	if reason := reasonOf(t, []string{
+		"--check", "--config", filepath.Join(t.TempDir(), "absent.json"),
+	}); reason != string(logging.ReasonInvalidConfiguration) {
+		t.Fatalf("an unreadable config reported %q", reason)
 	}
 }

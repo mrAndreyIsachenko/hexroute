@@ -94,7 +94,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if *socketPath != "" {
 			if *configPath == "" ||
 				validateRootSocketPath(*socketPath, config.OperatorUID) != nil {
-				return rejected(errorLog, logging.ReasonInvalidConfiguration)
+				return rejected(errorLog, logging.ReasonSocketUnavailable)
 			}
 		}
 		if *heartbeatPath != "" {
@@ -106,7 +106,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		// to whoever installed it.
 		if err := connectivityhost.ValidateQualification(
 			*qualificationRoot, *qualificationSession); err != nil {
-			return rejected(errorLog, logging.ReasonInvalidConfiguration)
+			return rejected(errorLog, logging.ReasonQualificationUnavailable)
 		}
 		if err := infoLog.Emit(logging.LevelInfo, logging.EventStartupCheck, logging.ResultOK, ""); err != nil {
 			return 1
@@ -137,7 +137,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	publisher, err := heartbeat.OpenPublisher(*heartbeatPath, os.Getpid())
 	if err != nil {
-		return rejected(errorLog, logging.ReasonInvalidConfiguration)
+		return rejected(errorLog, logging.ReasonHeartbeatUnavailable)
 	}
 	network, err := observe.NewMacOSObserver(observe.ExecRunner{})
 	if err != nil {
@@ -169,13 +169,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// than accept publications it will drop.
 	reader, err := connectivityhost.Open(*readModelRoot, bootIdentity())
 	if err != nil {
-		return rejected(errorLog, logging.ReasonInvalidConfiguration)
+		return rejected(errorLog, logging.ReasonReadModelUnavailable)
 	}
 	// A misconfigured chain is refused at startup rather than at the first
 	// sample. A soak that ran for hours and then turned out to have been
 	// recording nothing is worse than one that never started.
 	if err := reader.AttachQualifier(*qualificationRoot, *qualificationSession); err != nil {
-		return rejected(errorLog, logging.ReasonInvalidConfiguration)
+		return rejected(errorLog, logging.ReasonQualificationUnavailable)
 	}
 	// The reconciler's shadow store is opened so its status is answerable. It
 	// is synthetic-only and exports no execution path.
@@ -222,10 +222,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	var server *ipc.Server
 	if *socketPath != "" {
 		if err := validateRootSocketPath(*socketPath, config.OperatorUID); err != nil {
-			return rejected(errorLog, logging.ReasonInvalidConfiguration)
+			return rejected(errorLog, logging.ReasonSocketUnavailable)
 		}
 		if err := ensureRootSocketDirectory(filepath.Dir(*socketPath)); err != nil {
-			return rejected(errorLog, logging.ReasonInvalidConfiguration)
+			return rejected(errorLog, logging.ReasonSocketUnavailable)
 		}
 		broker, err := operator.NewBroker(runCtx)
 		if err != nil {
@@ -233,7 +233,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		policyHandler, policyStore, err := openRootPolicyHandler(config.PolicyControl)
 		if err != nil {
-			return rejected(errorLog, logging.ReasonInvalidConfiguration)
+			return rejected(errorLog, logging.ReasonPolicyStoreUnavailable)
 		}
 		if policyStore != nil {
 			defer policyStore.Close()

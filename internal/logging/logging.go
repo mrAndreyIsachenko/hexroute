@@ -96,6 +96,22 @@ const (
 	ReasonGenerationConflict    Reason = "generation_conflict"
 	ReasonSafetyPolicyViolation Reason = "safety_policy_violation"
 	ReasonInvalidConfiguration  Reason = "invalid_configuration"
+
+	// The reasons below name the subsystem a startup refused on. They exist
+	// because a daemon under KeepAlive that reports one reason for every
+	// failure leaves whoever installed it bisecting by hand: the config, the
+	// heartbeat, the read model, the qualification chain, the operator socket
+	// and the policy store all refuse for different causes and all read the
+	// same in a log.
+	//
+	// They name a subsystem and nothing else. No path, no identity, no value:
+	// the vocabulary stays a closed allowlist, and knowing which door was shut
+	// is not the same as knowing where it is.
+	ReasonHeartbeatUnavailable     Reason = "heartbeat_unavailable"
+	ReasonReadModelUnavailable     Reason = "read_model_unavailable"
+	ReasonQualificationUnavailable Reason = "qualification_unavailable"
+	ReasonSocketUnavailable        Reason = "socket_unavailable"
+	ReasonPolicyStoreUnavailable   Reason = "policy_store_unavailable"
 )
 
 type wireEvent struct {
@@ -226,7 +242,10 @@ func validReason(value Reason) bool {
 	case "", ReasonInvalidFlags, ReasonUnexpectedArguments, ReasonUnauthorizedPeer,
 		ReasonMalformedRequest, ReasonOversizedRequest, ReasonUnsupportedAction,
 		ReasonUnsupportedVersion, ReasonMissingGeneration, ReasonGenerationConflict,
-		ReasonSafetyPolicyViolation, ReasonInvalidConfiguration:
+		ReasonSafetyPolicyViolation, ReasonInvalidConfiguration,
+		ReasonHeartbeatUnavailable, ReasonReadModelUnavailable,
+		ReasonQualificationUnavailable, ReasonSocketUnavailable,
+		ReasonPolicyStoreUnavailable:
 		return true
 	default:
 		return false
