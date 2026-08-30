@@ -20,6 +20,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/retention"
 	"github.com/mrAndreyIsachenko/hexroute/internal/silentnode"
+	"github.com/mrAndreyIsachenko/hexroute/internal/slo"
 )
 
 const (
@@ -29,7 +30,11 @@ const (
 	sleepProjectionBatch = 100
 	// connectivityProjectionBatch bounds one connectivity read-model pass.
 	connectivityProjectionBatch = 100
-	retentionBatchSize          = 500
+	// sloLookback bounds how far a run reaches for windows never computed.
+	// Detail events are evicted after thirty days, so reaching past that finds
+	// nothing; a day keeps a restarted worker from asking anyway.
+	sloLookback        = 24 * time.Hour
+	retentionBatchSize = 500
 )
 
 type heartbeatRunner interface {
@@ -212,6 +217,14 @@ func buildWorkerRuntime(
 	if err != nil {
 		return nil, ErrWorkerRuntime
 	}
+	sloStore, err := slo.NewPostgresStore(pool, rand.Reader)
+	if err != nil {
+		return nil, ErrWorkerRuntime
+	}
+	sloWorker, err := slo.NewWorker(sloStore, sloLookback)
+	if err != nil {
+		return nil, ErrWorkerRuntime
+	}
 
 	jobs := []workerJob{
 		{
@@ -280,6 +293,18 @@ func buildWorkerRuntime(
 					jobContext,
 					connectivityProjectionBatch,
 				)
+				return err
+			},
+		},
+		{
+			// The dashboard has rendered an empty SLO section since it was
+			// written. Availability is measured from evidence already stored,
+			// so this adds a calculation rather than a collection.
+			event:    logging.EventCloudSLO,
+			interval: config.ReconcileInterval,
+			timeout:  config.JobTimeout,
+			run: func(jobContext context.Context) error {
+				_, err := sloWorker.RunOnce(jobContext, now().UTC())
 				return err
 			},
 		},

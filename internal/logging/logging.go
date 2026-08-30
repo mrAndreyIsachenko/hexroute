@@ -65,6 +65,9 @@ const (
 	// EventCloudConnectivity names the pass that folds uploaded connectivity
 	// projections into the cloud read model.
 	EventCloudConnectivity EventName = "cloud_connectivity_projection"
+	// EventCloudSLO names the pass that measures availability over closed
+	// windows from evidence already stored.
+	EventCloudSLO EventName = "cloud_slo"
 )
 
 type Result string
@@ -193,7 +196,8 @@ func validEvent(value EventName) bool {
 		EventCloudAPIStopped, EventCloudWorkerStarted, EventCloudWorkerStopped,
 		EventCloudMigration,
 		EventCloudHeartbeat, EventCloudReconcile, EventCloudAlertQueue,
-		EventCloudAlertDelivery, EventCloudRetention, EventCloudConnectivity:
+		EventCloudAlertDelivery, EventCloudRetention, EventCloudConnectivity,
+		EventCloudSLO:
 		return true
 	default:
 		return false
