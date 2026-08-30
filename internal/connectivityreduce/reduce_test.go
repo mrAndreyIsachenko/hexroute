@@ -562,3 +562,48 @@ func TestBootChangeInvalidatesPriorFreshness(t *testing.T) {
 		}
 	}
 }
+
+// The spec says healthy aggregate output is not inferred from a missing
+// observation. A hole leaves every surviving component fresh and ready — the
+// facts that would have said otherwise are exactly the ones that went missing
+// — so the summary reported the host as ready while it knew it had a hole.
+//
+// This is the fault trace for a skipped sequence, reduced to what it is about:
+// an operator glancing at the aggregate must not be told the host is fine.
+func TestAHoleInAStreamStopsTheSummaryReportingReady(t *testing.T) {
+	h := newHarness(t)
+	// Every component has to be observed first. A host with anything still
+	// unknown would not report ready whatever the hole did, and a test that
+	// passed for that reason would pass on a reducer that ignores holes.
+	h.reduce(h.offer(connectivity.FixtureBaselineSet()...))
+	if state := h.snapshot.Summary.State; state != AggregateReady {
+		t.Fatalf("the baseline reduced to %s, so this test cannot show a hole "+
+			"changing anything", state)
+	}
+
+	source, _ := connectivity.FixtureSource(connectivity.ComponentDNS)
+	high := uint64(0)
+	for _, fact := range connectivity.FixtureBaselineSet() {
+		if fact.SourceID == source && fact.SourceSequence > high {
+			high = fact.SourceSequence
+		}
+	}
+	skipped := connectivity.FixtureBaseline(connectivity.ComponentDNS, high+2)
+	skipped.Baseline = false
+	skipped.Reason = connectivity.ReasonProbeSucceeded
+	output := h.reduce(h.offer(skipped))
+
+	summary := output.Snapshot.Summary
+	if summary.OpenGaps == 0 {
+		t.Fatal("no hole was recorded; this test is about the hole")
+	}
+	if summary.Stale != 0 || summary.Degraded != 0 || summary.Failed != 0 ||
+		summary.Conflicted != 0 || summary.Unknown != 0 {
+		t.Fatalf("a component is unhealthy or unobserved on its own (%+v), so "+
+			"the summary would move without needing to notice the hole", summary)
+	}
+	if summary.State == AggregateReady {
+		t.Fatalf("the summary reports %s while a source stream has a hole",
+			summary.State)
+	}
+}

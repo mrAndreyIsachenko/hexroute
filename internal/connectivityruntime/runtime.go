@@ -115,8 +115,15 @@ type Report struct {
 	Accepted   uint16
 	Duplicates uint16
 	Conflicts  uint16
-	Rejected   uint16
-	Watermark  uint64
+	// Stale counts arrivals that were behind the accepted order. They are
+	// kept apart from Rejected because they are a different event: a rejected
+	// fact never entered the order and is not reduced, while a stale one
+	// arrived late and is still folded as evidence. Counting them together
+	// would leave a caller unable to tell a malformed publisher from a slow
+	// one.
+	Stale     uint16
+	Rejected  uint16
+	Watermark uint64
 }
 
 // New prepares the runtime, resuming from the stored lineage when the gate is
@@ -309,6 +316,8 @@ func (runtime *Runtime) Publish(
 			report.Duplicates++
 		case connectivityaccept.OutcomeConflict:
 			report.Conflicts++
+		case connectivityaccept.OutcomeStale:
+			report.Stale++
 		default:
 			report.Rejected++
 		}

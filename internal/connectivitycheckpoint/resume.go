@@ -120,6 +120,11 @@ func (store *Store) searchLocked(
 	initial ResumeReason,
 ) (Resume, error) {
 	reason := initial
+	// firstFailure is why the search had to move at all. Reporting an
+	// ancestor without it leaves an operator told only that the newest
+	// checkpoint was not used, when a corrupt record, a missing ancestor and
+	// a substituted parent call for three different responses.
+	firstFailure := ResumeReasonNone
 	for depth := 0; depth <= store.depth; depth++ {
 		position := start - depth
 		if position < 0 {
@@ -141,10 +146,17 @@ func (store *Store) searchLocked(
 			if depth == 0 && initial == ResumeReasonNone {
 				status = ResumeLatest
 			}
+			reported := initial
+			if reported == ResumeReasonNone {
+				reported = firstFailure
+			}
 			return Resume{
-				Status: status, Reason: initial, Checkpoint: candidate,
+				Status: status, Reason: reported, Checkpoint: candidate,
 				Depth: depth, LineageOverflow: overflow,
 			}, nil
+		}
+		if firstFailure == ResumeReasonNone {
+			firstFailure = failure
 		}
 		if reason == ResumeReasonNone || depth > 0 {
 			reason = failure
