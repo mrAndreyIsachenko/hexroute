@@ -11,6 +11,17 @@ type Dispatcher struct {
 	mutating     MutationHandler
 	policy       PolicyHandler
 	connectivity ConnectivityHandler
+	shadow       ShadowHandler
+}
+
+// ShadowHandler answers what the reconciler's shadow store holds.
+//
+// It is read-only by construction: the store it fronts is synthetic-only and
+// exports no execution path. A dispatcher without one refuses the question
+// rather than answering it emptily, because "no shadow store" and "a shadow
+// store with nothing in it" are different answers.
+type ShadowHandler interface {
+	HandleIPC(context.Context, ipc.Request) ipc.Response
 }
 
 // ConnectivityHandler receives what the user domain observed.
@@ -42,6 +53,7 @@ func NewDispatcher(
 	mutating MutationHandler,
 	policyHandler PolicyHandler,
 	connectivity ConnectivityHandler,
+	shadow ShadowHandler,
 ) (*Dispatcher, error) {
 	if readOnly == nil || mutating == nil || policyHandler == nil {
 		return nil, ErrInvalidController
@@ -53,6 +65,7 @@ func NewDispatcher(
 		mutating:     mutating,
 		policy:       policyHandler,
 		connectivity: connectivity,
+		shadow:       shadow,
 	}, nil
 }
 
@@ -66,6 +79,14 @@ func (dispatcher *Dispatcher) HandleIPC(
 	switch request.Action {
 	case ipc.ActionStatus, ipc.ActionExportDiagnostics:
 		return dispatcher.handleReadWithPolicy(ctx, request)
+	case ipc.ActionReconcilerShadowStatus:
+		if dispatcher.shadow == nil {
+			return ipc.Response{
+				Version: ipc.ProtocolVersion, RequestID: request.RequestID,
+				Error: ipc.ErrorPrecondition,
+			}
+		}
+		return dispatcher.shadow.HandleIPC(ctx, request)
 	case ipc.ActionPublishConnectivityFacts:
 		if dispatcher.connectivity == nil {
 			return ipc.Response{

@@ -237,8 +237,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		dispatcher, err := operator.NewDispatcher(
-			// The user daemon publishes facts; it never receives them.
-			controller, broker, policyHandler, nil)
+			// The user daemon publishes facts; it never receives them, and it
+			// holds no shadow store of its own in this build.
+			controller, broker, policyHandler, nil, nil)
 		if err != nil {
 			return 1
 		}

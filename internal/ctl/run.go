@@ -47,6 +47,10 @@ type resultOutput struct {
 	PreparePolicy *ipc.PreparePolicyResult `json:"prepare_policy,omitempty"`
 	CommitPolicy  *ipc.CommitPolicyResult  `json:"commit_policy,omitempty"`
 	AbortPolicy   *ipc.AbortPolicyResult   `json:"abort_policy,omitempty"`
+	// ReconcilerShadow reports what the reconciler's shadow store holds. It
+	// is a description, not a handle: the store is synthetic-only and this
+	// command cannot start, resume or cancel anything in it.
+	ReconcilerShadow *ipc.ReconcilerShadowStatusResult `json:"reconciler_shadow,omitempty"`
 }
 
 type scope string
@@ -119,6 +123,13 @@ func Run(args []string, stdout, stderr io.Writer, config Config) int {
 			return 2
 		}
 		return runResume(selected, target, generation, stdout, stderr, config)
+	case "reconciler-shadow":
+		selected, ok := parseReadFlags(command, args[1:])
+		if !ok {
+			writeGenericError(stderr)
+			return 2
+		}
+		return runShadow(selected, stdout, stderr, config)
 	case "policy":
 		return runPolicy(args[1:], stdout, stderr, config)
 	default:
@@ -244,6 +255,7 @@ func roundTripRequest(
 	result.PreparePolicy = response.PreparePolicy
 	result.CommitPolicy = response.CommitPolicy
 	result.AbortPolicy = response.AbortPolicy
+	result.ReconcilerShadow = response.ReconcilerShadowStatus
 	if !response.OK {
 		return result, false
 	}
@@ -254,6 +266,13 @@ func roundTripRequest(
 		return resultOutput{Role: role}, false
 	}
 	if response.Resume != nil && response.Resume.Role != role {
+		return resultOutput{Role: role}, false
+	}
+	// A shadow status answering for the other daemon is refused rather than
+	// shown: the two domains keep separate stores, and confusing them would
+	// report one domain's evidence as the other's.
+	if response.ReconcilerShadowStatus != nil &&
+		response.ReconcilerShadowStatus.Role != role {
 		return resultOutput{Role: role}, false
 	}
 	expectedDomain := roleDomain(role)
@@ -374,4 +393,39 @@ func writeGenericError(writer io.Writer) {
 
 func writeUnavailableError(writer io.Writer) {
 	_, _ = io.WriteString(writer, "error: one or more local control endpoints rejected the request\n")
+}
+
+// runShadow asks each selected daemon what its reconciler shadow store holds.
+//
+// The answer says the store is synthetic-only and exports no execution path.
+// That is the point of asking: an operator can see that the reconciler is
+// present and inert, rather than inferring it from the absence of evidence.
+func runShadow(
+	selected scope,
+	stdout io.Writer,
+	stderr io.Writer,
+	config Config,
+) int {
+	results := make([]resultOutput, 0, 2)
+	failed := false
+	for _, role := range roles(selected) {
+		result, ok := roundTripRequest(role, ipc.Request{
+			Action:                 ipc.ActionReconcilerShadowStatus,
+			ReconcilerShadowStatus: &ipc.ReconcilerShadowStatusRequest{},
+		}, config)
+		results = append(results, result)
+		failed = failed || !ok
+	}
+	if err := json.NewEncoder(stdout).Encode(commandOutput{
+		Schema:  outputSchema,
+		Command: "reconciler-shadow",
+		Results: results,
+	}); err != nil {
+		return 1
+	}
+	if failed {
+		writeUnavailableError(stderr)
+		return 1
+	}
+	return 0
 }
