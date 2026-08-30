@@ -33,7 +33,20 @@ type Input struct {
 	PolicyComponents []ComponentPolicy
 	// BootID and EvaluationTick are the time context. They are supplied
 	// rather than read so that reduction stays pure and replayable.
-	BootID         string
+	BootID string
+	// PriorConsumed is the host sequence already accounted for when there is
+	// no prior snapshot to read it from.
+	//
+	// A read model that lost its lineage starts from an empty snapshot, but
+	// not from an empty order: the journals still hold the sequences this
+	// host issued, and the acceptor continues above them rather than minting
+	// a second fact for a position already taken. Without this the first
+	// reduction after such a restart would demand sequence one and refuse the
+	// stream for ever.
+	//
+	// It is ignored when Prior is set, and contradicting a prior snapshot is
+	// refused: a caller may not move a watermark the snapshot already states.
+	PriorConsumed  uint64
 	EvaluationTick control.Tick
 	// Wake, when set, reports that the host resumed from sleep since the
 	// prior reduction. It carries no state of its own: what it does is
@@ -74,7 +87,7 @@ func Reduce(input Input) (Output, error) {
 	sources := newSourceTable(input.Prior)
 	markRebaseline(components, input)
 	conflicts := newConflictTable(input.Prior)
-	consumed := uint64(0)
+	consumed := input.PriorConsumed
 	generation := uint64(0)
 	if input.Prior != nil {
 		consumed = input.Prior.ConsumedHostSequence
@@ -153,6 +166,14 @@ func Reduce(input Input) (Output, error) {
 }
 
 func validateInput(input Input) error {
+	// A snapshot already states what it consumed. A caller that supplied a
+	// different watermark beside it would be asking the reduction to fold from
+	// somewhere the snapshot does not describe.
+	if input.Prior != nil && input.PriorConsumed != 0 &&
+		input.PriorConsumed != input.Prior.ConsumedHostSequence {
+		return fmt.Errorf("%w: prior consumed watermark contradicts the snapshot",
+			ErrInvalidInput)
+	}
 	if input.BootID == "" || input.EvaluationTick <= 0 {
 		return fmt.Errorf("%w: time context", ErrInvalidInput)
 	}

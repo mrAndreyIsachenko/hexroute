@@ -182,7 +182,31 @@ func New(options Options) (*Runtime, error) {
 	// Nothing provable was stored. Starting from an empty read model is the
 	// honest outcome: every component is unknown until an owner speaks, which
 	// is exactly what the operator should see after an unrecoverable lineage.
-	runtime.acceptor = connectivityaccept.New()
+	//
+	// The acceptor may not start from zero, though. A host sequence orders
+	// every fact this host ever accepted and the journals still hold the ones
+	// it issued, so handing those numbers out again would mint a second fact
+	// for a position already taken. Nothing notices immediately: the facts are
+	// written, the model folds them, and the daemon looks well. It is the next
+	// restart that fails, when replay reaches the journal and finds one
+	// sequence with two meanings — and it fails at startup, so the daemon
+	// never comes up again.
+	//
+	// So the count continues above everything already written. The lineage is
+	// gone; the order it numbered is not.
+	issued, err := highestIssued(runtime.journals)
+	if err != nil {
+		return nil, err
+	}
+	acceptor, err := connectivityaccept.Restore(connectivityaccept.State{
+		HostSequence: issued,
+		Sources:      make(map[connectivity.SourceID]*connectivityaccept.SourceState),
+	})
+	if err != nil {
+		return nil, err
+	}
+	runtime.acceptor = acceptor
+	runtime.consumed = issued
 	// If a lineage is nonetheless on disk, the next checkpoint has to say it
 	// is abandoning it. Without that the store refuses a parentless record
 	// against an existing pointer — correctly, since a silent restart would
@@ -203,6 +227,28 @@ func New(options Options) (*Runtime, error) {
 		}
 	}
 	return runtime, nil
+}
+
+// highestIssued is the last host sequence the journals show as handed out.
+//
+// It reads both domains: one host sequence orders the facts of both, so a
+// watermark taken from one alone would leave the other's positions reusable.
+func highestIssued(
+	journals map[policy.Domain]*connectivityjournal.Journal,
+) (uint64, error) {
+	highest := uint64(0)
+	for _, journal := range journals {
+		records, err := journal.Records()
+		if err != nil {
+			return 0, err
+		}
+		for _, record := range records {
+			if record.HostSequence > highest {
+				highest = record.HostSequence
+			}
+		}
+	}
+	return highest, nil
 }
 
 func restoreAcceptor(checkpoint connectivitycheckpoint.Checkpoint) (*connectivityaccept.Acceptor, error) {
@@ -376,6 +422,7 @@ func (runtime *Runtime) Tick(input TickInput) (connectivityreduce.Output, error)
 	before := runtime.consumed
 	output, err := connectivityreduce.Reduce(connectivityreduce.Input{
 		Prior:            runtime.snapshot,
+		PriorConsumed:    runtime.consumed,
 		Events:           runtime.pending,
 		Policy:           input.Policy,
 		PolicyComponents: input.PolicyComponents,
