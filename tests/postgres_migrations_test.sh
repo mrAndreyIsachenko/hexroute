@@ -2,6 +2,10 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The migrations below come from this checkout, and so must the packages tested
+# against them. Without this the script applies one tree's schema and then runs
+# whatever tree the caller happened to be standing in.
+cd "$repo_root"
 migration_dir="$repo_root/internal/database/migrations/postgres"
 container="hexroute-postgres-migrations-$$"
 
