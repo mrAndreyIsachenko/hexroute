@@ -26,6 +26,7 @@ func TestPostgreSQLMigrationManifest(t *testing.T) {
 		"incident_alert_outbox",
 		"schema_migration_ledger",
 		"cutover_write_freeze",
+		"connectivity_projection",
 	}
 	if len(migrations) != len(wantNames) {
 		t.Fatalf("migration count = %d, want %d", len(migrations), len(wantNames))
@@ -115,7 +116,13 @@ func TestPostgreSQLWriteGateCoversEveryRuntimeMutableTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PostgreSQL() error = %v", err)
 	}
-	gate := strings.ToLower(migrations[len(migrations)-1].Up)
+	// A table added after the freeze migration installs its own gate, so the
+	// claim is about the whole schema rather than about one file.
+	var builder strings.Builder
+	for _, migration := range migrations {
+		builder.WriteString(strings.ToLower(migration.Up))
+	}
+	gate := builder.String()
 	protected := []string{
 		"nodes", "batches", "events", "node_sequence_cursors",
 		"sequence_gaps", "security_audit_records", "latest_component_states",
@@ -123,6 +130,8 @@ func TestPostgreSQLWriteGateCoversEveryRuntimeMutableTable(t *testing.T) {
 		"incident_transitions", "incident_bundles", "worker_heartbeats",
 		"dashboard_principals", "passkey_credentials", "alert_deliveries",
 		"incident_alert_outbox", "slo_aggregates", "slo_incident_links",
+		"connectivity_snapshots", "connectivity_snapshot_components",
+		"connectivity_snapshot_proposal_classes",
 	}
 	for _, table := range protected {
 		if !strings.Contains(gate, "'"+table+"'") {

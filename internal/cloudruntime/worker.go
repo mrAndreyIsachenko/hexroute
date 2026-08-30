@@ -12,6 +12,7 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/alertdelivery"
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
+	"github.com/mrAndreyIsachenko/hexroute/internal/cloudconnectivity"
 	"github.com/mrAndreyIsachenko/hexroute/internal/cloudhealth"
 	"github.com/mrAndreyIsachenko/hexroute/internal/cloudincident"
 	"github.com/mrAndreyIsachenko/hexroute/internal/cutoverfreeze"
@@ -26,7 +27,9 @@ const (
 	workerDatabaseConns  = 8
 	workerBatchSize      = 50
 	sleepProjectionBatch = 100
-	retentionBatchSize   = 500
+	// connectivityProjectionBatch bounds one connectivity read-model pass.
+	connectivityProjectionBatch = 100
+	retentionBatchSize          = 500
 )
 
 type heartbeatRunner interface {
@@ -205,6 +208,10 @@ func buildWorkerRuntime(
 	if err != nil {
 		return nil, ErrWorkerRuntime
 	}
+	connectivityStore, err := cloudconnectivity.NewPostgresStore(pool)
+	if err != nil {
+		return nil, ErrWorkerRuntime
+	}
 
 	jobs := []workerJob{
 		{
@@ -258,6 +265,21 @@ func buildWorkerRuntime(
 			timeout:  config.JobTimeout,
 			run: func(jobContext context.Context) error {
 				_, err := processor.RunOnce(jobContext)
+				return err
+			},
+		},
+		{
+			// Folding uploaded projections is a pure read-model pass. It
+			// derives nothing a host will ever read back, so a failure here
+			// costs the dashboard a sample and costs the host nothing.
+			event:    logging.EventCloudConnectivity,
+			interval: config.ReconcileInterval,
+			timeout:  config.JobTimeout,
+			run: func(jobContext context.Context) error {
+				_, err := connectivityStore.ProjectPending(
+					jobContext,
+					connectivityProjectionBatch,
+				)
 				return err
 			},
 		},
