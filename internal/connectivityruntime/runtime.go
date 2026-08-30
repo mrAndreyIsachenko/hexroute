@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"sync"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
@@ -161,6 +162,9 @@ func New(options Options) (*Runtime, error) {
 			return nil, restoreErr
 		}
 		runtime.acceptor = acceptor
+		if err := runtime.resumeUnfolded(checkpoint); err != nil {
+			return nil, err
+		}
 		return runtime, nil
 	}
 	// Nothing provable was stored. Starting from an empty read model is the
@@ -187,6 +191,57 @@ func restoreAcceptor(checkpoint connectivitycheckpoint.Checkpoint) (*connectivit
 		}
 	}
 	return connectivityaccept.Restore(state)
+}
+
+// resumeUnfolded re-accepts the facts the journals hold beyond the checkpoint.
+//
+// A checkpoint is written only when a reduction was effective, so facts can be
+// accepted and journalled and still lie beyond the newest one. Restoring the
+// acceptor from the checkpoint alone leaves it about to hand those sequences
+// out a second time, and the journal then holds two different facts under one
+// number — which makes it unreadable in full, permanently, and takes the
+// evidence chain with it.
+//
+// They are re-accepted rather than trusted. The acceptor decides ownership,
+// order and duplication again from the same records, which is the same
+// discipline replay uses and the reason a restored run reaches the state the
+// original one did instead of a state it was told about.
+func (runtime *Runtime) resumeUnfolded(
+	checkpoint connectivitycheckpoint.Checkpoint,
+) error {
+	records := make([]connectivityjournal.Record, 0)
+	for _, journal := range runtime.journals {
+		held, _, err := journal.RecordsAfter(checkpoint.ConsumedTo)
+		if err != nil {
+			return err
+		}
+		records = append(records, held...)
+	}
+	if len(records) == 0 {
+		return nil
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].HostSequence < records[j].HostSequence
+	})
+	for _, record := range records {
+		acceptance, err := runtime.acceptor.Accept(record.Fact, record.Fact.Domain)
+		if err != nil {
+			// A retained record the acceptor now refuses cannot be folded and
+			// must not be skipped past: the sequences after it would then be
+			// handed out again. Refusing to start is the honest answer, and
+			// the operator sees an unrecoverable lineage rather than a model
+			// quietly built on part of its evidence.
+			return fmt.Errorf("%w: retained record %d: %v",
+				ErrMisconfigured, record.HostSequence, err)
+		}
+		if acceptance.Outcome == connectivityaccept.OutcomeRejected {
+			return fmt.Errorf("%w: retained record %d was refused",
+				ErrMisconfigured, record.HostSequence)
+		}
+		runtime.pending = append(runtime.pending,
+			connectivityreduce.Event{Acceptance: acceptance, Fact: record.Fact})
+	}
+	return nil
 }
 
 // Enabled reports whether the read model is running.
