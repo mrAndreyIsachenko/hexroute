@@ -45,6 +45,11 @@ type Options struct {
 	Clock        Clock
 	Random       io.Reader
 	FreshnessTTL control.Tick
+	// Sequence is the last sequence this source already issued. A collector
+	// resumed after a restart continues its own stream from there: starting
+	// again at zero would put every fact behind the watermark the aggregate
+	// restored, and the source would go silent without saying so.
+	Sequence uint64
 }
 
 // Collector stamps identity, order and time onto the payloads the mappers
@@ -78,6 +83,7 @@ func New(options Options) (*Collector, error) {
 	return &Collector{
 		source: options.Source, domain: options.Domain, bootID: options.BootID,
 		clock: options.Clock, random: options.Random, ttl: ttl,
+		sequence: options.Sequence,
 	}, nil
 }
 
