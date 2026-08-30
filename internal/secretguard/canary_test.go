@@ -49,6 +49,27 @@ func TestRepositorySecretCanariesCannotReachSerializedOutputs(t *testing.T) {
 				t.Fatal("policy telemetry accepted secret canary")
 			}
 
+			// The connectivity projection is the read model's one path off the
+			// host. Its own package asserts an allowlist over field names; this
+			// asserts the complementary property, that no bounded field will
+			// carry a value it was not meant to hold. Without it a field added
+			// to the projection stays green under the repository's secret gate.
+			// Without this the loop below would pass vacuously if the base
+			// payload ever stopped being encodable at all.
+			if _, err := event.Encode(
+				event.SchemaConnectivityProjection, connectivityProjectionBase(),
+			); err != nil {
+				t.Fatalf("the projection fixture no longer encodes: %v", err)
+			}
+			for _, offered := range connectivityProjections(canary) {
+				if _, err := event.Encode(
+					event.SchemaConnectivityProjection, offered.payload,
+				); err == nil {
+					t.Fatalf("connectivity projection accepted secret canary in %s",
+						offered.field)
+				}
+			}
+
 			logger, err := logging.New(&outputs, logging.ComponentDaemon)
 			if err != nil {
 				t.Fatalf("logging.New() error = %v", err)
@@ -90,6 +111,61 @@ func TestRepositorySecretCanariesCannotReachSerializedOutputs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// connectivityProjectionBase is a projection that must encode cleanly.
+func connectivityProjectionBase() event.ConnectivityProjection {
+	return event.ConnectivityProjection{
+		SnapshotGeneration: 4, ReducerVersion: 2,
+		BundleGeneration: 7, RootGeneration: 3, UserGeneration: 2,
+		Aggregate: "ready", Authorization: "authorized",
+		AuthorizationReason: "none",
+		Components: []event.ProjectedComponent{{
+			Component: "relays", State: "ready",
+			Freshness: event.FreshnessFresh, Reason: "none",
+		}},
+		ProposalClasses: []event.ProjectedProposalClass{{Class: "observe", Count: 1}},
+	}
+}
+
+// connectivityProjections offers the canary through every string-bearing field
+// of the projection, one at a time, so a new field cannot quietly become the
+// one that is never tried.
+func connectivityProjections(canary string) []struct {
+	field   string
+	payload event.ConnectivityProjection
+} {
+	base := connectivityProjectionBase
+	offered := make([]struct {
+		field   string
+		payload event.ConnectivityProjection
+	}, 0, 7)
+	add := func(field string, mutate func(*event.ConnectivityProjection)) {
+		payload := base()
+		mutate(&payload)
+		offered = append(offered, struct {
+			field   string
+			payload event.ConnectivityProjection
+		}{field: field, payload: payload})
+	}
+	add("aggregate", func(p *event.ConnectivityProjection) { p.Aggregate = canary })
+	add("authorization", func(p *event.ConnectivityProjection) { p.Authorization = canary })
+	add("authorization_reason", func(p *event.ConnectivityProjection) {
+		p.AuthorizationReason = canary
+	})
+	add("components[].component", func(p *event.ConnectivityProjection) {
+		p.Components[0].Component = canary
+	})
+	add("components[].state", func(p *event.ConnectivityProjection) {
+		p.Components[0].State = canary
+	})
+	add("components[].reason", func(p *event.ConnectivityProjection) {
+		p.Components[0].Reason = canary
+	})
+	add("proposal_classes[].class", func(p *event.ConnectivityProjection) {
+		p.ProposalClasses[0].Class = canary
+	})
+	return offered
 }
 
 func loadCanaries(t *testing.T) []string {
