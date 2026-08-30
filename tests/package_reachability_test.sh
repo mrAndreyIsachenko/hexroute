@@ -25,16 +25,7 @@ test_only=(
 )
 
 unwired=(
-  # The observable connectivity read model. Task 7.5 claims it is integrated
-  # into hexrouted behind an observe-only gate; it is not, and until it is
-  # there is nothing for sections 9 and 10 to qualify.
-  connectivityaccept
-  connectivitycheckpoint
-  connectivitycollect
-  connectivityjournal
-  connectivityreduce
-  connectivityruntime
-  connectivityview
+  # connectivityhost is the seam; it is reachable. Nothing else here is.
 
   # The generation-bound network reconciler. Archived as complete on
   # 2026-08-15. It has a shadow mode and shadow tests and has never run in

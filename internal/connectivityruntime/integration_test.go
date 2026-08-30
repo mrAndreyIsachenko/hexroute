@@ -20,8 +20,8 @@ const modulePath = "github.com/mrAndreyIsachenko/hexroute"
 // about all of it, so a new package cannot quietly join with weaker rules.
 var connectivityPackages = []string{
 	"connectivity", "connectivityaccept", "connectivitycheckpoint",
-	"connectivitycollect", "connectivityjournal", "connectivityreduce",
-	"connectivityruntime", "connectivityview",
+	"connectivitycollect", "connectivityhost", "connectivityjournal",
+	"connectivityreduce", "connectivityruntime", "connectivityview",
 }
 
 func importsOf(t *testing.T, directory string) []string {

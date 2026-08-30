@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"strings"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityhost"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
@@ -40,6 +41,11 @@ type Summary struct {
 	OuterReady     bool
 	Failures       uint32
 	Plan           routeplan.Plan
+	// Observed carries the raw observations this cycle already made, so a
+	// reader can build facts from them without probing the host a second
+	// time. The cycle gathers all of it either way; keeping it was the only
+	// thing missing.
+	Observed connectivityhost.Evidence
 }
 
 type Cycle struct {
@@ -80,6 +86,9 @@ func (cycle *Cycle) Observe(ctx context.Context) Summary {
 	}
 
 	physical, err := cycle.network.PhysicalNetwork(ctx, cycle.config.PhysicalInterface)
+	summary.Observed.Reached = true
+	summary.Observed.Physical, summary.Observed.PhysicalError = physical, err
+	summary.Observed.ConfiguredRoutes = uint16(len(cycle.config.Targets))
 	if err != nil || !physical.Ready() {
 		summary.Failures++
 		summary.State = CycleSuspended
@@ -87,6 +96,7 @@ func (cycle *Cycle) Observe(ctx context.Context) Summary {
 	}
 
 	process, err := cycle.processes.SingBox(ctx, cycle.config.ExpectedSingBoxParent)
+	summary.Observed.Process, summary.Observed.ProcessError = process, err
 	if err != nil {
 		summary.Failures++
 	} else {
@@ -97,12 +107,15 @@ func (cycle *Cycle) Observe(ctx context.Context) Summary {
 	}
 
 	tunInterfaces, err := cycle.network.TUNInterfaces(ctx)
+	summary.Observed.TUNs, summary.Observed.TUNError = tunInterfaces, err
 	if err != nil {
 		summary.Failures++
 		return summary
 	}
 	managedTUN, err := observe.FindTUNByAddress(tunInterfaces, cycle.config.ManagedTUNAddress)
+	summary.Observed.ManagedTUN = managedTUN
 	if err != nil {
+		summary.Observed.TUNError = err
 		summary.Failures++
 		return summary
 	}
@@ -126,7 +139,9 @@ func (cycle *Cycle) Observe(ctx context.Context) Summary {
 	current := make(map[netip.Addr]routeplan.ObservedRoute, len(cycle.config.Targets))
 	for _, target := range cycle.config.Targets {
 		observation, routeErr := cycle.network.Route(ctx, target.Destination)
+		summary.Observed.Routes = append(summary.Observed.Routes, observation)
 		if routeErr != nil {
+			summary.Observed.RouteError = routeErr
 			summary.Failures++
 			return summary
 		}
@@ -144,8 +159,12 @@ func (cycle *Cycle) Observe(ctx context.Context) Summary {
 	for _, configuredEndpoint := range cycle.config.Endpoints {
 		observation, endpointErr := cycle.readiness.Endpoint(ctx, configuredEndpoint.Endpoint)
 		if endpointErr != nil {
+			summary.Observed.ReadinessError = endpointErr
 			summary.Failures++
 			continue
+		}
+		if configuredEndpoint.Purpose == PurposeOuterReady {
+			summary.Observed.Readiness = append(summary.Observed.Readiness, observation)
 		}
 		switch configuredEndpoint.Purpose {
 		case PurposeOuterReady:

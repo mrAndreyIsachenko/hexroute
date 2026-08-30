@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityhost"
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/heartbeat"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
@@ -51,6 +52,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	configPath := flags.String("config", "", "observe-only configuration")
 	heartbeatPath := flags.String("heartbeat", "", "control-loop heartbeat")
 	socketPath := flags.String("socket", "", "typed local operator socket")
+	// Off unless a root is given. Without one the daemon runs exactly the path
+	// it ran before the read model existed.
+	readModelRoot := flags.String(
+		"connectivity-read-model", "", "observe-only connectivity read model root")
 
 	if err := flags.Parse(args); err != nil {
 		return rejected(errorLog, logging.ReasonInvalidFlags)
@@ -218,6 +223,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			<-done
 		}()
 	}
+	reader, err := connectivityhost.Open(*readModelRoot, bootIdentity())
+	if err != nil {
+		return rejected(errorLog, logging.ReasonInvalidConfiguration)
+	}
 	if err := observeLoop(
 		runCtx,
 		config.Interval,
@@ -229,6 +238,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		requests,
 		serverDone,
 		infoLog,
+		reader,
 	); err != nil {
 		return 1
 	}
@@ -296,6 +306,7 @@ func observeLoop(
 	requests <-chan operator.Envelope,
 	serverDone <-chan error,
 	logger *logging.Logger,
+	reader *connectivityhost.Reader,
 ) error {
 	if ctx == nil ||
 		interval <= 0 ||
@@ -316,6 +327,13 @@ func observeLoop(
 			return err
 		}
 		at := nowTick()
+		// The read model runs after the cycle and changes nothing about it.
+		// Its failure is reported and dropped: a daemon that stops observing
+		// because a description of its observations failed would be worse than
+		// one with no read model at all.
+		if err := connectivityhost.Fold(reader, summary.Observed, logger); err != nil {
+			return err
+		}
 		if err := publisher.Publish(at); err != nil {
 			return err
 		}
