@@ -77,9 +77,9 @@
 
 ## 10. Documentation And Verification
 
-- [ ] 10.1 Document fact ownership, snapshot fields, reducer invariants, desired-state diff semantics, proposal non-executability and operator status interpretation.
-- [ ] 10.2 Document the pinned Firezone, NetBird, Agent Framework and Chain Indexer architectural references, adopted mechanisms and Hexroute-specific safety differences.
-- [ ] 10.3 Document startup replay, sleep/wake re-baselining, cloud-loss behavior, observe-only rollout and independently executable rollback.
+- [x] 10.1 Document fact ownership, snapshot fields, reducer invariants, desired-state diff semantics, proposal non-executability and operator status interpretation.
+- [x] 10.2 Document the pinned Firezone, NetBird, Agent Framework and Chain Indexer architectural references, adopted mechanisms and Hexroute-specific safety differences.
+- [x] 10.3 Document startup replay, sleep/wake re-baselining, cloud-loss behavior, observe-only rollout and independently executable rollback.
 - [ ] 10.4 Run focused unit, race, replay, crash-recovery, IPC, cloud projection, secret-canary and cross-platform build tests for affected packages.
 - [ ] 10.5 Run `make check` and resolve every static, race, formatting, repository-boundary and secret-leak failure.
 - [ ] 10.6 Run `openspec validate add-observable-connectivity-state-machine --strict` and keep proposal, design, specs and tasks synchronized with implementation evidence.
