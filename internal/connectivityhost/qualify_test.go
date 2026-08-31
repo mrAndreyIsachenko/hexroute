@@ -129,6 +129,13 @@ func (run *soak) publishUser(from uint64) {
 		// One sequence per source, not one per fact: these two components
 		// belong to different sources, and each continues its own numbering.
 		fact := connectivity.FixtureBaseline(component, from)
+		// The deadline is set against the tick this harness evaluates at, not
+		// left to the fixture's own. A fixture deadline is a fixed number, so
+		// whether it has passed depends on how long the machine has been up —
+		// which made this stale on a workstation and fresh on a runner that
+		// booted minutes ago.
+		fact.MonotonicTick = control.Tick(run.tick - 10)
+		fact.FreshnessDeadline = control.Tick(run.tick - 5)
 		_, raw, err := policy.CanonicalSHA256(fact)
 		if err != nil {
 			run.t.Fatal(err)
