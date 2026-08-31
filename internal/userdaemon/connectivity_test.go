@@ -262,3 +262,72 @@ func TestAPublisherRestatesInFullAfterASleep(t *testing.T) {
 		}
 	}
 }
+
+// A publisher can remember its own position only across a restart it survived
+// to write about. The first run after an upgrade has nothing to remember, and
+// root's acceptor still holds a watermark from the process before it — so
+// every fact this one sends is behind it, refused, and reported as a success.
+//
+// That is what the live host did: the two user components sat on host
+// sequences from before a sleep while the agent published into nothing, and
+// the wake they owed a restatement for could never be answered.
+func TestAPublisherAdoptsThePositionRootReports(t *testing.T) {
+	publisher, err := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock",
+		filepath.Join(t.TempDir(), "connectivity-stream.json"))
+	if err != nil || publisher == nil {
+		t.Fatalf("publisher: %v", err)
+	}
+	// Root holds a stream far ahead of this fresh process.
+	const accepted = uint64(3354)
+	var seen []connectivity.Fact
+	publisher.roundTrip = func(_ context.Context, _ string, request ipc.Request) (ipc.Response, error) {
+		seen = seen[:0]
+		streams := make([]ipc.StreamPosition, 0, 2)
+		for _, raw := range request.PublishConnectivityFacts.Facts {
+			var fact connectivity.Fact
+			if err := json.Unmarshal(raw, &fact); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			seen = append(seen, fact)
+			streams = append(streams, ipc.StreamPosition{
+				Source: string(fact.SourceID), LastSequence: accepted,
+			})
+		}
+		return ipc.Response{
+			Version: ipc.ProtocolVersion, Error: ipc.ErrorNone,
+			PublishConnectivityFacts: &ipc.PublishConnectivityFactsResult{
+				Stale: uint16(len(seen)), HighWatermark: accepted,
+				Streams: streams,
+			},
+		}, nil
+	}
+
+	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	for _, fact := range seen {
+		if fact.SourceSequence > accepted {
+			t.Fatal("the first publication was not behind the watermark, so " +
+				"this test is about the wrong thing")
+		}
+	}
+
+	// The same response that refused them says where the stream stands, so
+	// the next cycle lands rather than repeating the refusal for ever.
+	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if len(seen) == 0 {
+		t.Fatal("the second cycle published nothing")
+	}
+	for _, fact := range seen {
+		if fact.SourceSequence <= accepted {
+			t.Fatalf("%s republished sequence %d, which root already holds",
+				fact.Component, fact.SourceSequence)
+		}
+		if !fact.Baseline {
+			t.Fatalf("%s was not restated, so what this process said before "+
+				"root ever heard it stays lost", fact.Component)
+		}
+	}
+}

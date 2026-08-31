@@ -114,7 +114,10 @@ func TestPublicationCannotLookLikeAnAction(t *testing.T) {
 // The result reports what happened to the facts and nothing the caller could
 // act on.
 func TestPublicationResultCarriesNoAuthority(t *testing.T) {
-	result := PublishConnectivityFactsResult{Accepted: 2, HighWatermark: 9}
+	result := PublishConnectivityFactsResult{
+		Accepted: 2, HighWatermark: 9,
+		Streams: []StreamPosition{{Source: "user.access", LastSequence: 7}},
+	}
 	encoded, err := json.Marshal(result)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -123,13 +126,32 @@ func TestPublicationResultCarriesNoAuthority(t *testing.T) {
 	if err := json.Unmarshal(encoded, &generic); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
+	// Counts and positions only. A count says what happened to what the
+	// caller sent; a position says where the caller's own stream stands, and
+	// a caller can resume its numbering from it and do nothing else. Neither
+	// is host state, component state or anything that could be acted on.
 	permitted := map[string]struct{}{
-		"accepted": {}, "duplicates": {}, "conflicts": {},
-		"rejected": {}, "high_watermark": {},
+		"accepted": {}, "duplicates": {}, "conflicts": {}, "stale": {},
+		"rejected": {}, "high_watermark": {}, "streams": {},
 	}
 	for name := range generic {
 		if _, ok := permitted[name]; !ok {
 			t.Fatalf("publication result gained field %q", name)
+		}
+	}
+	// And a position stays a position. Anything else riding inside one would
+	// pass the check above by hiding a level down.
+	positions, ok := generic["streams"].([]any)
+	if !ok || len(positions) != 1 {
+		t.Fatalf("streams did not encode as a list: %v", generic["streams"])
+	}
+	entry, ok := positions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("a stream position is not an object: %v", positions[0])
+	}
+	for name := range entry {
+		if name != "source" && name != "last_sequence" {
+			t.Fatalf("a stream position gained field %q", name)
 		}
 	}
 }

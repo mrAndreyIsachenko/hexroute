@@ -206,11 +206,47 @@ func (publisher *factPublisher) Publish(ctx context.Context, evidence Evidence) 
 		return nil
 	}
 	publisher.baseline = true
+	// Root holds the truth about where each stream stands. A publisher can
+	// remember its own position, but only across a restart it survived to
+	// write about — the first run after an upgrade, a lost file or a crash
+	// between the publication and the write has nothing to remember, and
+	// beginning again at zero puts every fact behind the accepted watermark
+	// for as long as the boot lasts.
+	//
+	// So the position is adopted from the answer. A publication that was
+	// refused for being behind is corrected by the same response that refused
+	// it, and the next cycle lands.
+	publisher.adoptStreams(response.PublishConnectivityFacts)
 	// Recorded only after root accepted them. Remembering a sequence root
 	// never took would leave the next process starting above the watermark
 	// and opening a hole nobody can fill.
 	publisher.rememberStreams()
 	return nil
+}
+
+// adoptStreams moves each source up to where root says it has been accepted.
+//
+// It only ever moves forward. Root reporting a lower position than this
+// process has already published would mean the two disagree about what was
+// accepted, and winding back would republish sequences root has already taken.
+func (publisher *factPublisher) adoptStreams(result *ipc.PublishConnectivityFactsResult) {
+	if result == nil {
+		return
+	}
+	for _, position := range result.Streams {
+		for _, collector := range publisher.sources {
+			if string(collector.Source()) != position.Source {
+				continue
+			}
+			if position.LastSequence > collector.Sequence() {
+				collector.Resume(position.LastSequence)
+				// The stream this process was publishing was never accepted,
+				// so what it last said about these components did not land.
+				// The next publication restates them in full.
+				publisher.baseline = false
+			}
+		}
+	}
 }
 
 func firstError(errs ...error) error {
