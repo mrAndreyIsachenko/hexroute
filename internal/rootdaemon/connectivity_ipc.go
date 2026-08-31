@@ -37,12 +37,20 @@ func (publisher connectivityPublisher) Publish(
 		return response
 	}
 	response.OK = true
+	streams := make([]ipc.StreamPosition, 0, len(report.Streams))
+	for _, stream := range report.Streams {
+		streams = append(streams, ipc.StreamPosition{
+			Source: string(stream.Source), LastSequence: stream.LastSequence,
+		})
+	}
 	response.PublishConnectivityFacts = &ipc.PublishConnectivityFactsResult{
 		Accepted:      report.Accepted,
 		Duplicates:    report.Duplicates,
 		Conflicts:     report.Conflicts,
+		Stale:         report.Stale,
 		Rejected:      report.Rejected,
 		HighWatermark: report.Watermark,
+		Streams:       streams,
 	}
 	return response
 }

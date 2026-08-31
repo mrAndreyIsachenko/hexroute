@@ -435,6 +435,28 @@ func (reader *Reader) facts(
 	return facts, nil
 }
 
+// userStreams reports where each user-owned source has been accepted to.
+//
+// Only the user domain's own positions are returned. Root's sources are root's
+// business, and a publisher has no use for a position in a stream it does not
+// own.
+func (reader *Reader) userStreams() []StreamPosition {
+	snapshot := reader.runtime.Snapshot()
+	if snapshot == nil {
+		return nil
+	}
+	positions := make([]StreamPosition, 0, 2)
+	for _, watermark := range snapshot.Sources {
+		if watermark.Domain != policy.DomainUser {
+			continue
+		}
+		positions = append(positions, StreamPosition{
+			Source: watermark.Source, LastSequence: watermark.LastSequence,
+		})
+	}
+	return positions
+}
+
 // Fold folds one cycle's evidence into the read model and reports its
 // aggregate.
 //
@@ -577,8 +599,10 @@ func (reader *Reader) PublishUser(encoded []json.RawMessage) (Report, error) {
 		Accepted:   report.Accepted,
 		Duplicates: report.Duplicates,
 		Conflicts:  report.Conflicts,
+		Stale:      report.Stale,
 		Rejected:   report.Rejected,
 		Watermark:  report.Watermark,
+		Streams:    reader.userStreams(),
 	}, nil
 }
 
@@ -587,6 +611,18 @@ type Report struct {
 	Accepted   uint16
 	Duplicates uint16
 	Conflicts  uint16
+	Stale      uint16
 	Rejected   uint16
 	Watermark  uint64
+	// Streams is how far each of the publisher's own sources has been
+	// accepted. It is what lets a restarted publisher continue its numbering
+	// instead of starting behind the watermark and being refused for as long
+	// as the boot lasts.
+	Streams []StreamPosition
+}
+
+// StreamPosition is one source and the last sequence accepted from it.
+type StreamPosition struct {
+	Source       connectivity.SourceID
+	LastSequence uint64
 }

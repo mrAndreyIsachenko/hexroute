@@ -150,6 +150,19 @@ func (collector *Collector) Source() connectivity.SourceID {
 	return collector.source
 }
 
+// Resume moves this collector's stream up to a position an acceptor has
+// already taken.
+//
+// It only moves forward. Winding back would republish sequences the acceptor
+// holds, which is a reused identity rather than a continued stream.
+func (collector *Collector) Resume(sequence uint64) {
+	collector.mu.Lock()
+	defer collector.mu.Unlock()
+	if sequence > collector.sequence {
+		collector.sequence = sequence
+	}
+}
+
 // Sequence reports the last sequence this collector issued.
 func (collector *Collector) Sequence() uint64 {
 	collector.mu.Lock()

@@ -47,8 +47,33 @@ type PublishConnectivityFactsResult struct {
 	Duplicates    uint16 `json:"duplicates"`
 	Conflicts     uint16 `json:"conflicts"`
 	Rejected      uint16 `json:"rejected"`
+	Stale         uint16 `json:"stale"`
 	HighWatermark uint64 `json:"high_watermark"`
+	// Streams says how far each of the caller's own sources has been accepted.
+	//
+	// A source sequence numbers the source, but where it has got to is not
+	// something the source can know across a restart: only the side that
+	// accepted the facts holds that. Root reads its own watermark out of the
+	// snapshot it keeps; the user domain keeps no snapshot, and until this
+	// existed a restarted publisher began at zero, sat entirely behind the
+	// accepted watermark, and had every fact refused while being told the
+	// publication succeeded.
+	//
+	// It is a position, not evidence. A caller can resume its own numbering
+	// from it and can do nothing else with it.
+	Streams []StreamPosition `json:"streams,omitempty"`
 }
+
+// StreamPosition is one source and the last sequence accepted from it.
+type StreamPosition struct {
+	Source       string `json:"source"`
+	LastSequence uint64 `json:"last_sequence"`
+}
+
+// MaxStreamPositions bounds what a response may carry. The user domain speaks
+// for two sources; a response naming more than a handful is not describing
+// this protocol.
+const MaxStreamPositions = 8
 
 // Validate enforces the bounds this layer owns.
 func (request PublishConnectivityFactsRequest) Validate() error {
@@ -101,6 +126,24 @@ func validBootID(value string) bool {
 // for more facts than a publication may carry.
 func (result PublishConnectivityFactsResult) valid() bool {
 	total := int(result.Accepted) + int(result.Duplicates) +
-		int(result.Conflicts) + int(result.Rejected)
-	return total > 0 && total <= MaxPublishedFacts
+		int(result.Conflicts) + int(result.Rejected) + int(result.Stale)
+	if total <= 0 || total > MaxPublishedFacts {
+		return false
+	}
+	if len(result.Streams) > MaxStreamPositions {
+		return false
+	}
+	seen := make(map[string]struct{}, len(result.Streams))
+	for _, stream := range result.Streams {
+		// A position naming no source, or naming one twice, is not a position
+		// a caller could resume from.
+		if stream.Source == "" || len(stream.Source) > 64 {
+			return false
+		}
+		if _, repeated := seen[stream.Source]; repeated {
+			return false
+		}
+		seen[stream.Source] = struct{}{}
+	}
+	return true
 }
