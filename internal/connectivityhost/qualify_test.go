@@ -1,15 +1,18 @@
 package connectivityhost
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityqualification"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityreduce"
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 )
 
 const testSession = "6f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6071"
@@ -110,6 +113,30 @@ func (run *soak) observeNothing() {
 		Evidence{}, connectivityreduce.PolicyDescriptor{},
 		control.Tick(run.tick)); err != nil {
 		run.t.Fatalf("observe: %v", err)
+	}
+}
+
+// publishUser stands in for the user agent restating what it speaks for. The
+// fixture deadlines are long past the tick this harness evaluates at, so these
+// components are stale the moment they arrive and stay that way — which is
+// exactly how they read on the host.
+func (run *soak) publishUser(from uint64) {
+	run.t.Helper()
+	encoded := make([]json.RawMessage, 0, 2)
+	for _, component := range []connectivity.Component{
+		connectivity.ComponentUserAccess, connectivity.ComponentSessionExpiry,
+	} {
+		// One sequence per source, not one per fact: these two components
+		// belong to different sources, and each continues its own numbering.
+		fact := connectivity.FixtureBaseline(component, from)
+		_, raw, err := policy.CanonicalSHA256(fact)
+		if err != nil {
+			run.t.Fatal(err)
+		}
+		encoded = append(encoded, raw)
+	}
+	if _, err := run.reader.PublishUser(encoded); err != nil {
+		run.t.Fatalf("publish user: %v", err)
 	}
 }
 
@@ -475,5 +502,55 @@ func TestClocksThatDisagreeByMoreThanAMomentStillCount(t *testing.T) {
 	records := run.records()
 	if len(records) != 1 || records[0].Kind != connectivityqualification.KindClockAnomaly {
 		t.Fatalf("chain holds %v, want one clock anomaly", kinds(records))
+	}
+}
+
+// A wake puts every time-sensitive component back on the hook for a complete
+// restatement, and it is answered when nothing is on the hook any more.
+// Asking instead whether anything is stale answers a wider question: a
+// component can be stale because its own deadline passed, which is not a
+// failure to come back from a sleep.
+//
+// This is the live host. Its user-owned components carry deadlines that have
+// long expired, so they read stale whatever happens; when their owner answers
+// the wake they stop owing anything, and the sleep has been survived. Under
+// the wider question they would have blocked every sleep this host could ever
+// record.
+func TestAComponentStaleForItsOwnReasonsDoesNotBlockAWake(t *testing.T) {
+	run := newSoak(t)
+	run.advance(time.Minute)
+	run.publishUser(1)
+	run.cycle()
+	if run.reader.runtime.Snapshot().Summary.Stale == 0 {
+		t.Fatal("the user components are not stale, so there is no distinction to show")
+	}
+
+	run.sleep(2 * time.Hour)
+	run.advance(time.Minute)
+	// The owner answers the wake in the same round root does, which is what
+	// the user daemon now does for itself.
+	run.publishUser(2)
+	run.cycle()
+
+	snapshot := run.reader.runtime.Snapshot()
+	if snapshot.Summary.Stale == 0 {
+		t.Fatal("nothing is stale any more, so this proves nothing")
+	}
+	for _, component := range snapshot.Components {
+		if component.RebaselineRequired {
+			t.Fatalf("%s still owes the restatement the wake asked for",
+				component.Component)
+		}
+	}
+
+	progress := run.progress()
+	if progress.SleepWakeCycles != 1 {
+		t.Fatalf("%d sleep/wake cycles with nothing owing and two components "+
+			"stale on their own deadlines: %v",
+			progress.SleepWakeCycles, kinds(run.records()))
+	}
+	if progress.Diverged != 0 {
+		t.Fatalf("a wake everything answered was recorded as a divergence: %+v",
+			progress)
 	}
 }

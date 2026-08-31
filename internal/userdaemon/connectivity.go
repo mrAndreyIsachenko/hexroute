@@ -1,9 +1,11 @@
 package userdaemon
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"os"
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
@@ -30,7 +32,38 @@ type factPublisher struct {
 	socket    string
 	roundTrip func(context.Context, string, ipc.Request) (ipc.Response, error)
 	baseline  bool
+
+	// streamPath is where this daemon remembers how far its own sources got.
+	//
+	// Root decides the order and root holds the lineage, but a source
+	// sequence numbers the source, and only the source can continue it. A
+	// restart that began again at zero would publish facts that are all
+	// behind the accepted watermark, and root would refuse every one of them
+	// while the daemon reported success — so the two components this domain
+	// speaks for would keep whatever they last said, for ever.
+	streamPath string
+
+	// The clock pair is how a sleep is noticed. One counts through it and the
+	// other stops for it, so the difference between what they advanced by is
+	// the sleep. Root detects the same thing for its own components; nothing
+	// tells this daemon, and nothing was.
+	clocks     func() (time.Duration, time.Duration, error)
+	continuous time.Duration
+	awake      time.Duration
 }
+
+// sleepFloor is the smallest difference between the two clocks that is a sleep
+// rather than the microseconds between reading one and reading the other.
+const sleepFloor = 60 * time.Second
+
+// streamState is the sequence each source had reached.
+type streamState struct {
+	Schema    string            `json:"schema"`
+	BootID    string            `json:"boot_id"`
+	Sequences map[string]uint64 `json:"sequences"`
+}
+
+const streamSchema = "hexroute.user-connectivity-stream.v1"
 
 // userComponents is what this daemon speaks about.
 func userComponents() []connectivity.Component {
@@ -60,18 +93,31 @@ func (publisherClock) Tick() control.Tick {
 }
 
 // newFactPublisher builds one collector per user-owned source.
-func newFactPublisher(bootID, socket string) (*factPublisher, error) {
+func newFactPublisher(bootID, socket, streamPath string) (*factPublisher, error) {
 	if bootID == "" || socket == "" {
 		return nil, nil
 	}
 	publisher := &factPublisher{
-		sources: make(map[connectivity.Component]*connectivitycollect.Collector),
-		bootID:  bootID,
-		socket:  socket,
+		sources:    make(map[connectivity.Component]*connectivitycollect.Collector),
+		bootID:     bootID,
+		socket:     socket,
+		streamPath: streamPath,
+		clocks: func() (time.Duration, time.Duration, error) {
+			continuous, err := policyclock.ContinuousNow()
+			if err != nil {
+				return 0, 0, err
+			}
+			awake, err := policyclock.AwakeNow()
+			if err != nil {
+				return 0, 0, err
+			}
+			return continuous, awake, nil
+		},
 		roundTrip: func(ctx context.Context, path string, request ipc.Request) (ipc.Response, error) {
 			return (ipc.Client{Path: path}).Do(ctx, request)
 		},
 	}
+	resumed := publisher.resumeStreams()
 	built := make(map[connectivity.SourceID]*connectivitycollect.Collector)
 	for _, component := range userComponents() {
 		declaration, owned := safety.ConnectivityAuthority(component)
@@ -87,6 +133,9 @@ func newFactPublisher(bootID, socket string) (*factPublisher, error) {
 				BootID: bootID,
 				Clock:  publisherClock{},
 				Random: rand.Reader,
+				// Continue this source's stream rather than starting one
+				// that is entirely behind the accepted watermark.
+				Sequence: resumed[string(declaration.Source)],
 			})
 			if err != nil {
 				return nil, err
@@ -106,6 +155,12 @@ func newFactPublisher(bootID, socket string) (*factPublisher, error) {
 func (publisher *factPublisher) Publish(ctx context.Context, evidence Evidence) error {
 	if publisher == nil || !evidence.Reached {
 		return nil
+	}
+	if publisher.wokeUp() {
+		// What was observed before the sleep describes a host that was not
+		// running, so this publication restates both components in full
+		// rather than reporting now and leaving the gap unaccounted for.
+		publisher.baseline = false
 	}
 	observations := map[connectivity.Component]connectivitycollect.Observation{
 		connectivity.ComponentUserAccess: connectivitycollect.MapUserAccess(
@@ -151,6 +206,10 @@ func (publisher *factPublisher) Publish(ctx context.Context, evidence Evidence) 
 		return nil
 	}
 	publisher.baseline = true
+	// Recorded only after root accepted them. Remembering a sequence root
+	// never took would leave the next process starting above the watermark
+	// and opening a hole nobody can fill.
+	publisher.rememberStreams()
 	return nil
 }
 
@@ -161,4 +220,78 @@ func firstError(errs ...error) error {
 		}
 	}
 	return nil
+}
+
+// resumeStreams reads back how far each source had got.
+//
+// A missing file is a first run, which is the one time starting at zero is
+// right. A file from another boot is not this stream: the acceptor treats a
+// new boot as a new stream and resets it, so continuing an old boot's numbers
+// would be continuing something that no longer exists.
+func (publisher *factPublisher) resumeStreams() map[string]uint64 {
+	empty := map[string]uint64{}
+	if publisher.streamPath == "" {
+		return empty
+	}
+	raw, err := os.ReadFile(publisher.streamPath)
+	if err != nil {
+		return empty
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var state streamState
+	if decoder.Decode(&state) != nil || state.Schema != streamSchema ||
+		state.BootID != publisher.bootID {
+		return empty
+	}
+	if state.Sequences == nil {
+		return empty
+	}
+	return state.Sequences
+}
+
+// rememberStreams records how far each source has got, so the next process
+// continues instead of publishing behind the watermark.
+func (publisher *factPublisher) rememberStreams() {
+	if publisher == nil || publisher.streamPath == "" {
+		return
+	}
+	state := streamState{
+		Schema: streamSchema, BootID: publisher.bootID,
+		Sequences: make(map[string]uint64, len(publisher.sources)),
+	}
+	for _, collector := range publisher.sources {
+		state.Sequences[string(collector.Source())] = collector.Sequence()
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		return
+	}
+	temporary := publisher.streamPath + ".partial"
+	if os.WriteFile(temporary, encoded, 0o600) != nil {
+		return
+	}
+	// A rename is what makes the file either the old sequences or the new
+	// ones. A half-written file would be read as a first run and start the
+	// stream again from nothing.
+	_ = os.Rename(temporary, publisher.streamPath)
+}
+
+// wokeUp reports that the host slept since the last publication.
+//
+// The two components this daemon speaks for are time-sensitive, so a wake
+// invalidates what it last said about them. Root raises that requirement for
+// every component; only the owner can answer it, and until this existed the
+// owner never did.
+func (publisher *factPublisher) wokeUp() bool {
+	continuous, awake, err := publisher.clocks()
+	if err != nil {
+		return false
+	}
+	previous, previousAwake := publisher.continuous, publisher.awake
+	publisher.continuous, publisher.awake = continuous, awake
+	if previous == 0 {
+		return false
+	}
+	return (continuous-previous)-(awake-previousAwake) >= sleepFloor
 }

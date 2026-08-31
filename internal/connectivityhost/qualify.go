@@ -299,7 +299,15 @@ func (qualifier *Qualifier) Sample(
 	// a scheduler that parks the process between the two calls can stretch
 	// that. Without a tolerance roughly every second cycle was filed as two
 	// clocks that could not both be right.
-	if continuousDelta <= 0 || awakeDelta < -clockSkewTolerance.Nanoseconds() ||
+	if continuousDelta == 0 {
+		// Two samples at the same instant. Nothing advanced, so there is
+		// nothing to measure and nothing was contradicted: recording an
+		// anomaly here would call an absence of time a broken clock. A clock
+		// that stayed here would simply never accrue eligible time, which is
+		// the safe way to fail.
+		return qualifier.writeState()
+	}
+	if continuousDelta < 0 || awakeDelta < -clockSkewTolerance.Nanoseconds() ||
 		awakeDelta > continuousDelta+clockSkewTolerance.Nanoseconds() {
 		if _, err := qualifier.append(recorder, binding, wall, continuous,
 			connectivityqualification.KindClockAnomaly,
@@ -375,8 +383,22 @@ func (qualifier *Qualifier) settleWake(
 	if held == nil {
 		return nil
 	}
-	recovered := snapshot != nil &&
-		snapshot.Summary.Stale == 0 && snapshot.Summary.AwaitingBaseline == 0
+	// Recovery is about what the wake asked for, not about everything being
+	// well. A wake puts every time-sensitive component back on the hook for a
+	// complete restatement, and it is answered when nothing is on the hook
+	// any more. Asking whether anything is stale answers a wider question:
+	// a component can be stale because its own deadline passed, which is not
+	// a failure to come back from a sleep, and one component quietly stale
+	// for its own reasons would block every sleep this host ever records.
+	recovered := snapshot != nil && snapshot.Summary.AwaitingBaseline == 0
+	if recovered {
+		for _, component := range snapshot.Components {
+			if component.RebaselineRequired {
+				recovered = false
+				break
+			}
+		}
+	}
 	waited := time.Duration(awake.Nanoseconds() - held.DetectedAwakeNS)
 	if !recovered && waited < qualifyWakeSettle {
 		return nil
