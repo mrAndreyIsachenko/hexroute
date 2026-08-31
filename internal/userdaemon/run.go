@@ -273,7 +273,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	// Off unless a root socket is given, matching the root gate: a user daemon
 	// started without one behaves exactly as it did before this existed.
-	publisher, err := newFactPublisher(bootIdentity(), *rootSocketPath)
+	// The stream memory sits beside the candidate state, in the directory
+	// this daemon already owns and already writes to.
+	publisher, err := newFactPublisher(bootIdentity(), *rootSocketPath,
+		filepath.Join(filepath.Dir(*statePath), "connectivity-stream.json"))
 	if err != nil {
 		return rejected(errorLog, logging.ReasonInvalidConfiguration)
 	}

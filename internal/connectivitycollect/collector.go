@@ -145,6 +145,11 @@ func (collector *Collector) Emit(observation Observation) (connectivity.Fact, er
 	return fact, nil
 }
 
+// Source reports which stream this collector speaks for.
+func (collector *Collector) Source() connectivity.SourceID {
+	return collector.source
+}
+
 // Sequence reports the last sequence this collector issued.
 func (collector *Collector) Sequence() uint64 {
 	collector.mu.Lock()
