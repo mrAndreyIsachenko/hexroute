@@ -127,6 +127,7 @@ shell-test: shell-test-tools build-observe-root build-observe-user build-policy-
 	tests/observe_root_launchd_test.sh
 	tests/connectivity_read_model_rollback_test.sh
 	tests/restart_property_test.sh
+	tests/connectivity_documentation_test.sh
 	tests/connectivity_watch_launchd_test.sh
 	tests/observe_user_launchd_test.sh
 	tests/provider_b_documentation_test.sh

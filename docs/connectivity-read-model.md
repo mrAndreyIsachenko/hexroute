@@ -4,6 +4,9 @@ The read model turns what the daemons already observe into one causal view of
 host connectivity. It describes; it cannot act. There is no executor in this
 change, and the boundary is asserted by tests rather than by intent.
 
+What each field means and how to read one answer is in
+[`connectivity-read-model-reference.md`](connectivity-read-model-reference.md).
+
 ## What the gate requires
 
 `connectivityruntime` refuses to start unless four policy-foundation contracts
@@ -158,6 +161,46 @@ silent as the daemon behind it.
 A memory it cannot read is refused rather than treated as a first look.
 Reading it as one would report nothing, and every failure worth catching on
 this host looked exactly like nothing happening.
+
+## Rolling it out observe-only
+
+The read model is off unless it is given a root to write to. That is the whole
+enabling mechanism, and it is why the rollout has stages that can each be taken
+back on their own: every stage is arguments on a launchd job, and removing them
+returns the job to what it ran before.
+
+**Stage one — the root daemon alone.** `--connectivity-read-model <root>` on
+`com.hexroute.observe.hexrouted`. The root domain then observes physical
+network, default path, scoped routes, transports and relays, reduces them and
+writes checkpoints. The user domain contributes nothing yet, so `user_access`
+and `session_expiry` read `unknown` and the summary carries two sources still
+owing a baseline. That is the correct picture, not a fault.
+
+**Stage two — the user agent publishes.** `--publish-connectivity-to
+<socket>` on `com.hexroute.observe.userd`. Its facts now enter the same host
+order through the root daemon, which remains the only writer. Two things are
+worth checking after this stage and nowhere else: that `user_access` leaves
+`unknown`, and that `awaiting_baseline` falls to zero once both domains have
+restated in full.
+
+**Stage three — the qualification observer.** `--connectivity-qualification
+<chain>` and `--connectivity-qualification-session <uuid>`. This records
+evidence; it changes nothing about what is observed or concluded. The session
+identity is spliced in at install rather than committed, because a chain
+holding two runs adds up to a number about neither.
+
+Nothing in any stage can act. Each one only gives the daemon another thing to
+write down, which is why an unhealthy stage is rolled back by deleting
+arguments rather than by undoing anything on the host.
+
+Between stages, read the state directly rather than the daemon's logs:
+
+```
+hexroute-connectivity-replay --state --store <root>
+```
+
+The daemon not answering is a case this survives and a log tail does not, and
+it is the case most worth being able to inspect.
 
 ## Rollback
 
