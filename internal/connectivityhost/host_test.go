@@ -413,3 +413,50 @@ func verifyStore(t *testing.T, run *soak) connectivitycheckpoint.VerifyResult {
 	}
 	return result
 }
+
+// The read model has to come up on a host whose journals were written by an
+// older build. It did not: their records were unreadable, so the store could
+// not be opened, so the daemon was rejected — every ten seconds under
+// launchd, for as long as the files were there. The lineage already knew how
+// to abandon what it could not prove; the journals did not.
+func TestAReadModelStartsOnJournalsFromAnOlderBuild(t *testing.T) {
+	root := t.TempDir()
+	base, err := continuousTick()
+	if err != nil {
+		t.Skipf("no continuous clock: %v", err)
+	}
+	reader, err := Open(root, "boot-0000000000000000")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	for cycle := 0; cycle < 3; cycle++ {
+		if _, _, err := reader.Observe(reachedEvidence(),
+			connectivityreduce.PolicyDescriptor{}, base+control.Tick(cycle)); err != nil {
+			t.Fatalf("building the journals: %v", err)
+		}
+	}
+
+	// What an older build leaves behind: records this one cannot read, and
+	// nothing saying which format they are.
+	for _, domain := range []string{"root", "user"} {
+		if err := os.Remove(filepath.Join(root, domain, ".record-format")); err != nil {
+			t.Fatalf("clearing the marker: %v", err)
+		}
+	}
+
+	restarted, err := Open(root, "boot-0000000000000000")
+	if err != nil {
+		t.Fatalf("the read model refused to start on older journals: %v", err)
+	}
+	for cycle := 0; cycle < 3; cycle++ {
+		if _, _, err := restarted.Observe(reachedEvidence(),
+			connectivityreduce.PolicyDescriptor{},
+			base+control.Tick(10+cycle)); err != nil {
+			t.Fatalf("cannot observe after the journals were superseded: %v", err)
+		}
+	}
+	// The records are kept, not destroyed.
+	if _, err := os.Stat(filepath.Join(root, "root.superseded")); err != nil {
+		t.Fatalf("the superseded journal was not kept: %v", err)
+	}
+}
