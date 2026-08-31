@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivitycheckpoint"
@@ -352,4 +353,63 @@ func TestRolledBackReadModelTouchesNothing(t *testing.T) {
 	if len(entries) != 0 {
 		t.Fatalf("the rolled-back path left %d entries on disk", len(entries))
 	}
+}
+
+// A checkpoint has to carry everything the reduction that made it read, or it
+// is an assertion rather than a record. A wake is an input like the policy and
+// the evaluation tick: it changes what the reduction concludes.
+//
+// It was not recorded, so a replay could not be given it, produced a different
+// snapshot, and reported the difference as the conclusion contradicting its own
+// evidence — the one finding this lineage exists to make meaningful, arriving
+// for a reason that had nothing to do with the host.
+//
+// The shape that shows it is a wake nobody answered: when the same cycle
+// restates every component, the requirement the wake raised is cleared inside
+// the batch and the snapshot ends up where a replay without the wake would put
+// it anyway.
+func TestAWakeIsCarriedByTheCheckpointItProduced(t *testing.T) {
+	run := newSoak(t)
+	for cycle := 0; cycle < 4; cycle++ {
+		run.advance(time.Minute)
+		run.flip(uint64(cycle + 1))
+		run.cycle()
+	}
+	before := verifyStore(t, run)
+	if before.Reproduced == 0 {
+		t.Fatal("no link was verified before the sleep, so this measures nothing")
+	}
+	if before.Diverged != 0 {
+		t.Fatalf("%d links diverged before any sleep", before.Diverged)
+	}
+
+	run.sleep(2 * time.Hour)
+	run.advance(time.Minute)
+	run.observeNothing()
+	run.sample()
+
+	after := verifyStore(t, run)
+	if after.Diverged != 0 {
+		t.Fatalf("a wake made %d link(s) unreproducible: the checkpoint does "+
+			"not carry the input the reduction was given", after.Diverged)
+	}
+	if after.Reproduced <= before.Reproduced {
+		t.Fatalf("the cycle after the wake produced no link to verify "+
+			"(%d then %d)", before.Reproduced, after.Reproduced)
+	}
+}
+
+func verifyStore(t *testing.T, run *soak) connectivitycheckpoint.VerifyResult {
+	t.Helper()
+	store, err := connectivitycheckpoint.Open(
+		filepath.Join(run.storeRoot, "readmodel"), connectivitycheckpoint.Options{})
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	result, err := connectivitycheckpoint.Verify(
+		store, run.reader.rootJournal, run.reader.userJournal, nil)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	return result
 }

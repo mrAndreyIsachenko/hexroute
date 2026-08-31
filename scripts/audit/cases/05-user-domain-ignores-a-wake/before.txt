@@ -1,0 +1,23 @@
+func (publisher *factPublisher) Publish(ctx context.Context, evidence Evidence) error {
+	if publisher == nil || !evidence.Reached {
+		return nil
+	}
+	observations := map[connectivity.Component]connectivitycollect.Observation{
+		connectivity.ComponentUserAccess: connectivitycollect.MapUserAccess(
+			evidence.Profile, evidence.Service, firstError(evidence.ProfileError, evidence.ServiceError)),
+		connectivity.ComponentSessionExpiry: connectivitycollect.MapUserSession(
+			evidence.Session, evidence.SessionError),
+	}
+	encoded := make([]json.RawMessage, 0, len(observations))
+	for _, component := range userComponents() {
+		observation := observations[component]
+		observation.Baseline = !publisher.baseline
+		fact, err := publisher.sources[component].Emit(observation)
+		if err != nil {
+			return err
+		}
+		raw, err := connectivity.Encode(fact)
+		if err != nil {
+			return err
+		}
+		encoded = append(encoded, raw)

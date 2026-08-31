@@ -1,0 +1,3 @@
+The aggregate SHALL assign a durable host acceptance sequence to every
+accepted fact, and SHALL never issue the same host sequence twice within one
+boot. The journals hold the sequences already issued.

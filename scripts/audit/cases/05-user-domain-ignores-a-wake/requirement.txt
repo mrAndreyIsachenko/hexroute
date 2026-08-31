@@ -1,0 +1,4 @@
+Sleep is not evidence of health. After the host wakes, every time-sensitive
+component is held stale until its owning source restates it in full. A daemon
+that owns components SHALL restate them after a wake; only the owner can
+answer that requirement.

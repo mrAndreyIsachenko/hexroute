@@ -1,0 +1,4 @@
+A publication report SHALL let a caller tell apart what happened to each fact
+it sent. A fact that never entered the accepted order is rejected. A fact that
+arrived behind the accepted order is stale: it is still folded as evidence.
+These are different outcomes and a caller must be able to distinguish them.

@@ -1,0 +1,10 @@
+The durable lineage SHALL survive a crash between two writes. The index is the
+append-only lineage; the latest pointer is a mutable convenience that a crash
+can leave absent or unreadable. Losing the pointer SHALL NOT stop the store
+accepting further checkpoints.
+
+NOTE ON THIS CASE: the first run gave the model a fragment that called the
+function carrying the fix without including its body. It answered VIOLATED,
+which was the right answer to the evidence it was given and the wrong answer
+about the code. The fragment now carries the fallback it depends on. A case
+whose fragment omits the fix measures the harness, not the model.

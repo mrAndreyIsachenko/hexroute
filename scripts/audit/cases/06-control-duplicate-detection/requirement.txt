@@ -1,0 +1,4 @@
+WHEN the same source identity and canonical digest are received again
+THEN the retry does not create another accepted event or snapshot generation
+AND a reused identity carrying different content is recorded as a conflict
+rather than overwriting the accepted fact.

@@ -218,6 +218,10 @@ func Inspect(root string, binding Binding) (Progress, error) {
 	progress := Progress{Records: uint64(len(records))}
 	injected := make(map[Fault]struct{})
 	for _, record := range records {
+		// One record, one divergence. A verification that both carries a
+		// diverged result and reports diverged links is still one thing that
+		// went wrong, and counting it twice makes the number unreadable —
+		// which it was: a single failing verification reported two.
 		if record.Result == ResultDiverged {
 			progress.Diverged++
 		}
@@ -246,7 +250,7 @@ func Inspect(root string, binding Binding) (Progress, error) {
 			if record.Verification == nil {
 				continue
 			}
-			if record.Verification.Diverged > 0 {
+			if record.Verification.Diverged > 0 && record.Result != ResultDiverged {
 				progress.Diverged++
 			}
 			if record.Verification.Unbound > 0 {

@@ -73,7 +73,7 @@ func (l *lineage) next(components ...connectivity.Component) Checkpoint {
 	l.consumed = output.Snapshot.ConsumedHostSequence
 
 	id := fmt.Sprintf("cp-%04d", l.sequence)
-	checkpoint, err := SealFrom(l.parent, l.broken, id, output, from)
+	checkpoint, err := SealFrom(l.parent, l.broken, id, output, from, nil)
 	if err != nil {
 		l.t.Fatalf("seal: %v", err)
 	}
@@ -120,7 +120,7 @@ func (l *lineage) sealBroken(broken *LineageBreak) (Checkpoint, error) {
 	if err != nil {
 		l.t.Fatalf("reduce: %v", err)
 	}
-	return SealFrom(nil, broken, fmt.Sprintf("cp-%04d", l.sequence), output, 1)
+	return SealFrom(nil, broken, fmt.Sprintf("cp-%04d", l.sequence), output, 1, nil)
 }
 
 func openStore(t *testing.T, options Options) (*Store, string) {
