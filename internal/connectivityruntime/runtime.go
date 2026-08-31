@@ -107,9 +107,13 @@ type Runtime struct {
 	// lineage already exists. The next checkpoint carries it, which is what
 	// lets the store accept a restart instead of refusing every write from
 	// here on.
-	broken   *connectivitycheckpoint.LineageBreak
-	pending  []connectivityreduce.Event
+	broken  *connectivitycheckpoint.LineageBreak
+	pending []connectivityreduce.Event
+	// consumed is the folded watermark; accepted is the host one. They move
+	// at different speeds and each answers a different question, so keeping
+	// one and deriving the other is not possible.
 	consumed uint64
+	accepted uint64
 
 	resume   connectivitycheckpoint.Resume
 	userLink UserLinkState
@@ -168,7 +172,8 @@ func New(options Options) (*Runtime, error) {
 		snapshot := checkpoint.Snapshot
 		runtime.snapshot = &snapshot
 		runtime.parent = &checkpoint
-		runtime.consumed = checkpoint.ConsumedTo
+		runtime.consumed = checkpoint.Snapshot.ConsumedFoldPosition
+		runtime.accepted = checkpoint.Snapshot.ConsumedHostSequence
 		acceptor, restoreErr := restoreAcceptor(checkpoint)
 		if restoreErr != nil {
 			return nil, restoreErr
@@ -194,19 +199,21 @@ func New(options Options) (*Runtime, error) {
 	//
 	// So the count continues above everything already written. The lineage is
 	// gone; the order it numbered is not.
-	issued, err := highestIssued(runtime.journals)
+	issued, folded, err := highestIssued(runtime.journals)
 	if err != nil {
 		return nil, err
 	}
 	acceptor, err := connectivityaccept.Restore(connectivityaccept.State{
 		HostSequence: issued,
+		FoldPosition: folded,
 		Sources:      make(map[connectivity.SourceID]*connectivityaccept.SourceState),
 	})
 	if err != nil {
 		return nil, err
 	}
 	runtime.acceptor = acceptor
-	runtime.consumed = issued
+	runtime.consumed = folded
+	runtime.accepted = issued
 	// If a lineage is nonetheless on disk, the next checkpoint has to say it
 	// is abandoning it. Without that the store refuses a parentless record
 	// against an existing pointer — correctly, since a silent restart would
@@ -235,30 +242,36 @@ func New(options Options) (*Runtime, error) {
 // watermark taken from one alone would leave the other's positions reusable.
 func highestIssued(
 	journals map[policy.Domain]*connectivityjournal.Journal,
-) (uint64, error) {
-	highest := uint64(0)
+) (uint64, uint64, error) {
+	highest, folded := uint64(0), uint64(0)
 	for _, journal := range journals {
 		records, err := journal.Records()
 		if err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 		for _, record := range records {
 			if record.HostSequence > highest {
 				highest = record.HostSequence
 			}
+			if record.FoldPosition > folded {
+				folded = record.FoldPosition
+			}
 		}
 	}
-	return highest, nil
+	return highest, folded, nil
 }
 
 func restoreAcceptor(checkpoint connectivitycheckpoint.Checkpoint) (*connectivityaccept.Acceptor, error) {
 	state := connectivityaccept.State{
-		HostSequence: checkpoint.ConsumedTo,
+		HostSequence: checkpoint.Snapshot.ConsumedHostSequence,
+		FoldPosition: checkpoint.Snapshot.ConsumedFoldPosition,
 		Sources:      make(map[connectivity.SourceID]*connectivityaccept.SourceState),
 	}
 	for _, watermark := range checkpoint.SourceWatermarks {
 		state.Sources[watermark.Source] = &connectivityaccept.SourceState{
-			BootID:       watermark.BootID,
+			BootID: watermark.BootID,
+			Recent: append([]connectivityaccept.RecentDigest(nil),
+				watermark.Recent...),
 			LastSequence: watermark.LastSequence,
 			Gaps:         append([]connectivityaccept.GapRange(nil), watermark.Gaps...),
 			GapOverflow:  watermark.GapOverflow,
@@ -373,14 +386,20 @@ func (runtime *Runtime) Publish(
 			report.Rejected++
 			continue
 		}
-		switch acceptance.Outcome {
-		case connectivityaccept.OutcomeAccepted:
-			// The journal is written before the event is queued for
-			// reduction, so a crash cannot leave the read model ahead of the
-			// evidence it was built from.
-			if err := journal.Append(fact, acceptance.HostSequence, acceptance.Role); err != nil {
+		if acceptance.Outcome != connectivityaccept.OutcomeRejected {
+			// Everything the reduction will be given is written down first.
+			// A conflict changes the aggregate state and a late arrival owes
+			// a restatement; a journal keeping only the accepted facts could
+			// not reproduce either, and the lineage reported the difference
+			// as a conclusion contradicting its own evidence.
+			if err := journal.Append(fact, acceptance.HostSequence,
+				acceptance.FoldPosition, string(acceptance.Outcome),
+				acceptance.Role); err != nil {
 				return report, err
 			}
+		}
+		switch acceptance.Outcome {
+		case connectivityaccept.OutcomeAccepted:
 			report.Accepted++
 		case connectivityaccept.OutcomeDuplicate:
 			report.Duplicates++
@@ -422,7 +441,8 @@ func (runtime *Runtime) Tick(input TickInput) (connectivityreduce.Output, error)
 	before := runtime.consumed
 	output, err := connectivityreduce.Reduce(connectivityreduce.Input{
 		Prior:            runtime.snapshot,
-		PriorConsumed:    runtime.consumed,
+		PriorConsumed:    runtime.accepted,
+		PriorFolded:      runtime.consumed,
 		Events:           runtime.pending,
 		Policy:           input.Policy,
 		PolicyComponents: input.PolicyComponents,
@@ -435,7 +455,8 @@ func (runtime *Runtime) Tick(input TickInput) (connectivityreduce.Output, error)
 	}
 	runtime.pending = nil
 	runtime.snapshot = &output.Snapshot
-	runtime.consumed = output.Snapshot.ConsumedHostSequence
+	runtime.consumed = output.Snapshot.ConsumedFoldPosition
+	runtime.accepted = output.Snapshot.ConsumedHostSequence
 
 	if !output.Changed {
 		return output, nil
@@ -447,7 +468,7 @@ func (runtime *Runtime) Tick(input TickInput) (connectivityreduce.Output, error)
 	// A checkpoint that folded no facts records an absent range rather than
 	// claiming one it did not consume.
 	from := uint64(0)
-	if output.Snapshot.ConsumedHostSequence > before {
+	if output.Snapshot.ConsumedFoldPosition > before {
 		from = before + 1
 	}
 	checkpoint, err := connectivitycheckpoint.SealFrom(

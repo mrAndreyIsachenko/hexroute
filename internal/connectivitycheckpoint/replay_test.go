@@ -12,6 +12,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityjournal"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityreduce"
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
 )
 
@@ -27,7 +28,11 @@ func journalled(t *testing.T, chain *lineage, from uint64) []connectivityjournal
 			t.Fatalf("digest: %v", err)
 		}
 		records = append(records, connectivityjournal.Record{
-			HostSequence: sequence, Role: safety.RoleAuthoritative,
+			// Every fact this helper builds was accepted, so the two orders
+			// run together. They part company only where an event was folded
+			// without being accepted, which is what the journal now keeps.
+			HostSequence: sequence, FoldPosition: sequence,
+			Outcome: event.OutcomeAccepted, Role: safety.RoleAuthoritative,
 			Digest: digest, Fact: fact,
 		})
 	}

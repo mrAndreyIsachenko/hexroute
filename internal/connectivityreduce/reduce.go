@@ -34,6 +34,9 @@ type Input struct {
 	// BootID and EvaluationTick are the time context. They are supplied
 	// rather than read so that reduction stays pure and replayable.
 	BootID string
+	// PriorFolded is the folded position already accounted for when there is
+	// no prior snapshot to read it from.
+	PriorFolded uint64
 	// PriorConsumed is the host sequence already accounted for when there is
 	// no prior snapshot to read it from.
 	//
@@ -88,13 +91,24 @@ func Reduce(input Input) (Output, error) {
 	markRebaseline(components, input)
 	conflicts := newConflictTable(input.Prior)
 	consumed := input.PriorConsumed
+	folded := input.PriorFolded
 	generation := uint64(0)
 	if input.Prior != nil {
 		consumed = input.Prior.ConsumedHostSequence
+		folded = input.Prior.ConsumedFoldPosition
 		generation = input.Prior.Generation
 	}
 
 	for _, event := range input.Events {
+		// Every event was folded, so every event moves the folded watermark.
+		// The accepted watermark moves only for the accepted ones, and the
+		// difference between the two is precisely the evidence a journal of
+		// accepted facts alone was losing.
+		if event.Acceptance.FoldPosition != folded+1 {
+			return Output{}, fmt.Errorf("%w: fold position expected %d, got %d",
+				ErrOutOfOrder, folded+1, event.Acceptance.FoldPosition)
+		}
+		folded = event.Acceptance.FoldPosition
 		switch event.Acceptance.Outcome {
 		case connectivityaccept.OutcomeAccepted:
 			if event.Acceptance.HostSequence != consumed+1 {
@@ -123,6 +137,7 @@ func Reduce(input Input) (Output, error) {
 		EvaluationTick:       input.EvaluationTick,
 		Policy:               input.Policy,
 		ConsumedHostSequence: consumed,
+		ConsumedFoldPosition: folded,
 		Components:           renderComponents(components, sources, input),
 		Sources:              renderSources(sources),
 	}
@@ -169,10 +184,17 @@ func validateInput(input Input) error {
 	// A snapshot already states what it consumed. A caller that supplied a
 	// different watermark beside it would be asking the reduction to fold from
 	// somewhere the snapshot does not describe.
-	if input.Prior != nil && input.PriorConsumed != 0 &&
-		input.PriorConsumed != input.Prior.ConsumedHostSequence {
-		return fmt.Errorf("%w: prior consumed watermark contradicts the snapshot",
-			ErrInvalidInput)
+	if input.Prior != nil {
+		if input.PriorConsumed != 0 &&
+			input.PriorConsumed != input.Prior.ConsumedHostSequence {
+			return fmt.Errorf("%w: prior consumed watermark contradicts the snapshot",
+				ErrInvalidInput)
+		}
+		if input.PriorFolded != 0 &&
+			input.PriorFolded != input.Prior.ConsumedFoldPosition {
+			return fmt.Errorf("%w: prior folded watermark contradicts the snapshot",
+				ErrInvalidInput)
+		}
 	}
 	if input.BootID == "" || input.EvaluationTick <= 0 {
 		return fmt.Errorf("%w: time context", ErrInvalidInput)
@@ -297,6 +319,8 @@ func adoptIntegrity(watermark *SourceWatermark, event Event) {
 	watermark.PendingBaseline = append(
 		[]connectivity.Component(nil), integrity.PendingBaseline...)
 	watermark.Conflicts = integrity.Conflicts
+	watermark.Recent = append(
+		[]connectivityaccept.RecentDigest(nil), integrity.Recent...)
 }
 
 func applyAccepted(

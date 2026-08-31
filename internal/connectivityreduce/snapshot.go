@@ -30,7 +30,7 @@ const (
 	// decoded with unknown fields refused, so a version 1 record cannot be
 	// read here and must be rejected by identity rather than by a decode
 	// error that says nothing about why.
-	SnapshotSchemaVersion uint16 = 2
+	SnapshotSchemaVersion uint16 = 3
 
 	// ReducerID identifies the reduction rules that produced a snapshot. A
 	// checkpoint binds it, so output from different rules is never mistaken
@@ -46,12 +46,19 @@ const (
 	// so a version 1 checkpoint is output from different rules and replaying
 	// it here would compare digests that were never meant to match.
 	//
+	// Version 4 folds every event the acceptor handed it, not only the
+	// accepted ones, and carries a second watermark for that order. A
+	// version 3 snapshot counted a range that skipped the duplicates,
+	// conflicts and late arrivals its reduction had read, so replaying it
+	// here would compare a conclusion against evidence it was never derived
+	// from.
+	//
 	// Version 3 stops the operator summary reporting ready while a source
 	// stream has a hole, owes a restatement or holds a conflict. The
 	// components can all be fresh and ready in that state, and reporting the
 	// host as ready is healthy output inferred across the observations that
 	// went missing.
-	ReducerVersion uint16 = 3
+	ReducerVersion uint16 = 4
 
 	// MaxCorroborations bounds retained evidence per component.
 	MaxCorroborations = 8
@@ -151,6 +158,11 @@ type SourceWatermark struct {
 	// restatement before this stream counts as continuous again.
 	PendingBaseline []connectivity.Component `json:"pending_baseline,omitempty"`
 	Conflicts       uint32                   `json:"conflicts"`
+	// Recent is the source's retry window. It is carried because a replay
+	// classifies arrivals against it: without it the same fact reads as an
+	// arrival too old to judge rather than as the conflict it was, and the
+	// snapshot that follows is one the original never had.
+	Recent []connectivityaccept.RecentDigest `json:"recent,omitempty"`
 }
 
 // AwaitingBaseline reports whether the stream still owes a restatement.
@@ -261,6 +273,11 @@ type Snapshot struct {
 	Reason        AuthorizationReason `json:"authorization_reason"`
 
 	ConsumedHostSequence uint64 `json:"consumed_host_sequence"`
+	// ConsumedFoldPosition is how far the folded order has been read, which
+	// is not the same distance. The accepted order skips every duplicate,
+	// conflict and late arrival, and those are exactly the events a replay
+	// needs in order to arrive where this snapshot did.
+	ConsumedFoldPosition uint64 `json:"consumed_fold_position"`
 
 	Components []ComponentRecord `json:"components"`
 	Sources    []SourceWatermark `json:"sources"`

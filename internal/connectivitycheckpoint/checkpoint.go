@@ -29,7 +29,11 @@ const (
 	PointerSchema = "hexroute.connectivity-checkpoint-pointer.v1"
 
 	// MaxCheckpointBytes bounds one persisted checkpoint record.
-	MaxCheckpointBytes = 64 * 1024
+	// The bound grew when the retry window became part of what a checkpoint
+	// carries. A record still has to be written and read in one piece, and at
+	// this size it is; what it may not do is silently stop carrying the state
+	// a replay needs in order to fit.
+	MaxCheckpointBytes = 192 * 1024
 	// MaxIndexEntries bounds the retained lineage. Beyond it the oldest
 	// entries are evicted and the loss is recorded rather than hidden.
 	MaxIndexEntries = 64
@@ -188,7 +192,7 @@ func (checkpoint Checkpoint) Validate() error {
 	if checkpoint.Snapshot.Generation != checkpoint.SnapshotGeneration {
 		return fmt.Errorf("%w: snapshot generation", ErrInvalidCheckpoint)
 	}
-	if checkpoint.Snapshot.ConsumedHostSequence != checkpoint.ConsumedTo {
+	if checkpoint.Snapshot.ConsumedFoldPosition != checkpoint.ConsumedTo {
 		return fmt.Errorf("%w: consumed watermark", ErrInvalidCheckpoint)
 	}
 	// The top-level watermarks exist so a reader can see integrity without

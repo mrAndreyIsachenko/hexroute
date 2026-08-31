@@ -25,12 +25,28 @@ type ConnectivityFact struct {
 	SourceID       connectivity.SourceID  `json:"source_id"`
 	BootID         string                 `json:"boot_id"`
 	SourceSequence uint64                 `json:"source_sequence"`
-	// HostSequence is the durable acceptance order. Only accepted facts are
-	// journalled, so it is always set.
+	// HostSequence is the durable acceptance order. It is set only on a fact
+	// that entered that order; an event the acceptor refused a place in it
+	// carries zero.
 	HostSequence uint64 `json:"host_sequence"`
-	Role         string `json:"role"`
-	Digest       string `json:"digest"`
-	Baseline     bool   `json:"baseline"`
+	// FoldPosition orders every event a reduction was given, whether or not
+	// it was accepted.
+	//
+	// The two numbers do different jobs and neither can do the other's. The
+	// host sequence is the order of accepted facts, and a duplicate, a
+	// conflict or a late arrival has no place in it. But the reduction reads
+	// those events — a conflict is recorded in the aggregate state, a
+	// restatement is owed after one — so a journal that held only the
+	// accepted facts could not reproduce what the reduction concluded, and
+	// the lineage said so: replaying a cycle that folded one produced a
+	// different snapshot and reported it as the conclusion contradicting its
+	// own evidence.
+	FoldPosition uint64 `json:"fold_position"`
+	// Outcome is what the acceptor decided about this event.
+	Outcome  string `json:"outcome"`
+	Role     string `json:"role"`
+	Digest   string `json:"digest"`
+	Baseline bool   `json:"baseline"`
 	// Fact is the canonical encoding the digest addresses.
 	Fact json.RawMessage `json:"fact"`
 }
@@ -49,6 +65,11 @@ func asConnectivityFact(payload any) (ConnectivityFact, bool) {
 	}
 }
 
+// OutcomeAccepted is the acceptance outcome that takes a place in the host
+// order. It is spelled here because this package may not depend on the
+// acceptor, and a test holds the two spellings together.
+const OutcomeAccepted = "accepted"
+
 // validateConnectivityFact refuses a record whose mirrors disagree with the
 // fact they claim to describe.
 func validateConnectivityFact(payload any, baseline bool) error {
@@ -56,10 +77,21 @@ func validateConnectivityFact(payload any, baseline bool) error {
 	if !ok {
 		return ErrPayloadType
 	}
-	if value.HostSequence == 0 || len(value.Digest) != 64 || len(value.Fact) == 0 {
+	// A host sequence of zero is how an event says it never entered the
+	// accepted order — a duplicate, a conflict, a late arrival. The fold
+	// position is the one every event has, because every event was folded.
+	if value.FoldPosition == 0 || value.Outcome == "" ||
+		len(value.Digest) != 64 || len(value.Fact) == 0 {
 		return ErrInvalidField
 	}
 	if value.Role != "authoritative" && value.Role != "corroborating" {
+		return ErrInvalidField
+	}
+	// The two orders have to agree about what this event was. A record that
+	// entered the accepted order and names no place in it, or one that never
+	// entered it and claims a place anyway, is a record whose own fields
+	// disagree — and the accepted order is what a replay counts on.
+	if (value.Outcome == OutcomeAccepted) != (value.HostSequence != 0) {
 		return ErrInvalidField
 	}
 	fact, err := connectivity.Decode([]byte(value.Fact))
@@ -83,10 +115,12 @@ func validateConnectivityFact(payload any, baseline bool) error {
 	return nil
 }
 
-// CanonicalConnectivityRecord builds a journal record from an accepted fact.
+// CanonicalConnectivityRecord builds a journal record from one folded event.
 func CanonicalConnectivityRecord(
 	fact connectivity.Fact,
 	hostSequence uint64,
+	foldPosition uint64,
+	outcome string,
 	role string,
 ) (Schema, ConnectivityFact, error) {
 	encoded, err := connectivity.Encode(fact)
@@ -104,6 +138,8 @@ func CanonicalConnectivityRecord(
 		BootID:         fact.BootID,
 		SourceSequence: fact.SourceSequence,
 		HostSequence:   hostSequence,
+		FoldPosition:   foldPosition,
+		Outcome:        outcome,
 		Role:           role,
 		Digest:         policy.SHA256Hex(encoded),
 		Baseline:       fact.Baseline,

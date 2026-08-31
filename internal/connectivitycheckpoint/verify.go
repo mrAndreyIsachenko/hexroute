@@ -229,7 +229,10 @@ func allRecords(
 		make([]connectivityjournal.Record, 0, len(rootRecords)+len(userRecords)),
 		rootRecords...), userRecords...)
 	sort.Slice(all, func(i, j int) bool {
-		return all[i].HostSequence < all[j].HostSequence
+		// Merged in the order the events were folded, which is the order the
+		// reduction read them in. The accepted order has no place for the
+		// duplicates, conflicts and late arrivals sitting between them.
+		return all[i].FoldPosition < all[j].FoldPosition
 	})
 	return all, nil
 }
@@ -243,7 +246,7 @@ func span(
 ) ([]connectivityjournal.Record, bool) {
 	kept := make([]connectivityjournal.Record, 0, consumedTo-from)
 	for _, record := range facts {
-		if record.HostSequence <= from || record.HostSequence > consumedTo {
+		if record.FoldPosition <= from || record.FoldPosition > consumedTo {
 			continue
 		}
 		kept = append(kept, record)
@@ -255,7 +258,7 @@ func span(
 		return kept, false
 	}
 	for index, record := range kept {
-		if record.HostSequence != from+uint64(index)+1 {
+		if record.FoldPosition != from+uint64(index)+1 {
 			return kept, false
 		}
 	}

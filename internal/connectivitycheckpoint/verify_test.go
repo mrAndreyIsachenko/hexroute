@@ -53,7 +53,7 @@ func verifiable(
 				target = user
 			}
 			if err := target.Append(
-				record.Fact, record.HostSequence, record.Role); err != nil {
+				record.Fact, record.HostSequence, record.HostSequence, "accepted", record.Role); err != nil {
 				t.Fatalf("journal append: %v", err)
 			}
 		}

@@ -28,7 +28,16 @@ import (
 // Below the window a repeat cannot be distinguished from a conflicting reuse,
 // so it is reported as stale rather than guessed either way. Both outcomes are
 // non-mutating: neither adds an accepted event.
-const RetryWindow = 256
+// RetryWindow is how far back a source's own digests are kept, which is what
+// tells an exact retry from a reused identity from an arrival too old to
+// judge.
+//
+// It is carried in every checkpoint, because a replay that could not see it
+// would classify the same arrival differently and produce a snapshot the
+// original never had. That makes its size a durability cost as well as a
+// behavioural one: at one fact a minute per source it is still an hour of
+// history, far beyond any retry this protocol produces.
+const RetryWindow = 64
 
 // MaxGapRanges bounds how many separate holes one source may accumulate before
 // the overflow itself becomes the visible fact.
@@ -107,6 +116,10 @@ type SourceIntegrity struct {
 	// before the stream can be called continuous again.
 	PendingBaseline []connectivity.Component `json:"pending_baseline,omitempty"`
 	Conflicts       uint32                   `json:"conflicts"`
+	// Recent is the retry window as it stands after this decision. A replay
+	// classifies arrivals against it, so a checkpoint that omitted it would
+	// call a conflict something else and reach a different snapshot.
+	Recent []RecentDigest `json:"recent,omitempty"`
 }
 
 // AwaitingBaseline reports whether any component still owes a restatement.
@@ -121,6 +134,11 @@ type Acceptance struct {
 	Role         safety.SourceRole `json:"role,omitempty"`
 	Digest       string            `json:"digest,omitempty"`
 	HostSequence uint64            `json:"host_sequence,omitempty"`
+	// FoldPosition is where this decision stands among every decision the
+	// reduction was given, accepted or not. The host sequence orders the
+	// accepted facts and has no room for the rest; this orders the rest
+	// beside them, so a journal can hold everything a reduction read.
+	FoldPosition uint64 `json:"fold_position,omitempty"`
 	// OpenedGap is set when this arrival revealed a hole behind it.
 	OpenedGap *GapRange `json:"opened_gap,omitempty"`
 	// ClearedGaps is set when the last owed baseline closed prior holes.
@@ -137,17 +155,20 @@ func (acceptance Acceptance) Accepted() bool {
 }
 
 // digestEntry remembers one accepted sequence inside the retry window.
-type digestEntry struct {
+// RecentDigest is one remembered arrival: the sequence it claimed and what it
+// said. It is exported because a checkpoint has to carry the window, and a
+// window that could not be written down could not be restored.
+type RecentDigest struct {
 	Sequence uint64 `json:"sequence"`
 	Digest   string `json:"digest"`
 }
 
 // SourceState is one source's position in its own stream.
 type SourceState struct {
-	BootID       string        `json:"boot_id"`
-	LastSequence uint64        `json:"last_sequence"`
-	Recent       []digestEntry `json:"recent"`
-	Gaps         []GapRange    `json:"gaps"`
+	BootID       string         `json:"boot_id"`
+	LastSequence uint64         `json:"last_sequence"`
+	Recent       []RecentDigest `json:"recent"`
+	Gaps         []GapRange     `json:"gaps"`
 	// GapOverflow records that holes were dropped rather than forgotten.
 	GapOverflow bool `json:"gap_overflow"`
 	// PendingBaseline is the set of components that still owe a complete
@@ -166,17 +187,22 @@ func (source *SourceState) AwaitingBaseline() bool {
 
 // State is the whole durable position of the acceptor.
 type State struct {
-	HostSequence uint64                                 `json:"host_sequence"`
+	HostSequence uint64 `json:"host_sequence"`
+	// FoldPosition is how many decisions this acceptor has handed out, of
+	// every kind, so a resumed acceptor continues one order as well as the
+	// other.
+	FoldPosition uint64                                 `json:"fold_position"`
 	Sources      map[connectivity.SourceID]*SourceState `json:"sources"`
 }
 
 // Clone returns a deep copy so a caller can checkpoint a stable value.
 func (state State) Clone() State {
 	out := State{HostSequence: state.HostSequence,
-		Sources: make(map[connectivity.SourceID]*SourceState, len(state.Sources))}
+		FoldPosition: state.FoldPosition,
+		Sources:      make(map[connectivity.SourceID]*SourceState, len(state.Sources))}
 	for id, source := range state.Sources {
 		copied := *source
-		copied.Recent = append([]digestEntry(nil), source.Recent...)
+		copied.Recent = append([]RecentDigest(nil), source.Recent...)
 		copied.Gaps = append([]GapRange(nil), source.Gaps...)
 		copied.PendingBaseline = append(
 			[]connectivity.Component(nil), source.PendingBaseline...)
@@ -297,6 +323,12 @@ func (acceptor *Acceptor) Accept(
 		acceptor.state.Sources[fact.SourceID] = source
 	}
 
+	// Every decision from here on is one the reduction will be given, so every
+	// one of them takes a place in the folded order. Rejections returned
+	// above never reach a reduction and take none.
+	acceptor.state.FoldPosition++
+	folded := acceptor.state.FoldPosition
+
 	if source.BootID != fact.BootID {
 		// A new boot is a new stream. Nothing from the prior boot orders
 		// against it, and its freshness deadlines do not carry over. Every
@@ -310,14 +342,19 @@ func (acceptor *Acceptor) Accept(
 		if acceptance.Reason == ReasonNone || acceptance.Reason == ReasonSequenceGap {
 			acceptance.Reason = ReasonBootChanged
 		}
+		acceptance.FoldPosition = folded
 		return acceptance, nil
 	}
 
 	switch {
 	case fact.SourceSequence > source.LastSequence:
-		return acceptor.admit(source, fact, digest, role), nil
+		acceptance := acceptor.admit(source, fact, digest, role)
+		acceptance.FoldPosition = folded
+		return acceptance, nil
 	default:
-		return acceptor.replay(source, fact, digest, role), nil
+		acceptance := acceptor.replay(source, fact, digest, role)
+		acceptance.FoldPosition = folded
+		return acceptance, nil
 	}
 }
 
@@ -333,6 +370,7 @@ func integrityOf(source *SourceState) SourceIntegrity {
 		GapOverflow:     source.GapOverflow,
 		PendingBaseline: append([]connectivity.Component(nil), source.PendingBaseline...),
 		Conflicts:       source.Conflicts,
+		Recent:          append([]RecentDigest(nil), source.Recent...),
 	}
 }
 
@@ -420,11 +458,11 @@ func (acceptor *Acceptor) admit(
 	}
 
 	source.LastSequence = fact.SourceSequence
-	source.Recent = append(source.Recent, digestEntry{
+	source.Recent = append(source.Recent, RecentDigest{
 		Sequence: fact.SourceSequence, Digest: digest,
 	})
 	if len(source.Recent) > RetryWindow {
-		source.Recent = append([]digestEntry(nil), source.Recent[len(source.Recent)-RetryWindow:]...)
+		source.Recent = append([]RecentDigest(nil), source.Recent[len(source.Recent)-RetryWindow:]...)
 	}
 
 	acceptor.state.HostSequence++

@@ -41,7 +41,13 @@ type Journal struct {
 
 // Record is one journalled fact with its acceptance metadata.
 type Record struct {
+	// HostSequence is the accepted order, and is zero for an event that never
+	// entered it.
 	HostSequence uint64
+	// FoldPosition is the order every folded event has, accepted or not. It
+	// is what replay reads the stream back in.
+	FoldPosition uint64
+	Outcome      string
 	Role         safety.SourceRole
 	Digest       string
 	Fact         connectivity.Fact
@@ -76,9 +82,19 @@ func (journal *Journal) Domain() policy.Domain { return journal.domain }
 // The fact is validated against the compiled ownership envelope again here.
 // The acceptor has already done so, but a journal that trusted its caller
 // would be a way to write a fact nobody ever accepted.
+// Append records one folded event.
+//
+// Everything a reduction was given is recorded, not only what it accepted. A
+// duplicate, a conflict and a late arrival all change what the reduction
+// concludes — a conflict is kept in the aggregate state and a restatement is
+// owed after one — so a journal holding only the accepted facts cannot
+// reproduce the conclusion, and the lineage reports the difference as the
+// conclusion contradicting its own evidence.
 func (journal *Journal) Append(
 	fact connectivity.Fact,
 	hostSequence uint64,
+	foldPosition uint64,
+	outcome string,
 	role safety.SourceRole,
 ) error {
 	if fact.Domain != journal.domain {
@@ -88,10 +104,11 @@ func (journal *Journal) Append(
 	if _, err := safety.ClassifyConnectivityFact(fact, journal.domain); err != nil {
 		return err
 	}
-	if hostSequence == 0 {
-		return fmt.Errorf("%w: host sequence", ErrCorruptRecord)
+	if foldPosition == 0 || outcome == "" {
+		return fmt.Errorf("%w: fold position", ErrCorruptRecord)
 	}
-	schema, record, err := event.CanonicalConnectivityRecord(fact, hostSequence, string(role))
+	schema, record, err := event.CanonicalConnectivityRecord(
+		fact, hostSequence, foldPosition, outcome, string(role))
 	if err != nil {
 		return err
 	}
@@ -103,7 +120,7 @@ func (journal *Journal) Append(
 	return err
 }
 
-// Records returns every retained fact in host acceptance order.
+// Records returns every retained event in the order it was folded.
 //
 // A record that cannot be decoded is an error rather than a skip: silently
 // dropping one would turn a corrupt journal into a shorter healthy-looking
@@ -130,24 +147,30 @@ func (journal *Journal) Records() ([]Record, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrCorruptRecord, err)
 		}
-		if previous, clash := seen[payload.HostSequence]; clash && previous != payload.Digest {
-			return nil, fmt.Errorf("%w: sequence %d", ErrSequenceReused, payload.HostSequence)
+		// A reused fold position is two different events claiming one place
+		// in the order, which is the same corruption a reused host sequence
+		// was, one layer out.
+		if previous, clash := seen[payload.FoldPosition]; clash && previous != payload.Digest {
+			return nil, fmt.Errorf("%w: fold position %d",
+				ErrSequenceReused, payload.FoldPosition)
 		}
-		seen[payload.HostSequence] = payload.Digest
+		seen[payload.FoldPosition] = payload.Digest
 		records = append(records, Record{
 			HostSequence: payload.HostSequence,
+			FoldPosition: payload.FoldPosition,
+			Outcome:      payload.Outcome,
 			Role:         safety.SourceRole(payload.Role),
 			Digest:       payload.Digest,
 			Fact:         fact,
 		})
 	}
 	sort.Slice(records, func(i, j int) bool {
-		return records[i].HostSequence < records[j].HostSequence
+		return records[i].FoldPosition < records[j].FoldPosition
 	})
 	return records, nil
 }
 
-// RecordsAfter returns the retained facts accepted after a watermark, and
+// RecordsAfter returns the retained events folded after a watermark, and
 // whether that range is continuous.
 //
 // Replay needs both answers. A continuous range can be folded forward; a
@@ -160,13 +183,13 @@ func (journal *Journal) RecordsAfter(watermark uint64) ([]Record, bool, error) {
 	}
 	out := make([]Record, 0, len(records))
 	for _, record := range records {
-		if record.HostSequence > watermark {
+		if record.FoldPosition > watermark {
 			out = append(out, record)
 		}
 	}
 	expected := watermark + 1
 	for _, record := range out {
-		if record.HostSequence != expected {
+		if record.FoldPosition != expected {
 			return out, false, nil
 		}
 		expected++

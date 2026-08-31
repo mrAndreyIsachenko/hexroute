@@ -70,7 +70,7 @@ func (l *lineage) next(components ...connectivity.Component) Checkpoint {
 		l.t.Fatalf("reduce: %v", err)
 	}
 	l.prior = &output.Snapshot
-	l.consumed = output.Snapshot.ConsumedHostSequence
+	l.consumed = output.Snapshot.ConsumedFoldPosition
 
 	id := fmt.Sprintf("cp-%04d", l.sequence)
 	checkpoint, err := SealFrom(l.parent, l.broken, id, output, from, nil)
@@ -527,9 +527,12 @@ func TestRecordThatDisagreesWithTheIndexIsRefused(t *testing.T) {
 		t.Fatalf("append: %v", err)
 	}
 
-	// Same identity, self-consistent, different consumed watermark.
+	// Same identity, self-consistent, different consumed watermark. The
+	// snapshot's own watermark moves with it, or the record fails on its own
+	// terms before the index ever gets a say.
 	resealed := reseal(t, root, second.ID, func(checkpoint *Checkpoint) {
 		checkpoint.ConsumedTo++
+		checkpoint.Snapshot.ConsumedFoldPosition++
 		checkpoint.Snapshot.ConsumedHostSequence++
 		digest, err := checkpoint.Snapshot.Digest()
 		if err != nil {
