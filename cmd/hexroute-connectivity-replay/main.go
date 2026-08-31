@@ -20,6 +20,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivitycheckpoint"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityjournal"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityqualification"
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityreduce"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivitytrace"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
@@ -30,6 +31,13 @@ const outputSchema = "hexroute.connectivity-replay.v1"
 type report struct {
 	Schema string `json:"schema"`
 	Store  string `json:"store,omitempty"`
+
+	// State is what the stored read model currently says. It is read from the
+	// newest provable checkpoint rather than from the daemon, because the
+	// moment an operator needs it most is the moment the daemon is not
+	// answering — every diagnosis that mattered on this host was made against
+	// a store whose daemon was refusing to start.
+	State *stateReport `json:"state,omitempty"`
 
 	Verify   *connectivitycheckpoint.VerifyResult `json:"verify,omitempty"`
 	Traces   []traceReport                        `json:"traces,omitempty"`
@@ -44,6 +52,27 @@ type report struct {
 type gateReport struct {
 	Passing bool   `json:"passing"`
 	Refusal string `json:"refusal,omitempty"`
+}
+
+// stateReport is the read model as the store holds it.
+type stateReport struct {
+	CheckpointID string `json:"checkpoint_id,omitempty"`
+	// Resume is what a daemon starting now would conclude about this lineage,
+	// which is the first thing worth knowing when one will not start.
+	Resume       string `json:"resume"`
+	ResumeReason string `json:"resume_reason,omitempty"`
+	// LineageBreak is set when the newest checkpoint abandoned an older
+	// lineage rather than continuing it.
+	LineageBreak *connectivitycheckpoint.LineageBreak `json:"lineage_break,omitempty"`
+
+	BootID     string `json:"boot_id,omitempty"`
+	Generation uint64 `json:"snapshot_generation,omitempty"`
+	// Everything below is absent when nothing provable is stored. A zeroed
+	// summary prints as no component failing and nothing stale, which reads
+	// as a healthy host rather than as no answer at all.
+	Summary    *connectivityreduce.Summary          `json:"summary,omitempty"`
+	Components []connectivityreduce.ComponentRecord `json:"components,omitempty"`
+	Sources    []connectivityreduce.SourceWatermark `json:"sources,omitempty"`
 }
 
 type traceReport struct {
@@ -64,6 +93,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	showVersion := flags.Bool("version", false, "print version")
 	root := flags.String("store", "", "connectivity read-model store root")
 	listTraces := flags.Bool("traces", false, "list the canonical fault traces")
+	showState := flags.Bool("state", false,
+		"print what the stored read model currently says")
 	chain := flags.String("qualification", "", "qualification chain root to inspect")
 	session := flags.String("session", "", "qualification session identity")
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
@@ -120,8 +151,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 		gateRefused = !gate.Passing()
 	}
 
+	if *showState {
+		if *root == "" {
+			fmt.Fprintln(stderr, "error: --state requires --store")
+			return 2
+		}
+		state, err := readState(*root)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		out.State = state
+	}
+
 	unsound := false
-	if *root != "" {
+	if *root != "" && !*showState {
 		out.Store = *root
 		result, err := verify(*root)
 		if err != nil {
@@ -181,6 +225,43 @@ func gateFor(root, session string) connectivityqualification.Gate {
 	bound := records[0].Binding
 	bound.SessionID = metadata.UUID(session)
 	return connectivityqualification.GateFor(root, bound)
+}
+
+// readState reports what the stored read model says, without replaying it.
+//
+// Verification is a different and much heavier question, and asking it here
+// would mean reading both journals while a daemon is writing to them. What an
+// operator needs first is what the model currently holds, which the newest
+// provable checkpoint answers on its own.
+func readState(root string) (*stateReport, error) {
+	store, err := connectivitycheckpoint.Open(
+		filepath.Join(root, "readmodel"), connectivitycheckpoint.Options{})
+	if err != nil {
+		return nil, fmt.Errorf("store: %w", err)
+	}
+	resume, err := store.Resume()
+	if err != nil {
+		return nil, fmt.Errorf("resume: %w", err)
+	}
+	report := &stateReport{
+		Resume:       string(resume.Status),
+		ResumeReason: string(resume.Reason),
+	}
+	if resume.Checkpoint == nil {
+		// Nothing provable is stored. That is an answer, and the reason it
+		// gives is the one an operator needs when a daemon will not come up.
+		return report, nil
+	}
+	checkpoint := *resume.Checkpoint
+	report.CheckpointID = checkpoint.ID
+	report.LineageBreak = checkpoint.Break
+	report.BootID = checkpoint.Snapshot.BootID
+	report.Generation = checkpoint.SnapshotGeneration
+	summary := checkpoint.Snapshot.Summary
+	report.Summary = &summary
+	report.Components = checkpoint.Snapshot.Components
+	report.Sources = checkpoint.Snapshot.Sources
+	return report, nil
 }
 
 func verify(root string) (connectivitycheckpoint.VerifyResult, error) {
