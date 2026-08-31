@@ -1,6 +1,7 @@
 package connectivityhost
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -34,6 +35,12 @@ type Recorder struct {
 }
 
 // OpenRecorder prepares the durable comparison log under a store root.
+//
+// It reads back what is already there. A recorder that opened blind would
+// count from zero over a file that plainly holds records, and would write its
+// first comparison again because it could not remember writing it — so every
+// restart of a 72-hour soak would leave a duplicate line and an under-reported
+// total in the one file the soak is studied from.
 func OpenRecorder(root string) (*Recorder, error) {
 	if root == "" {
 		return nil, nil
@@ -41,7 +48,56 @@ func OpenRecorder(root string) (*Recorder, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, fmt.Errorf("%w: comparison root: %v", ErrStore, err)
 	}
-	return &Recorder{path: filepath.Join(root, comparisonFile)}, nil
+	recorder := &Recorder{path: filepath.Join(root, comparisonFile)}
+	if err := recorder.resume(); err != nil {
+		return nil, err
+	}
+	return recorder, nil
+}
+
+// resume restores the position the previous process left.
+func (recorder *Recorder) resume() error {
+	file, err := os.Open(recorder.path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStore, err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), MaxComparisonBytes)
+	var last []byte
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		last = append(last[:0], line...)
+		recorder.written++
+	}
+	if err := scanner.Err(); err != nil {
+		// A log this build cannot read back is not a reason to refuse to
+		// record. Appending to it keeps the soak observable; what is lost is
+		// only the suppression of one repeated line.
+		recorder.written = 0
+		return nil
+	}
+	if last == nil {
+		return nil
+	}
+	var previous Comparison
+	if json.Unmarshal(last, &previous) != nil {
+		return nil
+	}
+	previous.SnapshotGeneration = 0
+	key, err := json.Marshal(previous)
+	if err != nil {
+		return nil
+	}
+	recorder.last = string(key)
+	return nil
 }
 
 // Full reports that the recorder stopped appending because it reached its

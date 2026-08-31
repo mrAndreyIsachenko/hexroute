@@ -209,6 +209,12 @@ move the atomic-policy active pointer backward or authorize an older policy.
 - **THEN** Hexroute publishes unknown/conflict state with the lineage or journal gap visible
 - **AND** it does not load an unverified healthy snapshot or trigger a mutation
 
+#### Scenario: A durable record is reopened by a later process
+
+- **WHEN** a component that keeps state across a restart is opened over a root an earlier process wrote
+- **THEN** it resumes from what that root holds rather than from its own beginning
+- **AND** it neither reuses an identity already recorded nor reports a position its own retained records contradict
+
 #### Scenario: Journal reaches its configured bound
 
 - **WHEN** retention must free capacity
