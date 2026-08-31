@@ -284,6 +284,10 @@ func reproduce(
 		PolicyComponents: policyComponents,
 		BootID:           checkpoint.Snapshot.BootID,
 		EvaluationTick:   checkpoint.Snapshot.EvaluationTick,
+		// The wake the reduction was told about. Without it a replay asks
+		// what this checkpoint would have concluded had the host never
+		// slept, and reports the honest difference as a contradiction.
+		Wake: checkpoint.Wake,
 	})
 	if err != nil {
 		return OutputDigests{}, len(records), VerifyUnreplayable, nil

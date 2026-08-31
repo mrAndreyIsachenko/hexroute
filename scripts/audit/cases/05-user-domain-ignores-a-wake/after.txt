@@ -1,0 +1,23 @@
+func (publisher *factPublisher) Publish(ctx context.Context, evidence Evidence) error {
+	if publisher == nil || !evidence.Reached {
+		return nil
+	}
+	if publisher.wokeUp() {
+		// What was observed before the sleep describes a host that was not
+		// running, so this publication restates both components in full
+		// rather than reporting now and leaving the gap unaccounted for.
+		publisher.baseline = false
+	}
+	observations := map[connectivity.Component]connectivitycollect.Observation{
+		connectivity.ComponentUserAccess: connectivitycollect.MapUserAccess(
+			evidence.Profile, evidence.Service, firstError(evidence.ProfileError, evidence.ServiceError)),
+		connectivity.ComponentSessionExpiry: connectivitycollect.MapUserSession(
+			evidence.Session, evidence.SessionError),
+	}
+	encoded := make([]json.RawMessage, 0, len(observations))
+	for _, component := range userComponents() {
+		observation := observations[component]
+		observation.Baseline = !publisher.baseline
+		fact, err := publisher.sources[component].Emit(observation)
+		if err != nil {
+			return err

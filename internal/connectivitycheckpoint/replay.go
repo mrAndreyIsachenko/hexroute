@@ -26,6 +26,9 @@ const (
 
 // ReplayInput is everything a deterministic replay needs.
 type ReplayInput struct {
+	// Wake is the wake the original reduction was told about, when it was
+	// told about one. A replay without it is replaying different inputs.
+	Wake    *connectivityreduce.Wake
 	Resume  Resume
 	Records []connectivityjournal.Record
 	// Continuous is the journal's own answer about whether the records
@@ -103,6 +106,7 @@ func Replay(input ReplayInput) (ReplayResult, error) {
 		PolicyComponents: input.PolicyComponents,
 		BootID:           input.BootID,
 		EvaluationTick:   input.EvaluationTick,
+		Wake:             input.Wake,
 	})
 	if err != nil {
 		return ReplayResult{}, err
@@ -151,6 +155,7 @@ func SealFrom(
 	id string,
 	output connectivityreduce.Output,
 	consumedFrom uint64,
+	wake *connectivityreduce.Wake,
 ) (Checkpoint, error) {
 	snapshotDigest, err := output.Snapshot.Digest()
 	if err != nil {
@@ -177,6 +182,10 @@ func SealFrom(
 		DiffDigest:         diffDigest,
 		ProposalsDigest:    proposalsDigest,
 		Snapshot:           output.Snapshot,
+	}
+	if wake != nil {
+		carried := *wake
+		checkpoint.Wake = &carried
 	}
 	switch {
 	case parent != nil:

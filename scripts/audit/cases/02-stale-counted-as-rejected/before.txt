@@ -1,0 +1,23 @@
+		}
+		switch acceptance.Outcome {
+		case connectivityaccept.OutcomeAccepted:
+			// The journal is written before the event is queued for
+			// reduction, so a crash cannot leave the read model ahead of the
+			// evidence it was built from.
+			if err := journal.Append(fact, acceptance.HostSequence, acceptance.Role); err != nil {
+				return report, err
+			}
+			report.Accepted++
+		case connectivityaccept.OutcomeDuplicate:
+			report.Duplicates++
+		case connectivityaccept.OutcomeConflict:
+			report.Conflicts++
+		default:
+			report.Rejected++
+		}
+		if acceptance.Outcome != connectivityaccept.OutcomeRejected {
+			runtime.pending = append(runtime.pending,
+				connectivityreduce.Event{Acceptance: acceptance, Fact: fact})
+		}
+	}
+	report.Watermark = runtime.acceptor.State().HostSequence

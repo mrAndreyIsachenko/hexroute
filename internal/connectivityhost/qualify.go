@@ -486,9 +486,14 @@ func (qualifier *Qualifier) unboundEvidence(
 		if _, rests := bound[link.ID]; !rests {
 			continue
 		}
-		switch link.Status {
-		case connectivitycheckpoint.VerifyUnreplayable,
-			connectivitycheckpoint.VerifyDiverged:
+		// Only a contradiction counts. An unreplayable link is one the
+		// journal no longer holds the facts for, and journals are bounded, so
+		// given enough hours every old link becomes unverifiable in the
+		// ordinary course of running. Blocking on that would make a
+		// seventy-two hour gate unreachable by design — and the checkpoint
+		// package already says so in as many words: unreplayable links do not
+		// make a lineage unsound, they make it unverified.
+		if link.Status == connectivitycheckpoint.VerifyDiverged {
 			unbound++
 		}
 	}

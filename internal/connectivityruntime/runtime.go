@@ -451,7 +451,7 @@ func (runtime *Runtime) Tick(input TickInput) (connectivityreduce.Output, error)
 		from = before + 1
 	}
 	checkpoint, err := connectivitycheckpoint.SealFrom(
-		runtime.parent, runtime.broken, string(id), output, from)
+		runtime.parent, runtime.broken, string(id), output, from, input.Wake)
 	if err != nil {
 		return output, err
 	}

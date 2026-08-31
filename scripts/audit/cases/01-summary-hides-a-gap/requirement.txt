@@ -1,0 +1,3 @@
+WHEN the next fact advances beyond the expected source sequence
+THEN the gap is recorded in source and snapshot metadata
+AND healthy aggregate output is not inferred from the missing observation

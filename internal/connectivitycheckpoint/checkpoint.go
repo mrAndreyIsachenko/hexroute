@@ -67,6 +67,17 @@ type Checkpoint struct {
 
 	// PriorSnapshotDigest is the input the reduction started from.
 	PriorSnapshotDigest string `json:"prior_snapshot_digest,omitempty"`
+	// Wake is the wake this reduction was told about, when it was told about
+	// one.
+	//
+	// A checkpoint has to carry everything the reduction that made it read,
+	// or it is an assertion rather than a record. A wake is an input like the
+	// policy and the evaluation tick: it changes what the reduction concludes,
+	// and a replay that could not be given it produces a different snapshot
+	// and reports the difference as the conclusion contradicting its own
+	// evidence — which is the one finding this whole lineage exists to make
+	// meaningful.
+	Wake *connectivityreduce.Wake `json:"wake,omitempty"`
 	// ConsumedFrom and ConsumedTo bound the accepted facts folded in. The
 	// range is what makes replay from a journal an ordering problem.
 	ConsumedFrom uint64 `json:"consumed_from"`

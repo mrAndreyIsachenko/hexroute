@@ -30,6 +30,7 @@ type soak struct {
 	awake      time.Duration
 	boot       string
 	tick       int64
+	storeRoot  string
 }
 
 func newSoak(t *testing.T) *soak {
@@ -54,7 +55,7 @@ func newSoak(t *testing.T) *soak {
 		t.Fatalf("attach: %v", err)
 	}
 	run := &soak{
-		t: t, reader: reader, chain: chain,
+		t: t, reader: reader, chain: chain, storeRoot: root,
 		wall:       time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC),
 		continuous: 4 * time.Hour,
 		awake:      3 * time.Hour,
@@ -136,6 +137,32 @@ func (run *soak) publishUser(from uint64) {
 		// booted minutes ago.
 		fact.MonotonicTick = control.Tick(run.tick - 10)
 		fact.FreshnessDeadline = control.Tick(run.tick - 5)
+		_, raw, err := policy.CanonicalSHA256(fact)
+		if err != nil {
+			run.t.Fatal(err)
+		}
+		encoded = append(encoded, raw)
+	}
+	if _, err := run.reader.PublishUser(encoded); err != nil {
+		run.t.Fatalf("publish user: %v", err)
+	}
+}
+
+// flip publishes user facts whose lifecycle alternates, so each cycle is an
+// effective change and the store actually gains a checkpoint to verify.
+func (run *soak) flip(from uint64) {
+	run.t.Helper()
+	encoded := make([]json.RawMessage, 0, 2)
+	for _, component := range []connectivity.Component{
+		connectivity.ComponentUserAccess, connectivity.ComponentSessionExpiry,
+	} {
+		fact := connectivity.FixtureBaseline(component, from)
+		fact.MonotonicTick = control.Tick(run.tick)
+		fact.FreshnessDeadline = control.Tick(run.tick + 3600)
+		if from%2 == 0 {
+			fact.Lifecycle = connectivity.LifecycleFailed
+			fact.Reason = connectivity.ReasonProbeFailed
+		}
 		_, raw, err := policy.CanonicalSHA256(fact)
 		if err != nil {
 			run.t.Fatal(err)

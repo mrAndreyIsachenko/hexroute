@@ -1,0 +1,33 @@
+		default:
+			summary.Unknown++
+		}
+	}
+	for _, watermark := range snapshot.Sources {
+		// Both counts are bounded by the compiled source and gap limits, so
+		// the widening cannot lose a digit.
+		summary.OpenGaps += uint16(len(watermark.Gaps))
+		if watermark.GapOverflow {
+			summary.GapOverflow = true
+		}
+		if watermark.Conflicts > 0 {
+			summary.SourceConflicts++
+		}
+		if watermark.AwaitingBaseline() {
+			summary.AwaitingBaseline++
+		}
+	}
+	switch {
+	case summary.Failed > 0:
+		summary.State = AggregateFailed
+	case summary.Degraded > 0 || summary.Stale > 0 || summary.Conflicted > 0:
+		summary.State = AggregateDegraded
+	case summary.Unknown > 0:
+		summary.State = AggregateUnknown
+	default:
+		summary.State = AggregateReady
+	}
+	return summary
+}
+
+// semantic is the projection that decides whether a reduction changed
+// anything. It omits the bookkeeping that moves on every batch — sequences,

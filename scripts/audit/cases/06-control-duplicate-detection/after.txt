@@ -1,0 +1,25 @@
+func (acceptor *Acceptor) replay(
+	source *SourceState,
+	fact connectivity.Fact,
+	digest string,
+	role safety.SourceRole,
+) Acceptance {
+	for _, entry := range source.Recent {
+		if entry.Sequence != fact.SourceSequence {
+			continue
+		}
+		if entry.Digest == digest {
+			return Acceptance{
+				Outcome: OutcomeDuplicate, Reason: ReasonExactRetry,
+				Role: role, Digest: digest, Source: integrityOf(source),
+			}
+		}
+		// A reused identity carrying different content means the stream can no
+		// longer be trusted to be continuous, so it owes the same complete
+		// restatement a hole owes.
+		source.Conflicts++
+		owesBaseline(source, fact.SourceID)
+		return Acceptance{
+			Outcome: OutcomeConflict, Reason: ReasonIdentityReused,
+			Role: role, Digest: digest, Source: integrityOf(source),
+		}
