@@ -22,7 +22,7 @@ var connectivityPackages = []string{
 	"connectivity", "connectivityaccept", "connectivitycheckpoint",
 	"connectivitycollect", "connectivityhost", "connectivityjournal",
 	"connectivityqualification", "connectivityreduce", "connectivityruntime",
-	"connectivitysoak", "connectivitytrace",
+	"connectivitysoak", "connectivitytrace", "connectivitywatch",
 	"connectivityview",
 }
 

@@ -139,6 +139,26 @@ When nothing can be proven it prints the resume verdict and its reason and
 stops there. A zeroed summary would print as no component failing and nothing
 stale, which reads as a healthy host rather than as no answer at all.
 
+## Being told when it moves
+
+```
+hexroute-connectivity-watch --store <root> --state <file> \
+  --qualification <chain> --session <uuid>
+```
+
+It prints what changed since the last look and nothing when nothing did, which
+is the only way something run every few minutes stays worth reading. A line
+starting with `!` is a move worth acting on, and the exit status says the same
+for whatever scheduled it.
+
+It reads the store, not the daemon. A daemon that will not start is the
+condition most worth being told about, and an operator socket would be as
+silent as the daemon behind it.
+
+A memory it cannot read is refused rather than treated as a first look.
+Reading it as one would report nothing, and every failure worth catching on
+this host looked exactly like nothing happening.
+
 ## Rollback
 
 Stop passing the arguments. The runtime then opens no store, holds no state and
