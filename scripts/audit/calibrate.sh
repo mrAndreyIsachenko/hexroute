@@ -20,6 +20,18 @@ command -v ollama >/dev/null 2>&1 || {
   exit 1
 }
 
+# A model that is not answering produces the same empty output as a model with
+# nothing to say, and a scoreboard built from that reads like a measurement.
+# So the model is asked something with a known answer first, and a run that
+# cannot get one does not start.
+probe="$(printf 'Reply with exactly: VERDICT: HOLDS\n' |
+  ollama run "$model" 2>/dev/null | tr -d "\r" |
+  sed "s/\x1b\[[0-9;]*[A-Za-z]//g" | grep -oE '(HOLDS|VIOLATED)' | head -n 1)"
+if [[ -z "$probe" ]]; then
+  echo "the model $model did not answer; is the ollama server running?" >&2
+  exit 1
+fi
+
 # Two questions, because they find different things. Asking whether code
 # satisfies a requirement finds a contradiction: the code says one thing and
 # the requirement another. It cannot find an omission, because there is nothing
@@ -63,8 +75,15 @@ caught=0 missed=0 cleared=0 falsely=0 unreadable=0
 score() {
   local name="$1" before="$2" after="$3"
   if [[ "$name" == *control* ]]; then
-    [[ "$before" == HOLDS ]] && cleared=$((cleared + 1)) || falsely=$((falsely + 1))
-    [[ "$after" == HOLDS ]] && cleared=$((cleared + 1)) || falsely=$((falsely + 1))
+    # An answer nobody could read is not a false flag. Counting it as one
+    # would turn a silent model into evidence against healthy code.
+    for side in "$before" "$after"; do
+      case "$side" in
+        HOLDS) cleared=$((cleared + 1)) ;;
+        VIOLATED) falsely=$((falsely + 1)) ;;
+        *) unreadable=$((unreadable + 1)) ;;
+      esac
+    done
     return
   fi
   case "$before" in
