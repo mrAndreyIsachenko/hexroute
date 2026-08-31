@@ -2,6 +2,7 @@ package connectivityjournal
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -225,5 +226,76 @@ func TestTheTwoSpellingsOfAcceptedAgree(t *testing.T) {
 	if string(connectivityaccept.OutcomeAccepted) != event.OutcomeAccepted {
 		t.Fatalf("the acceptor says %q and the journal record says %q",
 			connectivityaccept.OutcomeAccepted, event.OutcomeAccepted)
+	}
+}
+
+// A journal written by an older build is not damage, and the difference is
+// not academic: records this build cannot read made the read model refuse to
+// start, every ten seconds under launchd, for as long as they were on disk.
+// No restart cleared it and no amount of waiting would have.
+func TestAJournalInAFormatThisBuildCannotReadIsSetAside(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "root")
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Something is in there and nothing says what format it is, which is
+	// exactly what a journal written before the marker existed looks like.
+	if err := os.WriteFile(filepath.Join(path, "0001.json"),
+		[]byte(`{"schema":"from a build that came before"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	journal, err := Open(path, policy.DomainRoot, Options{
+		MaxBytes: 1 << 20, NodeID: testNodeID, Clock: &advancingClock{},
+	})
+	if err != nil {
+		t.Fatalf("a journal this build cannot read refused to open: %v", err)
+	}
+	if !journal.Superseded() {
+		t.Fatal("the unreadable journal was opened as if it were ours")
+	}
+	records, err := journal.Records()
+	if err != nil {
+		t.Fatalf("the fresh journal is unreadable: %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("the fresh journal came up holding %d records", len(records))
+	}
+	// The evidence is set aside, not destroyed.
+	if _, err := os.Stat(filepath.Join(directory, "root.superseded", "0001.json")); err != nil {
+		t.Fatalf("the superseded records were not kept: %v", err)
+	}
+
+	// And the next start is an ordinary one.
+	again, err := Open(path, policy.DomainRoot, Options{
+		MaxBytes: 1 << 20, NodeID: testNodeID, Clock: &advancingClock{},
+	})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if again.Superseded() {
+		t.Fatal("a journal this build wrote was set aside as foreign")
+	}
+}
+
+// A second supersession would overwrite the first, and losing evidence
+// quietly is the one thing this may not do.
+func TestASecondSupersessionRefusesRatherThanOverwrite(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "root")
+	for _, name := range []string{path, path + ".superseded"} {
+		if err := os.MkdirAll(name, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(path, "0001.json"),
+		[]byte(`{"schema":"older still"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(path, policy.DomainRoot, Options{
+		MaxBytes: 1 << 20, NodeID: testNodeID, Clock: &advancingClock{},
+	}); err == nil {
+		t.Fatal("a second supersession overwrote the first")
 	}
 }

@@ -10,7 +10,10 @@ package connectivityjournal
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
 	"github.com/mrAndreyIsachenko/hexroute/internal/event"
@@ -37,7 +40,15 @@ type Options struct {
 type Journal struct {
 	spool  *spool.Spool
 	domain policy.Domain
+	// superseded records that this journal began because the one on disk was
+	// written in a format this build does not speak.
+	superseded bool
 }
+
+// Superseded reports whether opening this journal set an unreadable one aside.
+// The caller decides what to say about it; the journal only refuses to pretend
+// it did not happen.
+func (journal *Journal) Superseded() bool { return journal.superseded }
 
 // Record is one journalled fact with its acceptance metadata.
 type Record struct {
@@ -54,6 +65,33 @@ type Record struct {
 }
 
 // Open prepares the journal for one privilege domain.
+// RecordFormat names the shape of the records this build writes.
+//
+// It exists because a journal has to tell a format it does not speak from a
+// journal that is damaged, and until it could, it treated both as damage.
+// That is not a small difference: records from an older build made the read
+// model refuse to start, every ten seconds, for as long as they were on disk,
+// and no amount of restarting could clear it.
+const RecordFormat = "hexroute.connectivity-journal.folded.v1"
+
+// The journal's directory holds the spool and the journal's own marker beside
+// it. The spool owns everything in its directory and refuses a file it does
+// not recognise — deliberately, so a stray one is noticed rather than ignored
+// — and writing the marker as a sibling of the journal would put it outside
+// the store the runtime was handed, which an architectural test refuses. So
+// the spool moves down one level and the journal keeps a directory of its own.
+const (
+	formatFilename = ".record-format"
+	spoolDirectory = "spool"
+)
+
+// Open prepares the journal for one privilege domain.
+//
+// A journal written in a format this build does not speak is set aside rather
+// than read or deleted. Reading it is impossible, refusing to start leaves a
+// host with no read model at all, and deleting it would throw away evidence
+// nobody asked to lose — so it keeps its records under a name that says they
+// were superseded, and a new journal begins.
 func Open(path string, domain policy.Domain, options Options) (*Journal, error) {
 	owner := spool.OwnerRoot
 	switch domain {
@@ -63,7 +101,14 @@ func Open(path string, domain policy.Domain, options Options) (*Journal, error) 
 	default:
 		return nil, fmt.Errorf("%w: domain %q", ErrDomainMismatch, domain)
 	}
-	store, err := spool.Open(path, owner, spool.Options{
+	superseded, err := supersedeForeignFormat(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrCorruptRecord, err)
+	}
+	store, err := spool.Open(filepath.Join(path, spoolDirectory), owner, spool.Options{
 		MaxBytes: options.MaxBytes,
 		NodeID:   options.NodeID,
 		Clock:    options.Clock,
@@ -71,7 +116,56 @@ func Open(path string, domain policy.Domain, options Options) (*Journal, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &Journal{spool: store, domain: domain}, nil
+	if err := os.WriteFile(filepath.Join(path, formatFilename),
+		[]byte(RecordFormat+"\n"), 0o600); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrCorruptRecord, err)
+	}
+	return &Journal{spool: store, domain: domain, superseded: superseded}, nil
+}
+
+// supersedeForeignFormat moves aside a journal whose records this build cannot
+// read, and reports whether it did.
+//
+// A journal with no marker and no records is simply new. One with no marker
+// and records in it was written before the marker existed, which is the same
+// answer as a marker that does not match: not ours.
+func supersedeForeignFormat(path string) (bool, error) {
+	marker, err := os.ReadFile(filepath.Join(path, formatFilename))
+	switch {
+	case err == nil && strings.TrimSpace(string(marker)) == RecordFormat:
+		return false, nil
+	case err != nil && !os.IsNotExist(err):
+		return false, fmt.Errorf("%w: %v", ErrCorruptRecord, err)
+	}
+	entries, err := os.ReadDir(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", ErrCorruptRecord, err)
+	}
+	holds := false
+	for _, entry := range entries {
+		if entry.Name() != formatFilename {
+			holds = true
+			break
+		}
+	}
+	if !holds {
+		return false, nil
+	}
+	// Named for what it is, not numbered: a second supersession would find
+	// the name taken, and losing the first one is exactly what must not
+	// happen quietly.
+	aside := path + ".superseded"
+	if _, err := os.Stat(aside); err == nil {
+		return false, fmt.Errorf(
+			"%w: a superseded journal is already set aside at %s", ErrCorruptRecord, aside)
+	}
+	if err := os.Rename(path, aside); err != nil {
+		return false, fmt.Errorf("%w: %v", ErrCorruptRecord, err)
+	}
+	return true, nil
 }
 
 // Domain reports which privilege domain this journal belongs to.
