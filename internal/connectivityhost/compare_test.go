@@ -174,6 +174,29 @@ func TestRecordedComparisonsSurviveTheProcess(t *testing.T) {
 	if len(data) == 0 {
 		t.Fatal("nothing was written to disk")
 	}
+
+	// Surviving the process means the next process finds it, not only that
+	// the bytes are there. A recorder that opened blind would count from zero
+	// and write this same comparison again because it could not remember
+	// writing it — which over a soak's restarts is a duplicate line and an
+	// under-reported total in the file the soak is studied from.
+	resumed, err := OpenRecorder(root)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if resumed.Written() != 1 {
+		t.Fatalf("a reopened recorder counted %d over one recorded comparison",
+			resumed.Written())
+	}
+	wrote, err := resumed.Record(Compare(
+		viewWith(connectivity.ComponentRelays, connectivityreduce.ProposalEstablish),
+		nil, connectivity.FixtureBootID, 1, true))
+	if err != nil {
+		t.Fatalf("record after reopen: %v", err)
+	}
+	if wrote {
+		t.Fatal("a reopened recorder wrote the comparison it had already written")
+	}
 }
 
 // A disabled recorder costs the record, never the daemon.

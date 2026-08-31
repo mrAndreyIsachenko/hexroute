@@ -22,6 +22,7 @@ export GOCACHE="${GOCACHE:-${TMPDIR:-/tmp}/hexroute-go-cache}"
 test_only=(
   secretguard      # canary fixtures; asserts serializers refuse secrets
   repositoryguard  # asserts the public-repository boundary over the work tree
+  restartguard     # asserts durable state survives two process restarts
 )
 
 unwired=(

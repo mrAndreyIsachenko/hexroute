@@ -84,3 +84,4 @@
 - [ ] 10.5 Run `make check` and resolve every static, race, formatting, repository-boundary and secret-leak failure.
 - [ ] 10.6 Run `openspec validate add-observable-connectivity-state-machine --strict` and keep proposal, design, specs and tasks synchronized with implementation evidence.
 - [ ] 10.7 Sync validated delta requirements into baseline specs only after implementation and shadow qualification are complete.
+- [x] 10.8 Assert that every connectivity component keeping durable state resumes across two consecutive process restarts, and keep a census so a new such component cannot arrive uncovered.
