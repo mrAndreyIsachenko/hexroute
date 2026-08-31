@@ -123,6 +123,22 @@ advancing, proposals keep being produced, and the undeliverable projection
 waits in the bounded spool at a priority below retained evidence, so a lost
 sample never evicts a baseline.
 
+## Asking what it holds
+
+```
+hexroute-connectivity-replay --state --store <root>
+```
+
+It reads the newest provable checkpoint and prints the summary, every
+component, and every source watermark. It opens no socket and starts nothing,
+which is the point: the moment this question matters most is the moment the
+daemon is not answering, and every diagnosis worth making on this host has
+been made against a store whose daemon was refusing to start.
+
+When nothing can be proven it prints the resume verdict and its reason and
+stops there. A zeroed summary would print as no component failing and nothing
+stale, which reads as a healthy host rather than as no answer at all.
+
 ## Rollback
 
 Stop passing the arguments. The runtime then opens no store, holds no state and
