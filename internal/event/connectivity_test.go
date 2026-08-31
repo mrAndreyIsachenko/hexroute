@@ -9,7 +9,7 @@ import (
 
 func journalRecord(t *testing.T, fact connectivity.Fact, hostSequence uint64) (Schema, ConnectivityFact) {
 	t.Helper()
-	schema, record, err := CanonicalConnectivityRecord(fact, hostSequence, "authoritative")
+	schema, record, err := CanonicalConnectivityRecord(fact, hostSequence, hostSequence, "accepted", "authoritative")
 	if err != nil {
 		t.Fatalf("build record: %v", err)
 	}
@@ -82,7 +82,11 @@ func TestMirroredIdentityCannotDriftFromTheFact(t *testing.T) {
 		{"digest", func(r *ConnectivityFact) {
 			r.Digest = "0000000000000000000000000000000000000000000000000000000000000000"
 		}},
-		{"host sequence", func(r *ConnectivityFact) { r.HostSequence = 0 }},
+		{"an accepted record with no place in the accepted order",
+			func(r *ConnectivityFact) { r.HostSequence = 0 }},
+		{"a refused record claiming a place in the accepted order",
+			func(r *ConnectivityFact) { r.Outcome = "conflict" }},
+		{"fold position", func(r *ConnectivityFact) { r.FoldPosition = 0 }},
 		{"role", func(r *ConnectivityFact) { r.Role = "owner" }},
 		{"fact body", func(r *ConnectivityFact) {
 			r.Fact = json.RawMessage(`{"schema":"hexroute.connectivity-fact.v1"}`)
@@ -111,7 +115,7 @@ func TestRecordCannotBeFiledUnderTheWrongSchema(t *testing.T) {
 	ordinary := connectivity.FixtureBaseline(connectivity.ComponentDNS, 2)
 	ordinary.Baseline = false
 	ordinary.Reason = connectivity.ReasonProbeSucceeded
-	_, plain, err := CanonicalConnectivityRecord(ordinary, 2, "authoritative")
+	_, plain, err := CanonicalConnectivityRecord(ordinary, 2, 2, "accepted", "authoritative")
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}

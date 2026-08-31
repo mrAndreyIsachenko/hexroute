@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityaccept"
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
@@ -51,7 +53,7 @@ func TestAcceptedFactsReadBackInHostOrder(t *testing.T) {
 	}
 	// Append out of order; the journal must still read back in order.
 	for index := len(rootFacts) - 1; index >= 0; index-- {
-		if err := journal.Append(rootFacts[index], uint64(index+1), safety.RoleAuthoritative); err != nil {
+		if err := journal.Append(rootFacts[index], uint64(index+1), uint64(index+1), "accepted", safety.RoleAuthoritative); err != nil {
 			t.Fatalf("append: %v", err)
 		}
 	}
@@ -74,7 +76,7 @@ func TestAcceptedFactsReadBackInHostOrder(t *testing.T) {
 func TestJournalRefusesTheOtherDomain(t *testing.T) {
 	journal := openJournal(t, policy.DomainRoot, 0)
 	fact := connectivity.FixtureBaseline(connectivity.ComponentUserAccess, 1)
-	if err := journal.Append(fact, 1, safety.RoleAuthoritative); !errors.Is(err, ErrDomainMismatch) {
+	if err := journal.Append(fact, 1, 1, "accepted", safety.RoleAuthoritative); !errors.Is(err, ErrDomainMismatch) {
 		t.Fatalf("got %v, want %v", err, ErrDomainMismatch)
 	}
 }
@@ -86,7 +88,7 @@ func TestJournalRechecksOwnership(t *testing.T) {
 	journal := openJournal(t, policy.DomainRoot, 0)
 	fact := connectivity.FixtureBaseline(connectivity.ComponentDNS, 1)
 	fact.SourceID = "root.routes"
-	if err := journal.Append(fact, 1, safety.RoleAuthoritative); !errors.Is(err, safety.ErrUnknownSource) {
+	if err := journal.Append(fact, 1, 1, "accepted", safety.RoleAuthoritative); !errors.Is(err, safety.ErrUnknownSource) {
 		t.Fatalf("got %v, want %v", err, safety.ErrUnknownSource)
 	}
 }
@@ -99,7 +101,7 @@ func TestRecordsAfterReportsContinuity(t *testing.T) {
 		connectivity.FixtureBaseline(connectivity.ComponentTransports, 1),
 	}
 	for index, fact := range facts {
-		if err := journal.Append(fact, uint64(index+1), safety.RoleAuthoritative); err != nil {
+		if err := journal.Append(fact, uint64(index+1), uint64(index+1), "accepted", safety.RoleAuthoritative); err != nil {
 			t.Fatalf("append: %v", err)
 		}
 	}
@@ -113,10 +115,10 @@ func TestRecordsAfterReportsContinuity(t *testing.T) {
 
 	// A hole in the accepted order is reported, not folded over.
 	gapped := openJournal(t, policy.DomainRoot, 0)
-	if err := gapped.Append(facts[0], 1, safety.RoleAuthoritative); err != nil {
+	if err := gapped.Append(facts[0], 1, 1, "accepted", safety.RoleAuthoritative); err != nil {
 		t.Fatalf("append: %v", err)
 	}
-	if err := gapped.Append(facts[1], 4, safety.RoleAuthoritative); err != nil {
+	if err := gapped.Append(facts[1], 4, 4, "accepted", safety.RoleAuthoritative); err != nil {
 		t.Fatalf("append: %v", err)
 	}
 	_, continuous, err = gapped.RecordsAfter(1)
@@ -141,7 +143,7 @@ func TestBaselinesSurviveEvictionOfObservations(t *testing.T) {
 	} {
 		sequence++
 		fact := connectivity.FixtureBaseline(component, sequence)
-		if err := journal.Append(fact, sequence, safety.RoleAuthoritative); err != nil {
+		if err := journal.Append(fact, sequence, sequence, "accepted", safety.RoleAuthoritative); err != nil {
 			t.Fatalf("append baseline: %v", err)
 		}
 		baselines[component] = sequence
@@ -153,7 +155,7 @@ func TestBaselinesSurviveEvictionOfObservations(t *testing.T) {
 		fact := connectivity.FixtureBaseline(connectivity.ComponentDNS, sequence)
 		fact.Baseline = false
 		fact.Reason = connectivity.ReasonProbeSucceeded
-		if err := journal.Append(fact, sequence, safety.RoleAuthoritative); err != nil {
+		if err := journal.Append(fact, sequence, sequence, "accepted", safety.RoleAuthoritative); err != nil {
 			t.Fatalf("append observation %d: %v", index, err)
 		}
 	}
@@ -186,7 +188,7 @@ func TestLatestBaselineWinsPerComponent(t *testing.T) {
 	journal := openJournal(t, policy.DomainRoot, 0)
 	for sequence := uint64(1); sequence <= 3; sequence++ {
 		fact := connectivity.FixtureBaseline(connectivity.ComponentDNS, sequence)
-		if err := journal.Append(fact, sequence, safety.RoleAuthoritative); err != nil {
+		if err := journal.Append(fact, sequence, sequence, "accepted", safety.RoleAuthoritative); err != nil {
 			t.Fatalf("append: %v", err)
 		}
 	}
@@ -203,7 +205,7 @@ func TestLatestBaselineWinsPerComponent(t *testing.T) {
 func TestUserJournalIsSeparate(t *testing.T) {
 	user := openJournal(t, policy.DomainUser, 0)
 	fact := connectivity.FixtureBaseline(connectivity.ComponentSessionExpiry, 1)
-	if err := user.Append(fact, 1, safety.RoleAuthoritative); err != nil {
+	if err := user.Append(fact, 1, 1, "accepted", safety.RoleAuthoritative); err != nil {
 		t.Fatalf("append: %v", err)
 	}
 	if user.Domain() != policy.DomainUser {
@@ -212,5 +214,16 @@ func TestUserJournalIsSeparate(t *testing.T) {
 	records, err := user.Records()
 	if err != nil || len(records) != 1 {
 		t.Fatalf("records=%d err=%v", len(records), err)
+	}
+}
+
+// The event package spells the accepted outcome for itself, because it may not
+// depend on the acceptor. Two spellings of one wire value drift silently, and
+// the drift would land where it matters most: a record that entered the
+// accepted order would stop being recognised as one.
+func TestTheTwoSpellingsOfAcceptedAgree(t *testing.T) {
+	if string(connectivityaccept.OutcomeAccepted) != event.OutcomeAccepted {
+		t.Fatalf("the acceptor says %q and the journal record says %q",
+			connectivityaccept.OutcomeAccepted, event.OutcomeAccepted)
 	}
 }

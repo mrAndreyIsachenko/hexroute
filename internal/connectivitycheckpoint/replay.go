@@ -72,12 +72,16 @@ func Replay(input ReplayInput) (ReplayResult, error) {
 	events := make([]connectivityreduce.Event, 0, len(input.Records))
 	expected := checkpoint.ConsumedTo
 	for _, record := range input.Records {
-		if record.HostSequence <= checkpoint.ConsumedTo {
-			// Already folded into the checkpoint.
+		// Counted in folded positions, because that is what the range is
+		// bounded in. Reading it as an accepted sequence drops every
+		// duplicate, conflict and late arrival on the floor: they carry no
+		// accepted sequence, so zero reads as already folded and the replay
+		// quietly leaves out the events it most needs.
+		if record.FoldPosition <= checkpoint.ConsumedTo {
 			continue
 		}
 		expected++
-		if record.HostSequence != expected {
+		if record.FoldPosition != expected {
 			return ReplayResult{Status: ReplayJournalGap}, nil
 		}
 		acceptance, acceptErr := acceptor.Accept(record.Fact, record.Fact.Domain)
@@ -85,9 +89,11 @@ func Replay(input ReplayInput) (ReplayResult, error) {
 			return ReplayResult{}, fmt.Errorf("%w: replaying %d: %v",
 				ErrLineageBroken, record.HostSequence, acceptErr)
 		}
-		if !acceptance.Accepted() {
-			// A journalled fact that no longer accepts means the retained
-			// evidence disagrees with itself.
+		// Every outcome is folded, because every outcome was. What may not
+		// differ is which outcome: a fact judged one way then and another way
+		// now means the retained evidence disagrees with itself, which is a
+		// finding rather than something to smooth over.
+		if string(acceptance.Outcome) != record.Outcome {
 			return ReplayResult{Status: ReplayJournalGap}, nil
 		}
 		if acceptance.HostSequence != record.HostSequence {
@@ -121,12 +127,18 @@ func Replay(input ReplayInput) (ReplayResult, error) {
 // were never persisted would be inventing evidence.
 func restoreAcceptor(checkpoint Checkpoint) (*connectivityaccept.Acceptor, error) {
 	state := connectivityaccept.State{
-		HostSequence: checkpoint.ConsumedTo,
+		// The accepted order and the folded order move at different speeds,
+		// and the range is counted in the second. Restoring one from the
+		// other would hand the next accepted fact a sequence already used.
+		HostSequence: checkpoint.Snapshot.ConsumedHostSequence,
+		FoldPosition: checkpoint.Snapshot.ConsumedFoldPosition,
 		Sources:      make(map[connectivity.SourceID]*connectivityaccept.SourceState),
 	}
 	for _, watermark := range checkpoint.SourceWatermarks {
 		state.Sources[watermark.Source] = &connectivityaccept.SourceState{
-			BootID:       watermark.BootID,
+			BootID: watermark.BootID,
+			Recent: append([]connectivityaccept.RecentDigest(nil),
+				watermark.Recent...),
 			LastSequence: watermark.LastSequence,
 			Gaps:         append([]connectivityaccept.GapRange(nil), watermark.Gaps...),
 			GapOverflow:  watermark.GapOverflow,
@@ -170,9 +182,12 @@ func SealFrom(
 		return Checkpoint{}, err
 	}
 	checkpoint := Checkpoint{
-		ID:                 id,
-		ConsumedFrom:       consumedFrom,
-		ConsumedTo:         output.Snapshot.ConsumedHostSequence,
+		ID:           id,
+		ConsumedFrom: consumedFrom,
+		// Bounded in folded positions, because that is what a replay reads
+		// back: an accepted-only range skips the events the reduction was
+		// given and could not arrive where it did.
+		ConsumedTo:         output.Snapshot.ConsumedFoldPosition,
 		SourceWatermarks:   output.Snapshot.Sources,
 		Policy:             output.Snapshot.Policy,
 		ReducerID:          connectivityreduce.ReducerID,
@@ -182,6 +197,10 @@ func SealFrom(
 		DiffDigest:         diffDigest,
 		ProposalsDigest:    proposalsDigest,
 		Snapshot:           output.Snapshot,
+	}
+	if wake != nil {
+		carried := *wake
+		checkpoint.Wake = &carried
 	}
 	if wake != nil {
 		carried := *wake
