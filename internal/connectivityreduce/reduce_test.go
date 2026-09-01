@@ -256,7 +256,12 @@ func TestReorderingOneSourceIsNotEquivalent(t *testing.T) {
 		break
 	}
 	if first < 0 || second < 0 {
-		t.Skip("no source owns two components in this build")
+		// The compiled safety envelope gives root.network two components, so
+		// this cannot be a property of the build without the envelope having
+		// changed. Skipping would leave the test named after order
+		// independence checking no order at all.
+		t.Fatal("no source owns two components; the fixture no longer " +
+			"exercises arrival order")
 	}
 
 	forward := newHarness(t)

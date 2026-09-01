@@ -93,7 +93,11 @@ func TestReplayRefusesADiscontinuousJournal(t *testing.T) {
 		t.Fatalf("append: %v", err)
 	}
 	before := chain.consumed
-	chain.next(connectivity.ComponentRelays, connectivity.ComponentTransports)
+	// Three records, so dropping the middle one leaves a hole. Two would be
+	// consecutive whichever pair survived, and the truncation half of this
+	// test would have nothing to remove.
+	chain.next(connectivity.ComponentRelays, connectivity.ComponentTransports,
+		connectivity.ComponentScopedRoutes)
 
 	resume, err := store.Resume()
 	if err != nil {
@@ -122,7 +126,9 @@ func TestReplayRefusesADiscontinuousJournal(t *testing.T) {
 	truncated := append([]connectivityjournal.Record(nil), records[0])
 	truncated = append(truncated, records[len(records)-1])
 	if truncated[1].HostSequence == truncated[0].HostSequence+1 {
-		t.Skip("the fixture produced no removable middle record")
+		// Skipping here would report the whole test as skipped while its
+		// first half had in fact run, which is how this half went unrun.
+		t.Fatal("the fixture produced no removable middle record")
 	}
 	result, err = Replay(ReplayInput{
 		Resume: resume, Records: truncated, Continuous: true,
