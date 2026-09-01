@@ -334,6 +334,18 @@ GOCACHE=/tmp/hexroute-postgres-go-cache \
     -run TestPostgresSleepProjectionSuppressesOnlyExplicitSleep \
     -count=1
 
+# The connectivity projection is the one cloud read model an operator reads
+# when they cannot reach the host, so a row rendered as current when it is not
+# is the one way telemetry could mislead them. The schema test is also the only
+# mechanized form of the claim that an address, a path or a digest is
+# unstorable here even if an encoder regressed.
+HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_MAINTENANCE_DSN="postgres://hexroute_test_maintenance@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+GOCACHE=/tmp/hexroute-postgres-go-cache \
+  go test ./internal/cloudconnectivity \
+    -run 'TestPostgresProjection(IsOrderedIdempotentAndStaleSafe|SchemaRefusesUnboundedTokens)' \
+    -count=1
+
 HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 HEXROUTE_TEST_POSTGRES_MAINTENANCE_DSN="postgres://hexroute_test_maintenance@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 GOCACHE=/tmp/hexroute-postgres-go-cache \
