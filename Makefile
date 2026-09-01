@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-connectivity-replay build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt fuzz ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-summary policy-qualification-arm-sleep postgres-test race secret-test shell-test shell-test-tools spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
+.PHONY: build build-archive-report build-connectivity-replay build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt fuzz ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-summary policy-qualification-arm-sleep postgres-test race secret-test shell-test shell-test-tools spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
 
 build:
 	go build ./cmd/...
@@ -18,6 +18,10 @@ build-observe-user:
 build-ctl:
 	mkdir -p bin
 	go build -o bin/hexroutectl ./cmd/hexroutectl
+
+build-archive-report:
+	mkdir -p bin
+	go build -o bin/hexroute-archive-report ./cmd/hexroute-archive-report
 
 build-connectivity-replay:
 	mkdir -p bin
@@ -130,6 +134,7 @@ shell-test: shell-test-tools build-observe-root build-observe-user build-policy-
 	tests/connectivity_documentation_test.sh
 	tests/postgres_coverage_test.sh
 	tests/connectivity_watch_launchd_test.sh
+	tests/archive_review_launchd_test.sh
 	tests/observe_user_launchd_test.sh
 	tests/provider_b_documentation_test.sh
 	tests/policy_cli_boundary_test.sh

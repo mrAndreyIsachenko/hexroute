@@ -471,6 +471,43 @@ func TestAnEmptyArchiveSaysSo(t *testing.T) {
 	}
 }
 
+// 4.3 — a reader holds a handle that cannot write. A review being careful not
+// to append is not the same as a review that could not.
+func TestAReaderCannotAppend(t *testing.T) {
+	root := t.TempDir()
+	writer := openArchive(t, root, newClock(), Options{})
+	if _, err := writer.Append(operational(1)); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	reader, err := OpenForReading(root)
+	if err != nil {
+		t.Fatalf("open for reading: %v", err)
+	}
+	if records := mustRecords(t, reader); len(records) != 1 {
+		t.Fatalf("a reader saw %d records, the archive holds 1", len(records))
+	}
+	if _, err := reader.Append(operational(2)); !errors.Is(err, ErrReadOnly) {
+		t.Fatalf("got %v, want %v", err, ErrReadOnly)
+	}
+	if records := mustRecords(t, reader); len(records) != 1 {
+		t.Fatal("a refused append still changed the archive")
+	}
+}
+
+// An archive that is not there is a fact a reader reports rather than one it
+// fixes. Creating it would turn a missing archive into an empty one, and those
+// are different answers.
+func TestAReaderDoesNotCreateAMissingArchive(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "absent")
+	if _, err := OpenForReading(missing); !errors.Is(err, ErrArchive) {
+		t.Fatalf("got %v, want %v", err, ErrArchive)
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Fatal("a reader created the archive it could not find")
+	}
+}
+
 // 1.6 — archiving and upload are independent, in both directions.
 //
 // The spool removes a record when telemetry acknowledges its event id. The

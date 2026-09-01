@@ -24,10 +24,10 @@
 
 ## 4. Report Command And Schedule
 
-- [ ] 4.1 Add a report command that writes a dated report for a requested window and nothing else.
-- [ ] 4.2 Add a weekly local schedule that owns its own interval, records the attempt before making it, and always exits successfully.
-- [ ] 4.3 Prove the review performs no network, credential, privileged or mutating operation, and that a failed review leaves the archive and every production path unchanged.
-- [ ] 4.4 Remove the schedule cleanly on request, scoped to the paths the review installed.
+- [x] 4.1 Add a report command that writes a dated report for a requested window and nothing else.
+- [x] 4.2 Add a weekly local schedule that owns its own interval, records the attempt before making it, and always exits successfully.
+- [x] 4.3 Prove the review performs no network, credential, privileged or mutating operation, and that a failed review leaves the archive and every production path unchanged.
+- [x] 4.4 Remove the schedule cleanly on request, scoped to the paths the review installed.
 
 ## 5. Verification And Documentation
 

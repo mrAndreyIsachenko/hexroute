@@ -58,6 +58,8 @@ var (
 	// ErrRecordTooLarge means one record cannot fit the configured bound at
 	// any occupancy.
 	ErrRecordTooLarge = errors.New("event exceeds the archive size bound")
+	// ErrReadOnly means the archive was opened for reading and cannot append.
+	ErrReadOnly = errors.New("event archive is open for reading only")
 )
 
 // Options configure one archive.
@@ -114,6 +116,11 @@ type Archive struct {
 	maxAge   time.Duration
 	clock    metadata.Clock
 	metadata *metadata.Generator
+	// readOnly marks an archive opened by a reader. A review must not be able
+	// to add to what it is reviewing, and the way to guarantee that is for the
+	// reader to hold a handle that cannot write rather than for it to be
+	// careful.
+	readOnly bool
 	// refused counts records no registered schema described. It is reported
 	// at each doubling rather than per refusal: a source emitting malformed
 	// records emits many, and one diagnostic each would let a broken producer
@@ -165,6 +172,25 @@ func Open(path string, options Options) (*Archive, error) {
 	return archive, nil
 }
 
+// OpenForReading prepares the archive without the identity an append needs.
+//
+// A reader has no node identity to number records with, and giving it one so
+// that Open would accept it would mean a review carried the means to write to
+// what it reviews. Nothing here creates the directory either: an archive that
+// does not exist is a fact a reader should be told, not one it should fix.
+func OpenForReading(path string) (*Archive, error) {
+	if !filepath.IsAbs(path) {
+		return nil, fmt.Errorf("%w: path must be absolute", ErrArchive)
+	}
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrArchive, err)
+	}
+	return &Archive{
+		path: path, maxBytes: DefaultMaxBytes, maxAge: DefaultMaxAge,
+		clock: metadata.NewSystemClock(), readOnly: true,
+	}, nil
+}
+
 // Append records one encoded event.
 //
 // The record must decode under a registered schema. Age eviction runs first and
@@ -173,6 +199,9 @@ func Open(path string, options Options) (*Archive, error) {
 // a durable overflow record, and an append that could only be satisfied by
 // dropping a critical record is refused instead.
 func (archive *Archive) Append(encoded []byte) (uint64, error) {
+	if archive.readOnly {
+		return 0, ErrReadOnly
+	}
 	decoded, err := event.Decode(encoded)
 	if err != nil {
 		// The caller is told, and so is the archive. A refusal only the
