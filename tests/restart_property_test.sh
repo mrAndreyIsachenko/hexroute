@@ -12,7 +12,7 @@ export GOCACHE="${GOCACHE:-${TMPDIR:-/tmp}/hexroute-go-cache}"
 # on the operator's own machine to find, because no test started twice.
 #
 # internal/restartguard holds the property. This census keeps its list honest:
-# a connectivity package that writes durable state and is named nowhere is a
+# a package in scope that writes durable state and is named nowhere is a
 # component that would arrive uncovered, which is exactly how the last four
 # arrived.
 #
@@ -27,6 +27,7 @@ covered=(
   connectivityhost
   connectivityqualification
   connectivitywatch
+  eventarchive
 )
 
 elsewhere=(
@@ -62,10 +63,15 @@ contains() {
 
 status=0
 
-# Every connectivity package that keeps durable state is covered or accounted
-# for. Writing to disk is the tell: a package that only reads cannot carry
-# anything across a restart.
-for directory in internal/connectivity*/; do
+# Every package in scope that keeps durable state is covered or accounted for.
+# Writing to disk is the tell: a package that only reads cannot carry anything
+# across a restart.
+#
+# The scope is the read model plus the local archive. It is a list rather than
+# the whole tree because the policy runtime's durable state was qualified under
+# a different change with its own evidence, and pulling it in here would claim
+# coverage this guard does not provide.
+for directory in internal/connectivity*/ internal/eventarchive/; do
   package="$(basename "$directory")"
   compgen -G "$directory*.go" >/dev/null || continue
   writes=0
@@ -132,5 +138,5 @@ done
 
 go test ./internal/restartguard/ >/dev/null
 
-printf 'ok: every connectivity package keeping durable state is restarted twice (%d covered, %d elsewhere)\n' \
+printf 'ok: every package in scope keeping durable state is restarted twice (%d covered, %d elsewhere)\n' \
   "${#covered[@]}" "${#elsewhere[@]}"

@@ -14,9 +14,9 @@
 // refused every write that followed it, forever, while reporting itself
 // healthy from outside.
 //
-// tests/restart_property_test.sh keeps this list honest: a connectivity
-// package that writes durable state and is named nowhere here fails that
-// census, so the next such component cannot arrive uncovered.
+// tests/restart_property_test.sh keeps this list honest: a package that writes
+// durable state and is named nowhere here fails that census, so the next such
+// component cannot arrive uncovered.
 package restartguard
 
 import "testing"
@@ -55,6 +55,7 @@ var components = []component{
 	{name: "connectivityhost.Recorder", open: openComparisonRecorder},
 	{name: "connectivityqualification.Recorder", open: openEvidenceChain},
 	{name: "connectivitywatch", open: openWatchMemory, keepsOnlyLatest: true},
+	{name: "eventarchive", open: openEventArchive},
 }
 
 func TestDurableStateSurvivesTwoRestarts(t *testing.T) {

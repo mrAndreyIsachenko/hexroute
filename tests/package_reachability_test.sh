@@ -45,6 +45,21 @@ unwired=(
   # that is what makes it a cutover rather than a connection.
   resumeexecutor
 
+  # eventarchive is the durable local retention the host does not have. It is
+  # complete and tested; what it lacks is a producer, and the reason is not a
+  # cutover.
+  #
+  # The host emits no typed event stream today. internal/telemetry, which owns
+  # upload and the acknowledgement that empties the spool, is reachable only
+  # from cmd/hexroute-ingest — the cloud side — and telemetry.NewUploader is
+  # called from tests and nowhere else. The one durable event producer on this
+  # machine is the connectivity journal, and it cannot gain a second sink while
+  # a qualification soak is measuring it.
+  #
+  # Connecting the archive to a stream that does not exist would make it
+  # reachable and still never run, which is the distinction this list is for.
+  eventarchive
+
   # policyadvisor turns repeated denials into an unsigned draft an operator
   # reviews by hand. It has no producer at all, and the evidence a producer
   # would read is not real yet: the reconciler shadow store this host runs is
@@ -120,6 +135,32 @@ for directory in internal/*/; do
   printf '  connect it to a cmd/, or record why it is unreachable\n' >&2
   status=1
 done
+
+# eventarchive's reason rests on no host binary reaching the upload path. If
+# one does, the host has a stream to archive and the entry above stops being
+# true.
+#
+# The host binaries are named rather than inferred. The first version of this
+# check asked about a cmd/ that does not exist, so go list failed, the failure
+# was discarded, and the check would have passed forever.
+host_binaries=(hexrouted hexroute-userd hexroutectl hexroute-sentinel)
+
+if contains eventarchive "${unwired[@]}"; then
+  for host in "${host_binaries[@]}"; do
+    [ -d "cmd/$host" ] || {
+      printf 'cmd/%s is named as a host binary and does not exist\n' "$host" >&2
+      status=1
+      continue
+    }
+    if go list -deps "./cmd/$host" \
+      | grep -qx "github.com/mrAndreyIsachenko/hexroute/internal/telemetry"; then
+      printf 'cmd/%s now reaches the upload path\n' "$host" >&2
+      printf '  eventarchive is unwired because the host emits no stream;\n' >&2
+      printf '  connect it now, or record what still blocks it\n' >&2
+      status=1
+    fi
+  done
+fi
 
 # policyadvisor's reason is the one entry here that rests on a fact elsewhere
 # in the tree rather than on the package's own absence. Facts drift, so it is
