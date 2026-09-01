@@ -471,7 +471,9 @@ func TestWatermarksCannotDisagreeWithTheSnapshot(t *testing.T) {
 	chain := newLineage(t)
 	checkpoint := chain.next(connectivity.ComponentDNS)
 	if len(checkpoint.SourceWatermarks) == 0 {
-		t.Skip("no watermarks in this fixture")
+		// Skipping would report this green while checking nothing, and
+		// watermarks are the entire subject of the test.
+		t.Fatal("the fixture produced no watermarks to disagree with")
 	}
 	altered := checkpoint
 	altered.SourceWatermarks = append(
