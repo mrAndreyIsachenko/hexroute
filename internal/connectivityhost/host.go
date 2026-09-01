@@ -28,6 +28,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityruntime"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityview"
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/eventarchive"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
@@ -147,6 +148,30 @@ type Reader struct {
 	rootJournal *connectivityjournal.Journal
 	userJournal *connectivityjournal.Journal
 	qualifier   *Qualifier
+
+	// archiveErr records that the retention archive would not open. It is
+	// held rather than returned so the read model still runs, and reported
+	// rather than swallowed so a host retaining nothing is not mistaken for a
+	// host with nothing to retain.
+	archiveErr error
+}
+
+// ArchiveUnavailable reports why no retention archive was opened, or nil.
+func (reader *Reader) ArchiveUnavailable() error {
+	if reader == nil {
+		return nil
+	}
+	return reader.archiveErr
+}
+
+// ArchiveMisses reports records the journals wrote that the archive did not
+// take. A mirror that quietly stopped keeping up would leave a retention store
+// that looks complete and is not.
+func (reader *Reader) ArchiveMisses() uint64 {
+	if reader == nil {
+		return 0
+	}
+	return reader.rootJournal.MirrorFailures() + reader.userJournal.MirrorFailures()
 }
 
 // Open builds the read model under the given root.
@@ -154,9 +179,19 @@ type Reader struct {
 // The preconditions are passed as claims rather than probed, matching the
 // runtime's own contract: enabling this is a decision someone recorded, not
 // something that happened because a check passed at startup.
+// Open prepares the read model.
+//
+// archiveRoot is where every journalled event is also kept by age and size,
+// for a review that has to answer about last week. It is separate from the
+// read-model root because the two are bounded for different reasons: the
+// journal is bounded so a lineage stays replayable, the archive so a host does
+// not fill its disk remembering. An empty archiveRoot keeps no archive, and a
+// host that cannot open one is told rather than stopped: losing the copy costs
+// a later review, and losing the read model costs the network.
 func Open(
 	root string,
 	bootID string,
+	archiveRoot string,
 ) (*Reader, error) {
 	if root == "" {
 		return nil, nil
@@ -185,15 +220,32 @@ func Open(
 	if err != nil {
 		return nil, fmt.Errorf("%w: checkpoints: %v", ErrStore, err)
 	}
+	var mirror connectivityjournal.Sink
+	var archiveErr error
+	if archiveRoot != "" {
+		archive, err := eventarchive.Open(archiveRoot, eventarchive.Options{
+			NodeID: nodeID, Clock: journalClock,
+		})
+		if err != nil {
+			// Recorded, not fatal. A host that stopped watching its own
+			// network because a retention store would not open would have
+			// traded the thing that matters for the thing that helps later.
+			archiveErr = err
+		} else {
+			mirror = archive
+		}
+	}
 	rootJournal, err := connectivityjournal.Open(
 		filepath.Join(root, "root"), policy.DomainRoot,
-		connectivityjournal.Options{NodeID: nodeID, Clock: journalClock})
+		connectivityjournal.Options{
+			NodeID: nodeID, Clock: journalClock, Mirror: mirror})
 	if err != nil {
 		return nil, fmt.Errorf("%w: root journal: %v", ErrStore, err)
 	}
 	userJournal, err := connectivityjournal.Open(
 		filepath.Join(root, "user"), policy.DomainUser,
-		connectivityjournal.Options{NodeID: nodeID, Clock: journalClock})
+		connectivityjournal.Options{
+			NodeID: nodeID, Clock: journalClock, Mirror: mirror})
 	if err != nil {
 		return nil, fmt.Errorf("%w: user journal: %v", ErrStore, err)
 	}
@@ -221,6 +273,7 @@ func Open(
 		return nil, err
 	}
 	reader := &Reader{
+		archiveErr:  archiveErr,
 		recorder:    recorder,
 		runtime:     runtime,
 		sources:     make(map[connectivity.SourceID]*connectivitycollect.Collector),

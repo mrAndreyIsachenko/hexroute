@@ -183,7 +183,15 @@ worth checking after this stage and nowhere else: that `user_access` leaves
 `unknown`, and that `awaiting_baseline` falls to zero once both domains have
 restated in full.
 
-**Stage three — the qualification observer.** `--connectivity-qualification
+**Stage three — durable retention.** `--connectivity-event-archive <root>`.
+Every event the journals take is also kept there by age and total size rather
+than by the journal's replay bound, so a review can answer about last week
+after the journal has evicted it. It changes nothing about what is observed or
+concluded, and an archive that will not open is reported and the read model
+carries on: losing the copy costs a later review, losing the read model costs
+the network.
+
+**Stage four — the qualification observer.** `--connectivity-qualification
 <chain>` and `--connectivity-qualification-session <uuid>`. This records
 evidence; it changes nothing about what is observed or concluded. The session
 identity is spliced in at install rather than committed, because a chain
@@ -216,6 +224,7 @@ is functioning, corrupt or wedged.
 ```
 sudo launchctl bootout system/com.hexroute.observe.hexrouted
 sudo /usr/libexec/PlistBuddy \
+  -c "Delete :ProgramArguments:15" -c "Delete :ProgramArguments:14" \
   -c "Delete :ProgramArguments:13" -c "Delete :ProgramArguments:12" \
   -c "Delete :ProgramArguments:11" -c "Delete :ProgramArguments:10" \
   -c "Delete :ProgramArguments:9" -c "Delete :ProgramArguments:8" \
@@ -225,10 +234,11 @@ sudo launchctl bootstrap system \
 ```
 
 The indices are deleted from the end so the earlier ones do not move: eight and
-nine are the read-model flag and its root, ten through thirteen the
-qualification chain and its session. A daemon installed without a session has
-only eight and nine, and the two extra deletions then fail harmlessly — but
-confirm what is there before running it rather than after:
+nine are the read-model flag and its root, ten and eleven the event archive,
+twelve through fifteen the qualification chain and its session. A daemon
+installed without a session has only eight through eleven, and the extra
+deletions then fail harmlessly — but confirm what is there before running it
+rather than after:
 
 ```
 /usr/libexec/PlistBuddy -c "Print :ProgramArguments" \

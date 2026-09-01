@@ -44,24 +44,29 @@ const (
 	// EventReconcilerShadowUnavailable reports that the shadow store could
 	// not be opened, so its status cannot be answered.
 	EventReconcilerShadowUnavailable EventName = "reconciler_shadow_unavailable"
-	EventObservationCycle            EventName = "observation_cycle"
-	EventIngressRoute                EventName = "ingress_route_proposed"
-	EventCorporateRoute              EventName = "corporate_route_proposed"
-	EventGitLabHTTPSRoute            EventName = "gitlab_https_route_proposed"
-	EventCodexRoute                  EventName = "codex_fallback_route_proposed"
-	EventPritunlReconnect            EventName = "pritunl_reconnect_proposed"
-	EventSentinelEvidence            EventName = "sentinel_restart_evidence"
-	EventLocalNotification           EventName = "local_notification"
-	EventCloudAPIStarted             EventName = "cloud_api_started"
-	EventCloudAPIStopped             EventName = "cloud_api_stopped"
-	EventCloudWorkerStarted          EventName = "cloud_worker_started"
-	EventCloudWorkerStopped          EventName = "cloud_worker_stopped"
-	EventCloudMigration              EventName = "cloud_migration"
-	EventCloudHeartbeat              EventName = "cloud_heartbeat"
-	EventCloudReconcile              EventName = "cloud_reconcile"
-	EventCloudAlertQueue             EventName = "cloud_alert_queue"
-	EventCloudAlertDelivery          EventName = "cloud_alert_delivery"
-	EventCloudRetention              EventName = "cloud_retention"
+	// EventEventArchiveUnavailable reports that the durable local archive
+	// would not open, so this host is retaining nothing it can review later.
+	// It is said out loud because a host retaining nothing looks exactly like
+	// a host with nothing to retain.
+	EventEventArchiveUnavailable EventName = "event_archive_unavailable"
+	EventObservationCycle        EventName = "observation_cycle"
+	EventIngressRoute            EventName = "ingress_route_proposed"
+	EventCorporateRoute          EventName = "corporate_route_proposed"
+	EventGitLabHTTPSRoute        EventName = "gitlab_https_route_proposed"
+	EventCodexRoute              EventName = "codex_fallback_route_proposed"
+	EventPritunlReconnect        EventName = "pritunl_reconnect_proposed"
+	EventSentinelEvidence        EventName = "sentinel_restart_evidence"
+	EventLocalNotification       EventName = "local_notification"
+	EventCloudAPIStarted         EventName = "cloud_api_started"
+	EventCloudAPIStopped         EventName = "cloud_api_stopped"
+	EventCloudWorkerStarted      EventName = "cloud_worker_started"
+	EventCloudWorkerStopped      EventName = "cloud_worker_stopped"
+	EventCloudMigration          EventName = "cloud_migration"
+	EventCloudHeartbeat          EventName = "cloud_heartbeat"
+	EventCloudReconcile          EventName = "cloud_reconcile"
+	EventCloudAlertQueue         EventName = "cloud_alert_queue"
+	EventCloudAlertDelivery      EventName = "cloud_alert_delivery"
+	EventCloudRetention          EventName = "cloud_retention"
 	// EventCloudConnectivity names the pass that folds uploaded connectivity
 	// projections into the cloud read model.
 	EventCloudConnectivity EventName = "cloud_connectivity_projection"
@@ -205,7 +210,7 @@ func validEvent(value EventName) bool {
 	switch value {
 	case EventCommandStatus, EventStartupCheck, EventVersionRequested, EventArgumentRejected, EventIPCRejected,
 		EventDaemonStarted, EventDaemonStopped, EventConnectivitySnapshot,
-		EventReconcilerShadowUnavailable,
+		EventReconcilerShadowUnavailable, EventEventArchiveUnavailable,
 		EventObservationCycle, EventIngressRoute,
 		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect,
 		EventSentinelEvidence, EventLocalNotification, EventCloudAPIStarted,

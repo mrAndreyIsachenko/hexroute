@@ -46,7 +46,7 @@ func newSoak(t *testing.T) *soak {
 		t.Skipf("no continuous clock: %v", err)
 	}
 	root := t.TempDir()
-	reader, err := Open(root, "boot-0000000000000000")
+	reader, err := Open(root, "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -390,7 +390,7 @@ func TestAChainFromAnotherSessionIsRefusedAtStartup(t *testing.T) {
 // The observer describes the soak. A reader without one has to behave exactly
 // as it did before it existed.
 func TestNoQualifierIsSilentAndHarmless(t *testing.T) {
-	reader, err := Open(t.TempDir(), "boot-0000000000000000")
+	reader, err := Open(t.TempDir(), "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestASleptHostDoesNotComeBackLookingFresh(t *testing.T) {
 // The run and the configuration check have to agree about it, or the check
 // stops being a check.
 func TestASessionWithNoChainIsRefusedRatherThanIgnored(t *testing.T) {
-	reader, err := Open(t.TempDir(), "boot-0000000000000000")
+	reader, err := Open(t.TempDir(), "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}

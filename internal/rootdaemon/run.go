@@ -64,6 +64,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		"connectivity-qualification", "", "soak qualification evidence chain root")
 	qualificationSession := flags.String(
 		"connectivity-qualification-session", "", "soak qualification session UUID")
+	// Off unless a root is given. The archive keeps what the journals write
+	// by age and size, so a review can answer about last week after the
+	// journal's own bound has evicted it.
+	eventArchiveRoot := flags.String(
+		"connectivity-event-archive", "", "durable local event archive root")
 
 	if err := flags.Parse(args); err != nil {
 		return rejected(errorLog, logging.ReasonInvalidFlags)
@@ -167,9 +172,24 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// Opened before the operator socket: the dispatcher needs the publisher,
 	// and a root that cannot receive user facts should fail at startup rather
 	// than accept publications it will drop.
-	reader, err := connectivityhost.Open(*readModelRoot, bootIdentity())
+	reader, err := connectivityhost.Open(
+		*readModelRoot, bootIdentity(), *eventArchiveRoot)
 	if err != nil {
 		return rejected(errorLog, logging.ReasonReadModelUnavailable)
+	}
+	// An archive that would not open costs a later review and nothing else,
+	// so it is said out loud and the daemon carries on. Saying nothing would
+	// leave a host retaining none of its events and looking exactly like one
+	// that had none to retain.
+	if archiveErr := reader.ArchiveUnavailable(); archiveErr != nil {
+		if err := infoLog.Emit(
+			logging.LevelWarn,
+			logging.EventEventArchiveUnavailable,
+			logging.ResultDegraded,
+			"",
+		); err != nil {
+			return 1
+		}
 	}
 	// A misconfigured chain is refused at startup rather than at the first
 	// sample. A soak that ran for hours and then turned out to have been
