@@ -6,7 +6,7 @@
 - [x] 1.4 Emit a durable overflow record naming the class of records dropped and the sequence range they covered, and refuse an append that could only be satisfied by silently discarding a critical record.
 - [ ] 1.5 Add crash-point tests at every write boundary, plus staged-file recovery, truncation, corrupted-record and bound-exhaustion cases.
 - [x] 1.6 Prove archiving and upload are independent in both directions: acknowledgement never evicts an archived record, and archiving never causes an upload.
-- [ ] 1.7 Connect the archive to a producer. Nothing writes to it today, and nothing can: the host emits no typed event stream, because `internal/telemetry` — which owns upload and the acknowledgement that empties the spool — is reachable only from `cmd/hexroute-ingest`, and `telemetry.NewUploader` is called from tests and nowhere else. The one durable event producer on this machine is the connectivity journal, and it cannot gain a second sink while the qualification soak is measuring it. Until this lands the archive is reachable from no binary and the reachability census reports it as such.
+- [x] 1.7 Connect the archive to a producer. The journal mirrors every record it writes into the archive, so "everything journalled is retained" holds by construction rather than by two call sites agreeing to encode a fact the same way. A mirror that fails is counted and reported and never fails the journal, and an archive that will not open is reported and never stops the read model. Enabled by `--connectivity-event-archive` on the root daemon; absent, the daemon runs the path it ran before.
 
 ## 2. Read And Aggregation
 

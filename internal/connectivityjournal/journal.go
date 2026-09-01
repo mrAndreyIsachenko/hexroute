@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
 	"github.com/mrAndreyIsachenko/hexroute/internal/event"
@@ -34,6 +35,22 @@ type Options struct {
 	MaxBytes int64
 	NodeID   metadata.UUID
 	Clock    metadata.Clock
+	// Mirror receives a copy of every record the journal writes.
+	//
+	// It is here rather than at the call site so that "everything journaled is
+	// also retained" is true by construction. Two places agreeing to encode
+	// the same fact the same way is an agreement that eventually stops
+	// holding, and the copy would then silently describe something else.
+	Mirror Sink
+}
+
+// Sink receives records the journal wrote, for durable local retention.
+//
+// It is not evidence. The journal is what the lineage is replayed from, and a
+// sink that fails costs a copy rather than a write — so a failure here is
+// counted and reported, never returned.
+type Sink interface {
+	Append(encoded []byte) (uint64, error)
 }
 
 // Journal is one domain's connectivity fact store.
@@ -43,6 +60,22 @@ type Journal struct {
 	// superseded records that this journal began because the one on disk was
 	// written in a format this build does not speak.
 	superseded bool
+
+	mirror         Sink
+	mirrorMu       sync.Mutex
+	mirrorFailures uint64
+}
+
+// MirrorFailures reports how many records the journal wrote and the sink did
+// not take. It is exposed because a mirror that quietly stopped keeping up
+// would leave a retention store that looks complete and is not.
+func (journal *Journal) MirrorFailures() uint64 {
+	if journal == nil {
+		return 0
+	}
+	journal.mirrorMu.Lock()
+	defer journal.mirrorMu.Unlock()
+	return journal.mirrorFailures
 }
 
 // Superseded reports whether opening this journal set an unreadable one aside.
@@ -120,7 +153,8 @@ func Open(path string, domain policy.Domain, options Options) (*Journal, error) 
 		[]byte(RecordFormat+"\n"), 0o600); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrCorruptRecord, err)
 	}
-	return &Journal{spool: store, domain: domain, superseded: superseded}, nil
+	return &Journal{spool: store, domain: domain, superseded: superseded,
+		mirror: options.Mirror}, nil
 }
 
 // supersedeForeignFormat moves aside a journal whose records this build cannot
@@ -210,8 +244,24 @@ func (journal *Journal) Append(
 	if err != nil {
 		return err
 	}
-	_, err = journal.spool.Append(encoded)
-	return err
+	if _, err := journal.spool.Append(encoded); err != nil {
+		return err
+	}
+	journal.mirrorRecord(encoded)
+	return nil
+}
+
+// mirrorRecord copies a written record to the sink. The journal has already
+// succeeded by this point, so nothing here may fail the append.
+func (journal *Journal) mirrorRecord(encoded []byte) {
+	if journal.mirror == nil {
+		return
+	}
+	if _, err := journal.mirror.Append(encoded); err != nil {
+		journal.mirrorMu.Lock()
+		journal.mirrorFailures++
+		journal.mirrorMu.Unlock()
+	}
 }
 
 // Records returns every retained event in the order it was folded.

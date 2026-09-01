@@ -16,6 +16,8 @@
 		<string>/var/run/hexroute-observe/hexrouted.sock</string>
 		<string>--connectivity-read-model</string>
 		<string>/Library/Application Support/Hexroute/observe-root/state/connectivity</string>
+		<string>--connectivity-event-archive</string>
+		<string>/Library/Application Support/Hexroute/observe-root/state/event-archive</string>
 	</array>
 	<key>WorkingDirectory</key>
 	<string>/Library/Application Support/Hexroute/observe-root/state</string>

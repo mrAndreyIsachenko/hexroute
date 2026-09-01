@@ -2,6 +2,8 @@ package connectivityhost
 
 import (
 	"errors"
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
+	"github.com/mrAndreyIsachenko/hexroute/internal/eventarchive"
 	"io"
 	"net/netip"
 	"os"
@@ -34,7 +36,7 @@ func reachedEvidence() Evidence {
 }
 
 func TestReaderTurnsOneCycleIntoASnapshot(t *testing.T) {
-	reader, err := Open(t.TempDir(), "boot-0000000000000000")
+	reader, err := Open(t.TempDir(), "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -55,7 +57,7 @@ func TestReaderTurnsOneCycleIntoASnapshot(t *testing.T) {
 // means it stops there. The read model must still describe what was seen
 // rather than refusing the whole publication.
 func TestEarlyReturningCycleStillProducesASnapshot(t *testing.T) {
-	reader, err := Open(t.TempDir(), "boot-0000000000000000")
+	reader, err := Open(t.TempDir(), "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -94,7 +96,7 @@ var errNoManagedTUN = errors.New("no managed TUN")
 // nothing and described nothing, on a host where it had been working.
 func TestALineageItCannotProveDoesNotWedgeTheReadModel(t *testing.T) {
 	root := t.TempDir()
-	reader, err := Open(root, "boot-0000000000000000")
+	reader, err := Open(root, "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -126,7 +128,7 @@ func TestALineageItCannotProveDoesNotWedgeTheReadModel(t *testing.T) {
 		}
 	}
 
-	restarted, err := Open(root, "boot-0000000000000000")
+	restarted, err := Open(root, "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("restart: %v", err)
 	}
@@ -191,7 +193,7 @@ func TestALostLineageDoesNotReissueSequencesTheJournalsHold(t *testing.T) {
 	if err != nil {
 		t.Skipf("no continuous clock: %v", err)
 	}
-	reader, err := Open(root, "boot-0000000000000000")
+	reader, err := Open(root, "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -207,7 +209,7 @@ func TestALostLineageDoesNotReissueSequencesTheJournalsHold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restarted, err := Open(root, "boot-0000000000000000")
+	restarted, err := Open(root, "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("restart refused: %v", err)
 	}
@@ -224,7 +226,7 @@ func TestALostLineageDoesNotReissueSequencesTheJournalsHold(t *testing.T) {
 	// the difference between a working read model and one that never comes
 	// back.
 	for restart := 0; restart < 3; restart++ {
-		again, err := Open(root, "boot-0000000000000000")
+		again, err := Open(root, "boot-0000000000000000", "")
 		if err != nil {
 			t.Fatalf("restart %d refuses to start: %v", restart+2, err)
 		}
@@ -272,7 +274,7 @@ func TestALostPointerDoesNotStopTheReadModelStoring(t *testing.T) {
 			if err != nil {
 				t.Skipf("no continuous clock: %v", err)
 			}
-			reader, err := Open(root, "boot-0000000000000000")
+			reader, err := Open(root, "boot-0000000000000000", "")
 			if err != nil {
 				t.Fatalf("open: %v", err)
 			}
@@ -285,7 +287,7 @@ func TestALostPointerDoesNotStopTheReadModelStoring(t *testing.T) {
 			}
 			testCase.spoil(t, filepath.Join(root, "readmodel", "latest.json"))
 
-			restarted, err := Open(root, "boot-0000000000000000")
+			restarted, err := Open(root, "boot-0000000000000000", "")
 			if err != nil {
 				t.Fatalf("restart refused: %v", err)
 			}
@@ -317,7 +319,7 @@ func TestALostPointerDoesNotStopTheReadModelStoring(t *testing.T) {
 func TestRolledBackReadModelTouchesNothing(t *testing.T) {
 	root := t.TempDir()
 
-	reader, err := Open("", "boot-0000000000000000")
+	reader, err := Open("", "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("a reader with no root refused instead of standing aside: %v", err)
 	}
@@ -425,7 +427,7 @@ func TestAReadModelStartsOnJournalsFromAnOlderBuild(t *testing.T) {
 	if err != nil {
 		t.Skipf("no continuous clock: %v", err)
 	}
-	reader, err := Open(root, "boot-0000000000000000")
+	reader, err := Open(root, "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -444,7 +446,7 @@ func TestAReadModelStartsOnJournalsFromAnOlderBuild(t *testing.T) {
 		}
 	}
 
-	restarted, err := Open(root, "boot-0000000000000000")
+	restarted, err := Open(root, "boot-0000000000000000", "")
 	if err != nil {
 		t.Fatalf("the read model refused to start on older journals: %v", err)
 	}
@@ -458,5 +460,95 @@ func TestAReadModelStartsOnJournalsFromAnOlderBuild(t *testing.T) {
 	// The records are kept, not destroyed.
 	if _, err := os.Stat(filepath.Join(root, "root.superseded")); err != nil {
 		t.Fatalf("the superseded journal was not kept: %v", err)
+	}
+}
+
+// The archive is the host's answer to a question the journals cannot answer:
+// what happened last week. It is filled by the same write the journals take,
+// so a cycle that produced a snapshot has to leave records behind in it.
+func TestAnObservedCycleReachesTheArchive(t *testing.T) {
+	root := t.TempDir()
+	archiveRoot := filepath.Join(t.TempDir(), "event-archive")
+
+	reader, err := Open(root, "boot-0000000000000000", archiveRoot)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if unavailable := reader.ArchiveUnavailable(); unavailable != nil {
+		t.Fatalf("the archive would not open: %v", unavailable)
+	}
+	if _, _, err := reader.Observe(
+		reachedEvidence(), connectivityreduce.PolicyDescriptor{}, 1000); err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+
+	archive, err := eventarchive.OpenForReading(archiveRoot)
+	if err != nil {
+		t.Fatalf("open archive: %v", err)
+	}
+	records, err := archive.Records()
+	if err != nil {
+		t.Fatalf("archive records: %v", err)
+	}
+	if len(records) == 0 {
+		t.Fatal("a cycle produced a snapshot and the archive holds nothing")
+	}
+	if misses := reader.ArchiveMisses(); misses != 0 {
+		t.Fatalf("%d records the journals wrote never reached the archive", misses)
+	}
+	// What is archived has to be the event, decodable on its own, or a review
+	// a month from now has bytes rather than evidence.
+	for _, record := range records {
+		if _, err := event.Decode(record.Event); err != nil {
+			t.Fatalf("an archived record does not decode: %v", err)
+		}
+	}
+}
+
+// Without a root there is no archive, and nothing is created anywhere. The
+// read model runs exactly the path it ran before retention existed.
+func TestNoArchiveRootKeepsNoArchive(t *testing.T) {
+	root := t.TempDir()
+	reader, err := Open(root, "boot-0000000000000000", "")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, _, err := reader.Observe(
+		reachedEvidence(), connectivityreduce.PolicyDescriptor{}, 1000); err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	if unavailable := reader.ArchiveUnavailable(); unavailable != nil {
+		t.Fatalf("no archive was asked for and one was reported: %v", unavailable)
+	}
+	if misses := reader.ArchiveMisses(); misses != 0 {
+		t.Fatalf("no archive was asked for and %d misses were counted", misses)
+	}
+}
+
+// An archive that cannot be opened costs a later review and nothing else. A
+// host that stopped watching its own network because a retention store would
+// not open would have traded the thing that matters for the thing that helps
+// afterwards.
+func TestAnUnopenableArchiveDoesNotStopTheReadModel(t *testing.T) {
+	blocked := filepath.Join(t.TempDir(), "occupied")
+	if err := os.WriteFile(blocked, []byte("not a directory"), 0o600); err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	reader, err := Open(t.TempDir(), "boot-0000000000000000",
+		filepath.Join(blocked, "archive"))
+	if err != nil {
+		t.Fatalf("an unopenable archive stopped the read model: %v", err)
+	}
+	if reader.ArchiveUnavailable() == nil {
+		t.Fatal("an archive that would not open was not reported")
+	}
+	status, _, err := reader.Observe(
+		reachedEvidence(), connectivityreduce.PolicyDescriptor{}, 1000)
+	if err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	if status.SnapshotGeneration == 0 {
+		t.Fatal("the read model produced nothing without an archive")
 	}
 }

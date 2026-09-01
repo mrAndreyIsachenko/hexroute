@@ -299,3 +299,91 @@ func TestASecondSupersessionRefusesRatherThanOverwrite(t *testing.T) {
 		t.Fatal("a second supersession overwrote the first")
 	}
 }
+
+// countingSink stands for the retention archive. Failing on demand is the
+// point: the journal is evidence and the archive is a convenience, and the
+// convenience must never be able to cost the evidence.
+type countingSink struct {
+	taken   [][]byte
+	failing bool
+}
+
+func (sink *countingSink) Append(encoded []byte) (uint64, error) {
+	if sink.failing {
+		return 0, errors.New("sink is unavailable")
+	}
+	held := make([]byte, len(encoded))
+	copy(held, encoded)
+	sink.taken = append(sink.taken, held)
+	return uint64(len(sink.taken)), nil
+}
+
+// Everything the journal writes reaches the mirror. Holding this in the
+// journal rather than at the call site is what makes it true by construction:
+// two places agreeing to encode the same fact the same way is an agreement
+// that eventually stops holding.
+func TestTheMirrorReceivesEveryRecordTheJournalWrites(t *testing.T) {
+	sink := &countingSink{}
+	journal, err := Open(filepath.Join(t.TempDir(), "root"), policy.DomainRoot,
+		Options{NodeID: testNodeID, Clock: &advancingClock{}, Mirror: sink})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	facts := []connectivity.Fact{
+		connectivity.FixtureBaseline(connectivity.ComponentDNS, 1),
+		connectivity.FixtureBaseline(connectivity.ComponentRelays, 1),
+		connectivity.FixtureBaseline(connectivity.ComponentTransports, 1),
+	}
+	for index, fact := range facts {
+		if err := journal.Append(fact, uint64(index+1), uint64(index+1),
+			"accepted", safety.RoleAuthoritative); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	records, err := journal.Records()
+	if err != nil {
+		t.Fatalf("records: %v", err)
+	}
+	if len(sink.taken) != len(records) {
+		t.Fatalf("the journal holds %d records and the mirror took %d",
+			len(records), len(sink.taken))
+	}
+	if journal.MirrorFailures() != 0 {
+		t.Fatalf("%d records were reported missed", journal.MirrorFailures())
+	}
+	// What the mirror took has to be the record, not a description of it.
+	for _, encoded := range sink.taken {
+		if _, err := event.Decode(encoded); err != nil {
+			t.Fatalf("the mirror was handed something undecodable: %v", err)
+		}
+	}
+}
+
+// A mirror that fails costs a copy and never a write. The journal is what the
+// lineage replays from, and a full disk under the archive must not be able to
+// stop the host recording what it observed.
+func TestAFailingMirrorIsCountedAndNeverFailsTheJournal(t *testing.T) {
+	sink := &countingSink{failing: true}
+	journal, err := Open(filepath.Join(t.TempDir(), "root"), policy.DomainRoot,
+		Options{NodeID: testNodeID, Clock: &advancingClock{}, Mirror: sink})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	for index := 1; index <= 3; index++ {
+		fact := connectivity.FixtureBaseline(connectivity.ComponentDNS, uint64(index))
+		if err := journal.Append(fact, uint64(index), uint64(index),
+			"accepted", safety.RoleAuthoritative); err != nil {
+			t.Fatalf("a failing mirror failed the journal: %v", err)
+		}
+	}
+	records, err := journal.Records()
+	if err != nil {
+		t.Fatalf("records: %v", err)
+	}
+	if len(records) != 3 {
+		t.Fatalf("the journal holds %d records, wrote 3", len(records))
+	}
+	if journal.MirrorFailures() != 3 {
+		t.Fatalf("reported %d misses, want 3", journal.MirrorFailures())
+	}
+}
