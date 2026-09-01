@@ -13,6 +13,9 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityjournal"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityqualification"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivitywatch"
+	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
+	"github.com/mrAndreyIsachenko/hexroute/internal/eventarchive"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
@@ -72,6 +75,58 @@ func openJournal(tb testing.TB, root string) session {
 			return held
 		},
 		position: watermark,
+	}
+}
+
+// openEventArchive starts a process over the durable local event archive.
+//
+// Its sequence has to continue across the restart: an archive that numbered
+// from its own beginning would put two different events at one position, and
+// the window it reports would name a range it does not hold.
+func openEventArchive(tb testing.TB, root string) session {
+	tb.Helper()
+	archive, err := eventarchive.Open(filepath.Join(root, "archive"),
+		eventarchive.Options{NodeID: guardNodeID, Clock: metadata.NewSystemClock()})
+	if err != nil {
+		tb.Fatalf("open archive: %v", err)
+	}
+	return session{
+		write: func(tb testing.TB) string {
+			tb.Helper()
+			encoded, err := event.Encode(event.SchemaObservation, event.Observation{
+				Component: control.ComponentNetwork,
+				Health:    control.HealthReady,
+				Reason:    control.ReasonProbeSucceeded,
+			})
+			if err != nil {
+				tb.Fatalf("encode: %v", err)
+			}
+			sequence, err := archive.Append(encoded)
+			if err != nil {
+				tb.Fatalf("archive append: %v", err)
+			}
+			return strconv.FormatUint(sequence, 10)
+		},
+		seen: func(tb testing.TB) []string {
+			tb.Helper()
+			records, err := archive.Records()
+			if err != nil {
+				tb.Fatalf("archive records: %v", err)
+			}
+			held := make([]string, 0, len(records))
+			for _, record := range records {
+				held = append(held, strconv.FormatUint(record.Sequence, 10))
+			}
+			return held
+		},
+		position: func(tb testing.TB) uint64 {
+			tb.Helper()
+			window, err := archive.Window()
+			if err != nil {
+				tb.Fatalf("archive window: %v", err)
+			}
+			return window.Last
+		},
 	}
 }
 

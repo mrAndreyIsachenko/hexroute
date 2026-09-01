@@ -40,6 +40,10 @@ const (
 	// The projection is what leaves the host. It is operational rather than
 	// critical: losing one costs a sample, not evidence.
 	SchemaConnectivityProjection Schema = "connectivity.projection"
+	// An overflow says the local archive dropped something and what. It is
+	// critical because it is the only record of an absence: evicting it would
+	// make a bounded archive indistinguishable from one that was never full.
+	SchemaArchiveOverflow Schema = "archive.overflow"
 )
 
 type Priority string
@@ -179,7 +183,41 @@ const (
 	DiagnosticRetryScheduled            DiagnosticCode = "retry_scheduled"
 	DiagnosticTelemetryGapUnrecoverable DiagnosticCode = "telemetry_gap_unrecoverable"
 	DiagnosticUploadDeferred            DiagnosticCode = "upload_deferred"
+	// DiagnosticArchiveRefusedRecord says the local archive was offered
+	// something no registered schema describes. It carries a count because a
+	// source producing one malformed record usually produces many, and a
+	// diagnostic per refusal would let the failure evict the evidence.
+	DiagnosticArchiveRefusedRecord DiagnosticCode = "archive_refused_record"
 )
+
+// ArchiveOverflowReason says which bound removed the records.
+type ArchiveOverflowReason string
+
+const (
+	// ArchiveOverflowSize is eviction to stay inside the configured size.
+	ArchiveOverflowSize ArchiveOverflowReason = "size"
+	// ArchiveOverflowAge is eviction of records outside the configured window.
+	ArchiveOverflowAge ArchiveOverflowReason = "age"
+	// ArchiveOverflowRefused is an append refused because the only records
+	// left to evict were critical. Nothing was dropped; something was not
+	// accepted, and the two are different answers to the same bound.
+	ArchiveOverflowRefused ArchiveOverflowReason = "refused"
+)
+
+// ArchiveOverflow names what the local archive dropped and where it sat.
+//
+// The sequence range is what makes the absence legible afterwards: a reader
+// who finds records 100 and 140 has no way to tell an idle hour from an
+// eviction without a record saying 101 through 139 were removed.
+type ArchiveOverflow struct {
+	Reason ArchiveOverflowReason `json:"reason"`
+	// Dropped is the priority class removed, or the class refused when the
+	// reason is refusal.
+	Dropped       Priority `json:"dropped_priority"`
+	FirstSequence uint64   `json:"first_sequence"`
+	LastSequence  uint64   `json:"last_sequence"`
+	Count         uint32   `json:"count"`
+}
 
 type Diagnostic struct {
 	Component  control.Component `json:"component"`
@@ -236,7 +274,8 @@ func DefinitionFor(schema Schema) (Definition, bool) {
 	case SchemaDiagnostic:
 		priority = PriorityDiagnostic
 	case SchemaTransition, SchemaAction, SchemaIncident, SchemaDeployment,
-		SchemaConfigVersion, SchemaSleep, SchemaPolicy, SchemaConnectivityBaseline:
+		SchemaConfigVersion, SchemaSleep, SchemaPolicy, SchemaConnectivityBaseline,
+		SchemaArchiveOverflow:
 		priority = PriorityCritical
 	default:
 		return Definition{}, false
@@ -358,6 +397,8 @@ func newPayload(schema Schema) any {
 		return &PolicyLifecycle{}
 	case SchemaConnectivityBaseline, SchemaConnectivityObservation:
 		return &ConnectivityFact{}
+	case SchemaArchiveOverflow:
+		return &ArchiveOverflow{}
 	case SchemaConnectivityProjection:
 		return &ConnectivityProjection{}
 	default:
@@ -414,6 +455,11 @@ func validatePayload(schema Schema, payload any) error {
 	case SchemaDiagnostic:
 		value, ok := asDiagnostic(payload)
 		if !ok || !validComponent(value.Component) || !validDiagnosticCode(value.Code) {
+			return ErrInvalidField
+		}
+	case SchemaArchiveOverflow:
+		value, ok := asArchiveOverflow(payload)
+		if !ok || !validArchiveOverflow(value) {
 			return ErrInvalidField
 		}
 	case SchemaSleep:
@@ -576,7 +622,8 @@ func validConfigStatus(value ConfigStatus) bool {
 func validDiagnosticCode(value DiagnosticCode) bool {
 	switch value {
 	case DiagnosticAdapterSampled, DiagnosticRetryScheduled,
-		DiagnosticTelemetryGapUnrecoverable, DiagnosticUploadDeferred:
+		DiagnosticTelemetryGapUnrecoverable, DiagnosticUploadDeferred,
+		DiagnosticArchiveRefusedRecord:
 		return true
 	default:
 		return false
@@ -683,6 +730,38 @@ func asPolicyLifecycle(payload any) (PolicyLifecycle, bool) {
 		}
 	}
 	return PolicyLifecycle{}, false
+}
+
+func asArchiveOverflow(payload any) (ArchiveOverflow, bool) {
+	switch value := payload.(type) {
+	case ArchiveOverflow:
+		return value, true
+	case *ArchiveOverflow:
+		if value != nil {
+			return *value, true
+		}
+	}
+	return ArchiveOverflow{}, false
+}
+
+// A refusal covers no range: nothing was removed, so naming one would claim
+// records had been dropped that are still there.
+func validArchiveOverflow(value ArchiveOverflow) bool {
+	switch value.Dropped {
+	case PriorityCritical, PriorityOperational, PriorityDiagnostic:
+	default:
+		return false
+	}
+	switch value.Reason {
+	case ArchiveOverflowSize, ArchiveOverflowAge:
+		return value.Count > 0 && value.FirstSequence > 0 &&
+			value.LastSequence >= value.FirstSequence &&
+			uint64(value.Count) <= value.LastSequence-value.FirstSequence+1
+	case ArchiveOverflowRefused:
+		return value.Count == 0 && value.FirstSequence == 0 && value.LastSequence == 0
+	default:
+		return false
+	}
 }
 
 func asDiagnostic(payload any) (Diagnostic, bool) {

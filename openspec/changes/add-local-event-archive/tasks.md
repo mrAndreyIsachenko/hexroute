@@ -1,11 +1,12 @@
 ## 1. Archive Store
 
-- [ ] 1.1 Add an append-only local archive keyed by a monotonic sequence, using the existing staged-write, file-sync, atomic-rename and directory-sync discipline.
-- [ ] 1.2 Accept only records that decode under a registered event schema; refuse anything else and record the refusal as a bounded diagnostic rather than dropping it.
-- [ ] 1.3 Enforce a configured maximum age and maximum total size, evicting lower priorities first for size and ignoring priority for age.
-- [ ] 1.4 Emit a durable overflow record naming the class of records dropped and the sequence range they covered, and refuse an append that could only be satisfied by silently discarding a critical record.
+- [x] 1.1 Add an append-only local archive keyed by a monotonic sequence, using the existing staged-write, file-sync, atomic-rename and directory-sync discipline.
+- [x] 1.2 Accept only records that decode under a registered event schema; refuse anything else and record the refusal as a bounded diagnostic rather than dropping it.
+- [x] 1.3 Enforce a configured maximum age and maximum total size, evicting lower priorities first for size and ignoring priority for age.
+- [x] 1.4 Emit a durable overflow record naming the class of records dropped and the sequence range they covered, and refuse an append that could only be satisfied by silently discarding a critical record.
 - [ ] 1.5 Add crash-point tests at every write boundary, plus staged-file recovery, truncation, corrupted-record and bound-exhaustion cases.
-- [ ] 1.6 Prove archiving and upload are independent in both directions: acknowledgement never evicts an archived record, and archiving never causes an upload.
+- [x] 1.6 Prove archiving and upload are independent in both directions: acknowledgement never evicts an archived record, and archiving never causes an upload.
+- [ ] 1.7 Connect the archive to a producer. Nothing writes to it today, and nothing can: the host emits no typed event stream, because `internal/telemetry` — which owns upload and the acknowledgement that empties the spool — is reachable only from `cmd/hexroute-ingest`, and `telemetry.NewUploader` is called from tests and nowhere else. The one durable event producer on this machine is the connectivity journal, and it cannot gain a second sink while the qualification soak is measuring it. Until this lands the archive is reachable from no binary and the reachability census reports it as such.
 
 ## 2. Read And Aggregation
 
