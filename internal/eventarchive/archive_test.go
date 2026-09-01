@@ -478,17 +478,25 @@ func TestAnEmptyArchiveSaysSo(t *testing.T) {
 // nothing happen would only prove the door was shut today.
 func TestTheArchiveOffersNoWayToRemoveARecord(t *testing.T) {
 	surface := reflect.TypeOf(&Archive{})
+	// One door in, three ways to look, and nothing that takes a record out.
+	// The list is exhaustive rather than a pattern: a removal named something
+	// innocuous would pass any pattern I could write, and this fails on the
+	// method appearing at all.
 	allowed := map[string]struct{}{
-		"Append": {}, "Records": {}, "Window": {}, "Size": {},
+		"Append":  {},
+		"Read":    {},
+		"Records": {},
+		"Window":  {},
+		"Size":    {},
 	}
 	for index := 0; index < surface.NumMethod(); index++ {
 		name := surface.Method(index).Name
 		if _, ok := allowed[name]; ok {
 			continue
 		}
-		t.Fatalf("%s is exported and is not one of the four the archive is "+
-			"allowed to have; retention here is age and size, and a fifth "+
-			"door is how upload state gets back in", name)
+		t.Fatalf("%s is exported and is not one of the methods the archive is "+
+			"allowed to have; retention here is age and size only, and a way "+
+			"to take a record out is how upload state gets back in", name)
 	}
 }
 
