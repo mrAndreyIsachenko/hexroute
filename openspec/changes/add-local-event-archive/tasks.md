@@ -10,10 +10,10 @@
 
 ## 2. Read And Aggregation
 
-- [ ] 2.1 Add a bounded read API over a requested window that reports the window actually covered, including the empty case.
-- [ ] 2.2 Add deterministic aggregation over a window: counts by schema and component, observed transition sequences, and a rarity ranking with a documented tie-break.
-- [ ] 2.3 Add a report value with a canonical encoding and digest so two runs over one archive are comparable byte for byte.
-- [ ] 2.4 Add tests proving equal archives yield equal reports, a shortened window is reported as shortened, and an empty window is never rendered as a quiet healthy one.
+- [x] 2.1 Add a bounded read API over a requested window that reports the window actually covered, including the empty case.
+- [x] 2.2 Add deterministic aggregation over a window: counts by schema and component, observed transition sequences, and a rarity ranking with a documented tie-break.
+- [x] 2.3 Add a report value with a canonical encoding and digest so two runs over one archive are comparable byte for byte.
+- [x] 2.4 Add tests proving equal archives yield equal reports, a shortened window is reported as shortened, and an empty window is never rendered as a quiet healthy one.
 
 ## 3. Optional Model Commentary
 
