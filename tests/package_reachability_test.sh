@@ -64,12 +64,32 @@ contains() {
   return 1
 }
 
-linked="$(for binary in cmd/*/; do
-  go list -deps "./$binary" 2>/dev/null
-done | grep "hexroute/internal/" | sort -u)"
+# A failure here must not be answered with a conclusion about the product.
+#
+# Discarding one binary's stderr and carrying on produces exactly the packages
+# that binary alone reaches, reported as unreachable — which is how a transient
+# `go list` failure on a runner once accused internal/connectivitywatch of
+# being in no binary while cmd/hexroute-connectivity-watch imported it. A tool
+# that could not answer is a different thing from an answer, and only one of
+# them is worth failing a build over.
+resolved=""
+for binary in cmd/*/; do
+  if ! output="$(go list -deps "./$binary" 2>&1)"; then
+    printf 'go list could not resolve %s, so reachability is unknown\n' \
+      "$binary" >&2
+    printf 'this is a failure to compute the answer, not a finding about any package\n' >&2
+    printf '%s\n' "$output" >&2
+    exit 1
+  fi
+  resolved="$resolved$output
+"
+done
+
+linked="$(printf '%s' "$resolved" | grep "hexroute/internal/" | sort -u)"
 
 if [ -z "$linked" ]; then
-  printf 'could not resolve binary dependencies\n' >&2
+  printf 'go list resolved every binary and named no internal package\n' >&2
+  printf 'this is a broken query, not a repository without internal packages\n' >&2
   exit 1
 fi
 
