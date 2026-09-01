@@ -36,8 +36,23 @@ unwired=(
   # Local capabilities held behind their own cutover gates.
   credentials     # opaque Keychain handles, for the user-domain cutover
   pritunlrescue   # typed rescue contract, for the OTP-watchdog cutover
-  resumeexecutor  # operator resume enforcement
-  policyadvisor   # redacted policy observability
+
+  # resumeexecutor is not merely unconnected: the seam is complete. It already
+  # satisfies operator.ResumePolicyExecutor, and the only thing missing is the
+  # call that installs it — which also sets enforceResume, moving every
+  # operator resume off the pre-enforcement path and onto this one. Wiring it
+  # is a behaviour change for resume as a whole, not an added capability, and
+  # that is what makes it a cutover rather than a connection.
+  resumeexecutor
+
+  # policyadvisor turns repeated denials into an unsigned draft an operator
+  # reviews by hand. It has no producer at all, and the evidence a producer
+  # would read is not real yet: the reconciler shadow store this host runs is
+  # declared synthetic-only, so a draft built from it would be a suggestion
+  # derived from nothing that happened. Connecting it before that changes
+  # would be motion without effect, which is the one thing this list exists to
+  # keep from being mistaken for progress.
+  policyadvisor
 )
 
 contains() {
@@ -86,6 +101,20 @@ for directory in internal/*/; do
   status=1
 done
 
+# policyadvisor's reason is the one entry here that rests on a fact elsewhere
+# in the tree rather than on the package's own absence. Facts drift, so it is
+# checked: when the shadow store stops being synthetic, the advisor's evidence
+# becomes real and the entry above stops being true.
+if contains policyadvisor "${unwired[@]}"; then
+  if ! grep -q "synthetic-only and exports no execution path" \
+    internal/rootdaemon/run.go; then
+    printf 'the reconciler shadow store is no longer declared synthetic-only\n' >&2
+    printf '  policyadvisor is unwired because its evidence was not real;\n' >&2
+    printf '  connect it now, or record what still blocks it\n' >&2
+    status=1
+  fi
+fi
+
 # A listed package that no longer exists leaves the list lying about the tree.
 for package in "${test_only[@]}" "${unwired[@]}"; do
   [ -d "internal/$package" ] || {
@@ -96,5 +125,20 @@ done
 
 [ "$status" -eq 0 ] || exit 1
 
-printf 'ok: every internal package is in a binary or recorded as unwired (%d unwired)\n' \
-  "${#unwired[@]}"
+# The cost of the debt is reported rather than left to be measured. A list of
+# five names reads the same whether it is fifty lines or fifteen hundred, and
+# the number is what says whether the promise is still worth keeping.
+debt_lines=0
+for package in "${unwired[@]}"; do
+  for source in "internal/$package"/*.go; do
+    case "$source" in
+    *_test.go) continue ;;
+    esac
+    [ -f "$source" ] || continue
+    lines="$(wc -l <"$source")"
+    debt_lines=$((debt_lines + lines))
+  done
+done
+
+printf 'ok: every internal package is in a binary or recorded as unwired (%d unwired, %d lines that have never run)\n' \
+  "${#unwired[@]}" "$debt_lines"
