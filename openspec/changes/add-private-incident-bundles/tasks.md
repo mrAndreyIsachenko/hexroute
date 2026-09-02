@@ -19,7 +19,7 @@ read in the tree, not because a document said so.
 - [ ] 2.2 Call the expiry worker from the same pass, so that a recorded expiry is acted on rather than only recorded.
 - [ ] 2.3 Disable the pass when no bundle storage is configured, leaving incident correlation, retention and alerting unchanged.
 - [ ] 2.4 Record that the pass was not attempted when storage is absent, so a deployment that was never finished can be told from one with nothing to bundle.
-- [ ] 2.5 Assert that no path reads a bundle as input to a reduction, policy decision, action lease or mutation, and that the refusal does not depend on the bundle's content. No such assertion exists today.
+- [x] 2.5 Assert that no path reads a bundle as input to a reduction, policy decision, action lease or mutation, and that the refusal does not depend on the bundle's content. The assertion did exist, which this task said it did not: `internal/incidentbundle` is in the cloud-dependency set of `tests/policy_cloud_independence_test.sh`, so no local binary may import it and the refusal is structural rather than about any bundle's content. That gate now covers twelve local binaries rather than four.
 - [ ] 2.6 Remove `incidentbundle` from the unwired list in `tests/package_reachability_test.sh` once the worker reaches it, and confirm the census reports the debt smaller.
 
 ## 3. Keep The Boundary
