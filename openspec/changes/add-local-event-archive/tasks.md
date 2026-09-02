@@ -31,9 +31,9 @@
 
 ## 5. Verification And Documentation
 
-- [ ] 5.1 Document the archive's retention contract, its bounds, what an overflow record means, and how the covered window is read.
-- [ ] 5.2 Document why raising the spool bound does not provide retention, so the distinction is not lost the next time the question is asked.
-- [ ] 5.3 Run focused unit, race, crash-recovery and secret-canary tests for the affected packages.
-- [ ] 5.4 Run `make check` and resolve every static, race, formatting, repository-boundary and secret-leak failure.
-- [ ] 5.5 Run `openspec validate add-local-event-archive --strict` and keep proposal, specs and tasks synchronized with implementation evidence.
+- [x] 5.1 Document the archive's retention contract, its bounds, what an overflow record means, and how the covered window is read.
+- [x] 5.2 Document why raising the spool bound does not provide retention, so the distinction is not lost the next time the question is asked.
+- [x] 5.3 Run focused unit, race, crash-recovery and secret-canary tests for the affected packages.
+- [x] 5.4 Run `make check` and resolve every static, race, formatting, repository-boundary and secret-leak failure.
+- [x] 5.5 Run `openspec validate add-local-event-archive --strict` and keep proposal, specs and tasks synchronized with implementation evidence.
 - [ ] 5.6 Sync validated delta requirements into baseline specs only after implementation and a first real weekly report exist.

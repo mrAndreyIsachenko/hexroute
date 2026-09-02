@@ -133,6 +133,7 @@ shell-test: shell-test-tools build-observe-root build-observe-user build-policy-
 	tests/connectivity_read_model_rollback_test.sh
 	tests/restart_property_test.sh
 	tests/connectivity_documentation_test.sh
+	tests/event_archive_documentation_test.sh
 	tests/postgres_coverage_test.sh
 	tests/hollow_green_test.sh
 	tests/unbuilt_capability_test.sh
