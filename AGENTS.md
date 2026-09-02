@@ -39,3 +39,7 @@ the applicable migration, soak, fault-injection and rollback gates pass.
 - Live runtime changes are deployed only through an explicit guarded cutover.
 - Affected normal and fallback paths are verified after deployment.
 - Rollback is explicit and independently executable for connectivity changes.
+- A hypothesis the work disproved is written down where the change is reviewed.
+  What was ruled out, and by what evidence, is the half a commit message loses:
+  the code records the answer that survived, and nothing records the two that
+  did not, so the next person pays for the same measurement twice.
