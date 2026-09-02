@@ -135,6 +135,7 @@ shell-test: shell-test-tools build-observe-root build-observe-user build-policy-
 	tests/postgres_coverage_test.sh
 	tests/hollow_green_test.sh
 	tests/unbuilt_capability_test.sh
+	tests/launchd_plist_test.sh
 	tests/connectivity_watch_launchd_test.sh
 	tests/archive_review_launchd_test.sh
 	tests/observe_user_launchd_test.sh

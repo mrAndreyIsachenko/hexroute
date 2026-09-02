@@ -16,12 +16,34 @@ required_modules=(
 )
 
 for module in "${required_modules[@]}"; do
+  test -d "$terraform_root/modules/$module" || {
+    printf 'terraform module %s is required here and does not exist\n' \
+      "$module" >&2
+    exit 1
+  }
   for file in main.tf outputs.tf variables.tf versions.tf; do
     test -f "$terraform_root/modules/$module/$file" || {
       printf 'missing terraform module file: %s/%s\n' "$module" "$file" >&2
       exit 1
     }
   done
+done
+
+# And the other direction. Checking only the listed modules let a new one
+# arrive with none of the four files and nobody deciding it should exist —
+# the same shape as a package reaching no binary, and caught the same way.
+for directory in "$terraform_root"/modules/*/; do
+  module="$(basename "$directory")"
+  listed=0
+  for required in "${required_modules[@]}"; do
+    [[ "$module" == "$required" ]] && listed=1 && break
+  done
+  [[ "$listed" == "1" ]] || {
+    printf 'terraform module %s exists and is on no list\n' "$module" >&2
+    printf '  add it to required_modules, so its shape is checked and its\n' >&2
+    printf '  existence is a decision someone wrote down\n' >&2
+    exit 1
+  }
 done
 
 terraform fmt -check -recursive "$terraform_root"
