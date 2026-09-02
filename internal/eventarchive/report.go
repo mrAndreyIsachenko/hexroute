@@ -79,7 +79,45 @@ type Report struct {
 	Transitions []TransitionRun  `json:"transitions"`
 	Rare        []RareFinding    `json:"rare"`
 
+	// Pass records what the optional model commentary run did, or that it
+	// did not happen. It sits outside the digest with the commentary itself:
+	// whether a model was available is not a fact about the week being
+	// reported, and letting it move the digest would make an absent model
+	// look like a different history.
+	Pass *CommentaryPass `json:"commentary_pass,omitempty"`
+
 	Digest string `json:"digest"`
+}
+
+// CommentaryOutcome says what the model pass managed.
+type CommentaryOutcome string
+
+const (
+	// CommentaryAttached means commentary was added to at least one finding.
+	CommentaryAttached CommentaryOutcome = "attached"
+	// CommentaryUnavailable means no model could be reached.
+	CommentaryUnavailable CommentaryOutcome = "unavailable"
+	// CommentaryTimedOut means the model was reached and did not finish.
+	CommentaryTimedOut CommentaryOutcome = "timed_out"
+	// CommentaryUnusable means the model answered and the answer could not be
+	// used — unparsable, or about findings this report does not contain.
+	CommentaryUnusable CommentaryOutcome = "unusable"
+	// CommentaryNothingToSay means the model answered and offered nothing.
+	CommentaryNothingToSay CommentaryOutcome = "nothing_to_say"
+)
+
+// CommentaryPass is the record of one model run over a finished report.
+//
+// It is recorded even when it failed. A report with no commentary and no pass
+// record cannot be told from one where the model was never asked, and those
+// are different weeks.
+type CommentaryPass struct {
+	Model    string            `json:"model"`
+	Outcome  CommentaryOutcome `json:"outcome"`
+	Attached uint16            `json:"attached"`
+	// Rejected counts commentary the model offered about findings this report
+	// does not contain.
+	Rejected uint16 `json:"rejected"`
 }
 
 type rarityKey struct {
@@ -221,6 +259,7 @@ func reportBody(report Report) Report {
 		stripped[index].Commentary = ""
 	}
 	report.Rare = stripped
+	report.Pass = nil
 	return report
 }
 
