@@ -80,6 +80,22 @@ recovery, activation or mutation authority, the test comes first.
 For a bug fix, the test must reproduce the original failure, not merely exercise
 the fixed path.
 
+## 4b. What the work ruled out
+
+Name the hypotheses this change disproved, and the evidence that disproved
+them. They belong in the PR body, in their own paragraph.
+
+This is not bookkeeping. A commit records the answer that survived; nothing
+records the two that did not, so the next person to look at the same symptom
+pays for the same measurement again. The cases that cost most here were
+exactly this: journal eviction did not explain the diverged links, and the
+wake explained one of seventeen — both disproved by measurement, and neither
+derivable from the code afterwards.
+
+If the work disproved nothing, say nothing. An empty paragraph written to
+satisfy a checklist is worse than its absence, because it reads as "nothing
+was ruled out" when the truth is "nobody looked".
+
 ## 5. Run the gates for what actually changed
 
 Always:
@@ -157,6 +173,7 @@ Scope           <n> files, all mapped to tasks (or: unmapped: <paths>)
 Boundary        ✓ secret-test | manual review of <files>
 Spec truth      ✓ delta matches implementation | scenarios: <added/updated>
 Regression      ✓ <test name> fails without this change
+Ruled out       <hypothesis, and what disproved it> — or: nothing was ruled out
 Gates           ✓ make check | ✓ make postgres-test | ⚠ container-test SKIPPED (no docker)
 Coexistence     ✓ AdGuard, Codex paths, disjoint labels/paths verified — or n/a
 Rollback        <one line, or n/a for non-connectivity work>
