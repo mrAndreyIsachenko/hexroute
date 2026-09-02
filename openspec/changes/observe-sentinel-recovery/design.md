@@ -70,6 +70,25 @@ stopped when it should.
 
 ## Open Questions
 
+- Whether one data-path target is enough, and what the observation said about
+  it. The configuration takes exactly one endpoint and the cycle makes one
+  probe. A second would need a combining rule, and the right one is "both
+  failed": more evidence and fewer false positives, and nothing is lost
+  because a genuinely broken tunnel fails both.
+
+  It is not built now because a flaky single target costs nothing on its own —
+  the gate needs a stale heartbeat as well, so a target that blinks while the
+  daemon is healthy produces no plan at all. What it could cost is the
+  coincidence: a genuinely stale heartbeat while the one target happens to be
+  down for its own reasons. Observing, that is a wrong log line; after cutover
+  it would be a wrong restart.
+
+  So the second target is a question for the cutover, and the observation is
+  what should answer it. The number to look for is how often
+  `sentinel_recovery_plan` selected `restart_hexrouted` while the root daemon
+  was in fact healthy. Building a second probe before that number exists would
+  be guessing at the thing this observation was set up to measure.
+
 - Whether the recorded plans should also enter the local event archive rather
   than only the log. They are typed events in everything but name, and the
   archive is what answers about last week. Deferred: the archive has no
