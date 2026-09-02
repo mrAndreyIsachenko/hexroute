@@ -6,11 +6,37 @@ cd "$repo_root"
 
 export GOCACHE="${GOCACHE:-${TMPDIR:-/tmp}/hexroute-go-cache}"
 
+# Binaries that run on the operator's machine and must never reach cloud,
+# database or worker authority.
+#
+# This is a declaration and cannot be derived: inferring it from "has no cloud
+# dependency" would make the check below assert itself. So every command is in
+# one of the two lists, and the census at the end fails on a command in
+# neither — which is how five of these came to be unguarded. They were added
+# after the list was written and nothing asked where they belonged.
 local_binaries=(
   ./cmd/hexrouted
   ./cmd/hexroute-userd
   ./cmd/hexroute-policy
   ./cmd/hexroutectl
+  ./cmd/hexroute-sentinel
+  ./cmd/hexroute-archive-report
+  ./cmd/hexroute-archive-annotate
+  ./cmd/hexroute-connectivity-replay
+  ./cmd/hexroute-connectivity-watch
+  ./cmd/hexroute-connectivity-qualify
+  ./cmd/hexroute-policy-installer
+  ./cmd/hexroute-policy-qualification
+)
+
+# Binaries that are the cloud, or that build and inspect releases rather than
+# running on the host. They are exempt from the check above by being what it
+# protects against.
+cloud_binaries=(
+  ./cmd/hexroute-ingest
+  ./cmd/hexroute-ingress-observer
+  ./cmd/hexroute-ingress-probe
+  ./cmd/hexroute-package-observer
 )
 
 cloud_dependencies='(^|/)internal/(cloudruntime|cloudingest|cloudconnectivity|database|databasemigrate|dashboard|alertdelivery|cloudincident|incidentbundle|retention|slo|silentnode)$|^github\.com/jackc/pgx'
@@ -55,5 +81,31 @@ if grep -RniE 'func .*(Enqueue|Dispatch|Request|Command|Execute|Apply|Mutate)[A-
     --include='*.go' internal/cloudconnectivity | grep -viE '_test\.go' >&2
   exit 1
 fi
+
+
+# Every command is in one of the two lists. A binary in neither is one nobody
+# decided the side of, and it is unguarded until someone does.
+census_status=0
+for directory in cmd/*/; do
+  command_path="./${directory%/}"
+  listed=0
+  for known in "${local_binaries[@]}" "${cloud_binaries[@]}"; do
+    [[ "$known" == "$command_path" ]] && listed=1 && break
+  done
+  if [[ "$listed" == "0" ]]; then
+    printf '%s is on neither the local nor the cloud list\n' "$command_path" >&2
+    printf '  nothing checks which authority it may reach until it is on one\n' >&2
+    census_status=1
+  fi
+done
+
+for known in "${local_binaries[@]}" "${cloud_binaries[@]}"; do
+  [[ -d "${known#./}" ]] || {
+    printf '%s is listed here and does not exist\n' "$known" >&2
+    census_status=1
+  }
+done
+
+[[ "$census_status" -eq 0 ]] || exit 1
 
 printf 'ok: local policy paths are independent of cloud services and cloud runtime has no local mutation authority\n'
