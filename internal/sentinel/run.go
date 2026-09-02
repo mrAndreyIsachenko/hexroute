@@ -145,12 +145,18 @@ func observeLoop(
 		return err
 	}
 	started := time.Now()
+	var lastPlan recordedPlan
 	for {
 		at := control.Tick(time.Since(started) / time.Second)
 		summary := cycler.Observe(ctx, at)
 		if err := emitSummary(logger, summary); err != nil {
 			return err
 		}
+		recorded, planErr := emitPlan(logger, summary, lastPlan)
+		if planErr != nil {
+			return planErr
+		}
+		lastPlan = recorded
 		if once {
 			return logger.Emit(
 				logging.LevelInfo,
@@ -201,6 +207,92 @@ func emitSummary(logger *logging.Logger, summary Summary) error {
 		)
 	}
 	return nil
+}
+
+// recordedPlan is the last plan written down, so the next one is compared
+// against it rather than repeated.
+type recordedPlan struct {
+	known   bool
+	phase   RecoveryPhase
+	action  RecoveryAction
+	refused bool
+	// bounded records that the attempt bound was already reported. An
+	// authorized sentinel spends its attempt once; saying so once is the
+	// observing equivalent.
+	bounded bool
+}
+
+// emitPlan writes what an authorized sentinel would have done, when that
+// changes.
+//
+// The same underlying condition holding for a day is a handful of lines and
+// not a thousand: repeating the phase every cycle would restore exactly the
+// problem the plan exists to fix.
+func emitPlan(
+	logger *logging.Logger, summary Summary, last recordedPlan,
+) (recordedPlan, error) {
+	if summary.PlanRefused != nil {
+		if last.refused {
+			return last, nil
+		}
+		if err := logger.Emit(
+			logging.LevelWarn,
+			logging.EventSentinelPlannerUnavailable,
+			logging.ResultDegraded,
+			"",
+		); err != nil {
+			return last, err
+		}
+		return recordedPlan{refused: true}, nil
+	}
+	if !summary.PlanKnown {
+		return last, nil
+	}
+
+	plan := summary.Plan
+	if last.known && !last.refused &&
+		last.phase == plan.Phase && last.action == plan.Action {
+		return last, nil
+	}
+
+	level := logging.LevelInfo
+	result := logging.ResultReported
+	if plan.Action == RecoveryActionRestartRoot {
+		// The one line worth waking for: this is where an authorized sentinel
+		// would have restarted the root daemon.
+		level = logging.LevelWarn
+	}
+	if err := logger.Emit(
+		level,
+		logging.EventSentinelRecoveryPlan,
+		result,
+		"",
+	); err != nil {
+		return last, err
+	}
+
+	current := recordedPlan{
+		known: true, phase: plan.Phase, action: plan.Action,
+		bounded: last.bounded,
+	}
+	// Reaching cooldown is the bound: an authorized sentinel has spent its one
+	// attempt and stopped. Said once, and again only after the planner has
+	// left cooldown and come back to it.
+	if plan.Phase == RecoveryCooldown && !last.bounded {
+		if err := logger.Emit(
+			logging.LevelWarn,
+			logging.EventSentinelRecoveryBound,
+			logging.ResultReported,
+			"",
+		); err != nil {
+			return current, err
+		}
+		current.bounded = true
+	}
+	if plan.Phase == RecoveryMonitoring {
+		current.bounded = false
+	}
+	return current, nil
 }
 
 func rejected(logger *logging.Logger, reason logging.Reason) int {

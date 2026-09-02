@@ -52,14 +52,12 @@ ACCEPTED = {
     "internal/signing.NewVerifier":
         "verification goes through VerifyAuthenticity; this API is unadopted",
 
-    # The sentinel's recovery machinery. sentinel.Run is its only entry point
-    # and does not construct any of these, so none of it has ever run.
-    "internal/sentinel.NewRecoveryPlanner":
-        "sentinel.Run does not construct it; recovery has never run",
-    "internal/sentinel.NewRecoveryController":
-        "sentinel.Run does not construct it; recovery has never run",
+    # The planner and the controller now run, in observe-only mode. The
+    # restarter is the part that acts, and acting is not authorized before
+    # cutover — an observing controller is built with no restarter at all
+    # rather than one it declines to use.
     "internal/sentinel.NewMacOSRootRestarter":
-        "sentinel.Run does not construct it; recovery has never run",
+        "the active recovery mode is not authorized before cutover",
 
     # A fixture builder that lives outside _test.go so several test packages
     # can share it.

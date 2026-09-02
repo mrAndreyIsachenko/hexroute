@@ -29,6 +29,18 @@ const (
 	RecoveryActive      RecoveryAuthority = "active"
 )
 
+// ObservingRecoveryPolicy is what the sentinel plans against while it has no
+// authority to act.
+//
+// The numbers are the ones the planner's own tests were written around. They
+// are here rather than in the configuration file because an observing sentinel
+// changes nothing by having them wrong, and the values a cutover should use
+// are a question the observation is meant to answer.
+var ObservingRecoveryPolicy = RecoveryPolicy{
+	VerificationWindow: 60,
+	Cooldown:           1800,
+}
+
 type RecoveryPolicy struct {
 	VerificationWindow control.Tick
 	Cooldown           control.Tick
