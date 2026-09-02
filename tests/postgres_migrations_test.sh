@@ -47,15 +47,36 @@ wait_for_container() {
   return 1
 }
 
+# The first server this container runs is not the one the tests use.
+#
+# The postgres image bootstraps by starting a temporary server, initialising
+# the cluster against it, then shutting it down and starting the real one.
+# pg_isready answers yes to that temporary server, so a single successful probe
+# can land in the window before the shutdown — which is how a run failed with
+# `connection to server on socket ... failed: No such file or directory` two
+# seconds after the image finished pulling.
+#
+# So readiness is three consecutive successful queries, a second apart. The
+# bootstrap shutdown falls inside that span, and a real server stays up across
+# it. A query rather than pg_isready, because accepting a connection and
+# answering are different claims.
 wait_for_postgres() {
-  local deadline=$((SECONDS + 60))
+  local deadline=$((SECONDS + 90))
+  local consecutive=0
   while [ "$SECONDS" -lt "$deadline" ]; do
-    if docker exec "$container" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
-      return 0
+    if docker exec "$container" psql --username postgres --dbname postgres \
+      --no-psqlrc --quiet --tuples-only --command 'select 1' >/dev/null 2>&1; then
+      consecutive=$((consecutive + 1))
+      if [ "$consecutive" -ge 3 ]; then
+        return 0
+      fi
+    else
+      consecutive=0
     fi
     sleep 1
   done
-  printf 'PostgreSQL in %s did not accept connections within 60s\n' "$container" >&2
+  printf 'PostgreSQL in %s did not answer three queries in a row within 90s\n' \
+    "$container" >&2
   docker exec "$container" pg_isready -U postgres -d postgres 2>&1 \
     | sed 's/^/  /' >&2 || true
   report_container_state
