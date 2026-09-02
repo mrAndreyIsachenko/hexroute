@@ -80,6 +80,20 @@ recovery, activation or mutation authority, the test comes first.
 For a bug fix, the test must reproduce the original failure, not merely exercise
 the fixed path.
 
+Then turn the question around, because it catches the one thing no gate can.
+A test whose name claims a property is worth what it costs only if breaking
+that property fails **that** test. So break it: invert the comparison, delete
+the bound, drop the guard clause, add the banned import. Run the package. If
+everything still passes, the test is named for something it does not check.
+
+This is the answer to the shape tests/hollow_green_test.sh cannot reach — a
+test named for surviving a process that never restarts one. No rule finds it;
+a broken invariant does, in seconds, and the tree is restored from a copy
+afterwards rather than with `git checkout`, which discards uncommitted work.
+
+Do this for the load-bearing claims, not for every line. The claims worth
+breaking are the ones a reader would rely on without checking.
+
 ## 4b. What the work ruled out
 
 Name the hypotheses this change disproved, and the evidence that disproved
