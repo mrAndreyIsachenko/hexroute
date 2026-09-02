@@ -49,24 +49,38 @@ const (
 	// It is said out loud because a host retaining nothing looks exactly like
 	// a host with nothing to retain.
 	EventEventArchiveUnavailable EventName = "event_archive_unavailable"
-	EventObservationCycle        EventName = "observation_cycle"
-	EventIngressRoute            EventName = "ingress_route_proposed"
-	EventCorporateRoute          EventName = "corporate_route_proposed"
-	EventGitLabHTTPSRoute        EventName = "gitlab_https_route_proposed"
-	EventCodexRoute              EventName = "codex_fallback_route_proposed"
-	EventPritunlReconnect        EventName = "pritunl_reconnect_proposed"
-	EventSentinelEvidence        EventName = "sentinel_restart_evidence"
-	EventLocalNotification       EventName = "local_notification"
-	EventCloudAPIStarted         EventName = "cloud_api_started"
-	EventCloudAPIStopped         EventName = "cloud_api_stopped"
-	EventCloudWorkerStarted      EventName = "cloud_worker_started"
-	EventCloudWorkerStopped      EventName = "cloud_worker_stopped"
-	EventCloudMigration          EventName = "cloud_migration"
-	EventCloudHeartbeat          EventName = "cloud_heartbeat"
-	EventCloudReconcile          EventName = "cloud_reconcile"
-	EventCloudAlertQueue         EventName = "cloud_alert_queue"
-	EventCloudAlertDelivery      EventName = "cloud_alert_delivery"
-	EventCloudRetention          EventName = "cloud_retention"
+	// EventSentinelRecoveryPlan reports what an authorized sentinel would
+	// have done, at the moment it would have done it. It fires on a change of
+	// phase or action, not every cycle: a line repeated every cycle stops
+	// being read after the third one.
+	EventSentinelRecoveryPlan EventName = "sentinel_recovery_plan"
+	// EventSentinelRecoveryBound reports the point at which an authorized
+	// sentinel would have spent its one permitted attempt and stopped. An
+	// observing sentinel has no attempt to spend, so the moment is invisible
+	// unless it is written down on its own.
+	EventSentinelRecoveryBound EventName = "sentinel_recovery_bound"
+	// EventSentinelPlannerUnavailable reports that the planner refused an
+	// input. The sentinel keeps watching; what it stops doing is planning,
+	// and the difference has to be visible.
+	EventSentinelPlannerUnavailable EventName = "sentinel_planner_unavailable"
+	EventObservationCycle           EventName = "observation_cycle"
+	EventIngressRoute               EventName = "ingress_route_proposed"
+	EventCorporateRoute             EventName = "corporate_route_proposed"
+	EventGitLabHTTPSRoute           EventName = "gitlab_https_route_proposed"
+	EventCodexRoute                 EventName = "codex_fallback_route_proposed"
+	EventPritunlReconnect           EventName = "pritunl_reconnect_proposed"
+	EventSentinelEvidence           EventName = "sentinel_restart_evidence"
+	EventLocalNotification          EventName = "local_notification"
+	EventCloudAPIStarted            EventName = "cloud_api_started"
+	EventCloudAPIStopped            EventName = "cloud_api_stopped"
+	EventCloudWorkerStarted         EventName = "cloud_worker_started"
+	EventCloudWorkerStopped         EventName = "cloud_worker_stopped"
+	EventCloudMigration             EventName = "cloud_migration"
+	EventCloudHeartbeat             EventName = "cloud_heartbeat"
+	EventCloudReconcile             EventName = "cloud_reconcile"
+	EventCloudAlertQueue            EventName = "cloud_alert_queue"
+	EventCloudAlertDelivery         EventName = "cloud_alert_delivery"
+	EventCloudRetention             EventName = "cloud_retention"
 	// EventCloudConnectivity names the pass that folds uploaded connectivity
 	// projections into the cloud read model.
 	EventCloudConnectivity EventName = "cloud_connectivity_projection"
@@ -211,6 +225,8 @@ func validEvent(value EventName) bool {
 	case EventCommandStatus, EventStartupCheck, EventVersionRequested, EventArgumentRejected, EventIPCRejected,
 		EventDaemonStarted, EventDaemonStopped, EventConnectivitySnapshot,
 		EventReconcilerShadowUnavailable, EventEventArchiveUnavailable,
+		EventSentinelRecoveryPlan, EventSentinelRecoveryBound,
+		EventSentinelPlannerUnavailable,
 		EventObservationCycle, EventIngressRoute,
 		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect,
 		EventSentinelEvidence, EventLocalNotification, EventCloudAPIStarted,
