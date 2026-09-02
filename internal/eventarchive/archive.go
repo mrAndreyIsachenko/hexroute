@@ -62,6 +62,33 @@ var (
 	ErrReadOnly = errors.New("event archive is open for reading only")
 )
 
+// Boundary names a point in the write sequence a crash can land on.
+//
+// The vocabulary is the checkpoint store's, deliberately. Two durable stores
+// in one repository describing the same four syscalls with different words
+// would make a reader compare them by hand every time.
+type Boundary string
+
+const (
+	// BeforeFileSync is after the bytes are written and before they are
+	// durable.
+	BeforeFileSync Boundary = "before_file_fsync"
+	// AfterFileSync is a durable staged file that no name points at yet.
+	AfterFileSync Boundary = "after_file_fsync"
+	// BeforeRename is a staged file about to be published.
+	BeforeRename Boundary = "before_rename"
+	// AfterRename is a published record whose directory entry is not durable.
+	AfterRename Boundary = "after_rename"
+	// BeforeDirectorySync is the same point named from the other side.
+	BeforeDirectorySync Boundary = "before_directory_fsync"
+	// AfterDirectorySync is a complete write.
+	AfterDirectorySync Boundary = "after_directory_fsync"
+)
+
+// ErrInjectedFault is the interruption a test asked for. It never occurs in
+// production, where Options.Faults is empty.
+var ErrInjectedFault = errors.New("event archive write was interrupted")
+
 // Options configure one archive.
 type Options struct {
 	MaxBytes int64
@@ -69,6 +96,13 @@ type Options struct {
 	NodeID   metadata.UUID
 	Clock    metadata.Clock
 	Random   io.Reader
+	// Faults interrupt a write at a boundary. Production leaves this empty.
+	//
+	// The crash-safety claim is that an interruption at any of these leaves
+	// the archive readable, with the record wholly present or wholly absent.
+	// A claim of that shape is worth exactly as much as the number of
+	// boundaries actually exercised.
+	Faults []Boundary
 }
 
 // Record is one archived event as the archive holds it.
@@ -116,6 +150,7 @@ type Archive struct {
 	maxAge   time.Duration
 	clock    metadata.Clock
 	metadata *metadata.Generator
+	faults   map[Boundary]struct{}
 	// readOnly marks an archive opened by a reader. A review must not be able
 	// to add to what it is reviewing, and the way to guarantee that is for the
 	// reader to hold a handle that cannot write rather than for it to be
@@ -153,8 +188,13 @@ func Open(path string, options Options) (*Archive, error) {
 	if clock == nil {
 		clock = metadata.NewSystemClock()
 	}
+	faults := make(map[Boundary]struct{}, len(options.Faults))
+	for _, boundary := range options.Faults {
+		faults[boundary] = struct{}{}
+	}
 	archive := &Archive{
 		path: path, maxBytes: maxBytes, maxAge: maxAge, clock: clock,
+		faults: faults,
 	}
 	if err := archive.discardStaged(); err != nil {
 		return nil, err
@@ -188,6 +228,7 @@ func OpenForReading(path string) (*Archive, error) {
 	return &Archive{
 		path: path, maxBytes: DefaultMaxBytes, maxAge: DefaultMaxAge,
 		clock: metadata.NewSystemClock(), readOnly: true,
+		faults: map[Boundary]struct{}{},
 	}, nil
 }
 
@@ -488,11 +529,19 @@ func (archive *Archive) stage(record Record) error {
 	if _, err := file.Write(encoded); err != nil {
 		return fmt.Errorf("%w: write record: %v", ErrArchive, err)
 	}
+	if archive.fires(BeforeFileSync) {
+		return ErrInjectedFault
+	}
 	if err := file.Sync(); err != nil {
 		return fmt.Errorf("%w: sync record: %v", ErrArchive, err)
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("%w: close record: %v", ErrArchive, err)
+	}
+	if archive.fires(AfterFileSync) {
+		// The staged file stays, exactly as a crash here would leave it.
+		published = true
+		return ErrInjectedFault
 	}
 	if err := syncDirectory(archive.path); err != nil {
 		return err
@@ -501,9 +550,17 @@ func (archive *Archive) stage(record Record) error {
 	return nil
 }
 
+func (archive *Archive) fires(boundary Boundary) bool {
+	_, found := archive.faults[boundary]
+	return found
+}
+
 func (archive *Archive) commit(record Record, evictions []Record) error {
 	if err := archive.evict(evictions); err != nil {
 		return err
+	}
+	if archive.fires(BeforeRename) {
+		return ErrInjectedFault
 	}
 	if err := os.Rename(
 		archive.pendingPath(record.Sequence),
@@ -511,7 +568,16 @@ func (archive *Archive) commit(record Record, evictions []Record) error {
 	); err != nil {
 		return fmt.Errorf("%w: publish record: %v", ErrArchive, err)
 	}
-	return syncDirectory(archive.path)
+	if archive.fires(AfterRename) || archive.fires(BeforeDirectorySync) {
+		return ErrInjectedFault
+	}
+	if err := syncDirectory(archive.path); err != nil {
+		return err
+	}
+	if archive.fires(AfterDirectorySync) {
+		return ErrInjectedFault
+	}
+	return nil
 }
 
 func (archive *Archive) evict(records []Record) error {

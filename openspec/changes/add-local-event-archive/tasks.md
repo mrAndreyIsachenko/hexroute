@@ -4,7 +4,7 @@
 - [x] 1.2 Accept only records that decode under a registered event schema; refuse anything else and record the refusal as a bounded diagnostic rather than dropping it.
 - [x] 1.3 Enforce a configured maximum age and maximum total size, evicting lower priorities first for size and ignoring priority for age.
 - [x] 1.4 Emit a durable overflow record naming the class of records dropped and the sequence range they covered, and refuse an append that could only be satisfied by silently discarding a critical record.
-- [ ] 1.5 Add crash-point tests at every write boundary, plus staged-file recovery, truncation, corrupted-record and bound-exhaustion cases.
+- [x] 1.5 Add crash-point tests at every write boundary, plus staged-file recovery, truncation, corrupted-record and bound-exhaustion cases.
 - [x] 1.6 Prove archiving and upload are independent in both directions: acknowledgement never evicts an archived record, and archiving never causes an upload.
 - [x] 1.7 Connect the archive to a producer. The journal mirrors every record it writes into the archive, so "everything journalled is retained" holds by construction rather than by two call sites agreeing to encode a fact the same way. A mirror that fails is counted and reported and never fails the journal, and an archive that will not open is reported and never stops the read model. Enabled by `--connectivity-event-archive` on the root daemon; absent, the daemon runs the path it ran before.
 
