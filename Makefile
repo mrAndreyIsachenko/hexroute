@@ -22,6 +22,7 @@ build-ctl:
 build-archive-report:
 	mkdir -p bin
 	go build -o bin/hexroute-archive-report ./cmd/hexroute-archive-report
+	go build -o bin/hexroute-archive-annotate ./cmd/hexroute-archive-annotate
 
 build-connectivity-replay:
 	mkdir -p bin

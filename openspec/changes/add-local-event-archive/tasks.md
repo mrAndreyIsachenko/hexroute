@@ -17,10 +17,10 @@
 
 ## 3. Optional Model Commentary
 
-- [ ] 3.1 Add an off-by-default local model pass that receives the finished report and may only attach commentary to findings that already exist.
-- [ ] 3.2 Discard unparsable output and reject commentary referencing a finding that is not in the report.
-- [ ] 3.3 Prove the ordered findings are identical with and without the model, and that only the commentary field differs.
-- [ ] 3.4 Prove the report is complete and valid when the model is absent, times out or returns nonsense, and that its absence is recorded.
+- [x] 3.1 Add an off-by-default local model pass that receives the finished report and may only attach commentary to findings that already exist.
+- [x] 3.2 Discard unparsable output and reject commentary referencing a finding that is not in the report.
+- [x] 3.3 Prove the ordered findings are identical with and without the model, and that only the commentary field differs.
+- [x] 3.4 Prove the report is complete and valid when the model is absent, times out or returns nonsense, and that its absence is recorded.
 
 ## 4. Report Command And Schedule
 
