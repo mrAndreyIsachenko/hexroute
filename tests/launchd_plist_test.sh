@@ -83,7 +83,48 @@ for plist in "${plists[@]}"; do
   fi
 done
 
+# The other direction. Every plist is installed by something, checked above;
+# what nothing asked was whether every binary meant to run continuously has a
+# job at all.
+#
+# hexroute-sentinel had none. A binary with a SHALL requirement behind it and a
+# configuration example committed beside it, and nothing anywhere that could
+# start it — found by hand, and only because a task turned out to be waiting on
+# it. The package census cannot see this: it asks whether a package is in a
+# binary, and the sentinel is a binary.
+#
+# Residency is a decision and cannot be derived: a command that happens to have
+# no job today is exactly what this is looking for, so inferring the list from
+# the jobs would make it assert itself.
+resident=(
+  hexrouted
+  hexroute-userd
+  hexroute-sentinel
+)
+
+# Commands that run on a schedule rather than continuously. Same question, and
+# the answer is a job either way.
+scheduled=(
+  hexroute-connectivity-watch
+  hexroute-archive-report
+  hexroute-policy-qualification
+)
+
+for binary in "${resident[@]}" "${scheduled[@]}"; do
+  [[ -d "cmd/$binary" ]] || {
+    printf 'cmd/%s is listed as needing a job and does not exist\n' "$binary" >&2
+    status=1
+    continue
+  }
+  if ! grep -rqF "/$binary<" deploy/macos/*.plist &&
+    ! grep -rqF "$binary" scripts/macos/*.sh; then
+    printf '%s is meant to run and nothing installs it\n' "$binary" >&2
+    printf '  give it a launchd job and an installer, or say why it runs by hand\n' >&2
+    status=1
+  fi
+done
+
 [[ "$status" -eq 0 ]] || exit 1
 
-printf 'ok: every launchd job answers to the name it is installed under (%d jobs)\n' \
-  "${#plists[@]}"
+printf 'ok: every launchd job answers to the name it is installed under, and every binary meant to run has one (%d jobs, %d run continuously)\n' \
+  "${#plists[@]}" "${#resident[@]}"
