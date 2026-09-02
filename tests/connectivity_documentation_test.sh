@@ -115,7 +115,44 @@ for project in firezone/firezone netbirdio/netbird \
   }
 done
 
-# The commands the documents tell an operator to run have to exist.
+# The closeout runbook is read once, at the end of a three-day soak, by
+# someone who cannot afford a command that turned out not to exist. Its
+# subcommands and flags are checked like any other documented value.
+closeout=docs/macos/connectivity-qualification-closeout.md
+[ -f "$closeout" ] || {
+  printf '%s is missing\n' "$closeout" >&2
+  status=1
+}
+if [ -f "$closeout" ]; then
+  for subcommand in install status; do
+    grep -qE "^  $subcommand\)" scripts/macos/observe-root-launchd.sh || {
+      printf 'the closeout names `%s` and the root installer has no such subcommand\n' \
+        "$subcommand" >&2
+      status=1
+    }
+  done
+  for subcommand in attempts reports; do
+    grep -qE "^  $subcommand\)" scripts/macos/archive-review-launchd.sh || {
+      printf 'the closeout names `%s` and the review installer has no such subcommand\n' \
+        "$subcommand" >&2
+      status=1
+    }
+  done
+  for flag in --qualification --session --state --store; do
+    grep -qF -- "$flag" "$closeout" || continue
+    grep -qF -- "\"${flag#--}\"" cmd/hexroute-connectivity-replay/main.go || {
+      printf 'the closeout uses %s and hexroute-connectivity-replay has no such flag\n' \
+        "$flag" >&2
+      status=1
+    }
+  done
+  grep -qF -- '--connectivity-event-archive' "$closeout" || {
+    printf 'the closeout does not say what the reinstall turns on\n' >&2
+    status=1
+  }
+fi
+
+# The commands the documents tell an operator to run have to exist.# The commands the documents tell an operator to run have to exist.
 for binary in hexroute-connectivity-replay hexroute-connectivity-watch; do
   [ -d "cmd/$binary" ] || {
     printf '%s is documented and is not a command in this repository\n' \
