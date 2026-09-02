@@ -57,13 +57,26 @@ ENVIRONMENTAL = {
     "cannot assign supplemental group: %v",
 }
 
-# Packages whose every test needs something this machine may not have. They
-# print ok when it is absent, so each names the gate that does run it — the
-# claim is checkable rather than a shrug.
-INTEGRATION_ONLY = {
-    "internal/retention": "make postgres-test",
-    "internal/databasemigrate": "make postgres-test",
-}
+# Packages whose every test needs something this machine may not have print ok
+# when it is absent, so each has to be run by some gate that supplies it.
+#
+# That fact is not restated here. It is read out of the gate scripts, because a
+# list of packages kept in two files agrees until someone edits one of them,
+# and the copy then describes a gate that no longer runs what it names. The
+# same reason the journal mirrors from inside rather than at the call site.
+def packages_run_by_gates():
+    covered = {}
+    for name in sorted(os.listdir("tests")):
+        if not name.endswith(".sh"):
+            continue
+        path = os.path.join("tests", name)
+        text = open(path).read()
+        for match in re.finditer(r"go test\s+(?:-\S+\s+)*\./internal/(\w+)", text):
+            covered.setdefault(f"internal/{match.group(1)}", set()).add(path)
+    return covered
+
+
+GATE_COVERAGE = packages_run_by_gates()
 
 skip_pattern = re.compile(r"t\.Skipf?\(\s*\"([^\"]*)\"")
 
@@ -153,24 +166,34 @@ for root, directories, files in os.walk("internal"):
             if re.search(r"\bt\.Skipf?\(", source[offset:end]):
                 skipping += 1
     if total == 0 or skipping != total:
-        if root in INTEGRATION_ONLY and total > 0:
-            fail(f"{root} is recorded as integration-only and now has tests "
-                 f"that run without it;\n  remove it from that list")
         continue
-    if root in INTEGRATION_ONLY:
+    running = GATE_COVERAGE.get(root)
+    if running:
         continue
     fail(f"{root}: every one of its {total} tests can skip itself, so the "
-         f"package prints ok\n  whether it ran or not — record the gate that "
-         f"does run it, or give it a test\n  that needs nothing")
+         f"package prints ok\n  whether it ran or not, and no gate script "
+         f"runs it — wire it into a gate\n  that supplies what it needs, or "
+         f"give it a test that needs nothing")
 
-# A named gate that no longer exists would leave the exemption unchecked.
-makefile = open("Makefile").read()
-for package, gate in INTEGRATION_ONLY.items():
-    if not os.path.isdir(package):
-        fail(f"{package} is recorded as integration-only and does not exist")
-    target = gate.split()[-1]
-    if f"\n{target}:" not in makefile:
-        fail(f"{package} names {gate}, and there is no such target")
+# A gate script nothing invokes runs nothing, so coverage read from it would be
+# coverage that never happens.
+# Commented-out lines still contain the path, so the invocation is looked for
+# on a line that is actually a recipe. Substring matching would have accepted a
+# gate someone had switched off.
+invoked = set()
+for line in open("Makefile").read().splitlines():
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        continue
+    for match in re.finditer(r"tests/[\w.-]+\.sh", stripped):
+        invoked.add(match.group(0))
+
+for scripts in GATE_COVERAGE.values():
+    for script in scripts:
+        if script not in invoked:
+            fail(f"{script} names packages to run and no Makefile target "
+                 f"invokes it,\n  so the coverage it appears to give is not "
+                 f"given")
 
 sys.exit(status)
 PY
