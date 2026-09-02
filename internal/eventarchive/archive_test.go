@@ -445,6 +445,31 @@ func TestACorruptRecordIsReportedRatherThanSkipped(t *testing.T) {
 	}
 }
 
+// 1.5 — a record cut short by a full disk or a killed write is reported, not
+// read as far as it goes. Half a record decoding into something valid is the
+// way a damaged archive becomes a plausible one.
+func TestATruncatedRecordIsRefused(t *testing.T) {
+	root := t.TempDir()
+	archive := openArchive(t, root, newClock(), Options{})
+	if _, err := archive.Append(operational(1)); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	path := archiveFile(t, root)
+	whole, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(whole) < 20 {
+		t.Fatalf("a record of %d bytes has nothing to truncate", len(whole))
+	}
+	if err := os.WriteFile(path, whole[:len(whole)/2], 0o600); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	if _, err := archive.Records(); !errors.Is(err, ErrArchive) {
+		t.Fatalf("got %v, want %v", err, ErrArchive)
+	}
+}
+
 // 1.5 — a record that cannot fit the bound at any occupancy is refused as
 // such, rather than emptying the archive in a doomed attempt to make room.
 func TestARecordLargerThanTheBoundIsRefusedWithoutEvicting(t *testing.T) {
@@ -575,4 +600,135 @@ func TestTheArchiveCannotReachTheUploadPath(t *testing.T) {
 			}
 		}
 	}
+}
+
+// 1.5 — every boundary a crash can land on.
+//
+// The requirement says an interruption at any point in staged-write, sync,
+// rename, directory-sync leaves the archive readable with the record wholly
+// present or wholly absent. Three of those were covered by the tests above;
+// this covers all six, because a claim of that shape is worth exactly the
+// number of boundaries actually exercised.
+func TestAnInterruptionAtEveryWriteBoundaryLeavesTheArchiveReadable(t *testing.T) {
+	for _, testCase := range []struct {
+		boundary Boundary
+		// published says whether the interrupted record survives. Before the
+		// rename there is no name pointing at it, so it cannot; after, it is
+		// a complete record whose directory entry may not be durable, and
+		// losing it would be losing something a reader could already see.
+		published bool
+	}{
+		{boundary: BeforeFileSync, published: false},
+		{boundary: AfterFileSync, published: false},
+		{boundary: BeforeRename, published: false},
+		{boundary: AfterRename, published: true},
+		{boundary: BeforeDirectorySync, published: true},
+		{boundary: AfterDirectorySync, published: true},
+	} {
+		t.Run(string(testCase.boundary), func(t *testing.T) {
+			root := t.TempDir()
+			clock := newClock()
+
+			settled := openArchive(t, root, clock, Options{})
+			for index := 0; index < 3; index++ {
+				if _, err := settled.Append(operational(index)); err != nil {
+					t.Fatalf("append: %v", err)
+				}
+			}
+			before := mustRecords(t, settled)
+
+			interrupted := openArchive(t, root, clock, Options{
+				Faults: []Boundary{testCase.boundary},
+			})
+			if _, err := interrupted.Append(operational(9)); !errors.Is(
+				err, ErrInjectedFault) {
+				t.Fatalf("got %v, want %v", err, ErrInjectedFault)
+			}
+
+			// The process that crashed is gone. What matters is what the next
+			// one finds.
+			reopened := openArchive(t, root, clock, Options{})
+			after := mustRecords(t, reopened)
+
+			want := len(before)
+			if testCase.published {
+				want++
+			}
+			if len(after) != want {
+				t.Fatalf("holds %d records after an interruption at %s, want %d",
+					len(after), testCase.boundary, want)
+			}
+			// Readable means every record decodes, not that the count is
+			// plausible. A half-written record is what this exists to refuse.
+			for _, record := range after {
+				if _, err := event.Decode(record.Event); err != nil {
+					t.Fatalf("a record left by an interruption at %s does not "+
+						"decode: %v", testCase.boundary, err)
+				}
+			}
+			// Nothing staged survives into a reader's view.
+			entries, err := os.ReadDir(root)
+			if err != nil {
+				t.Fatalf("read directory: %v", err)
+			}
+			for _, entry := range entries {
+				if strings.HasSuffix(entry.Name(), pendingSuffix) {
+					t.Fatalf("a staged record survived the reopen: %s",
+						entry.Name())
+				}
+			}
+			// And the archive still takes writes afterwards. A store that
+			// survives a crash and then refuses everything has not survived it.
+			if _, err := reopened.Append(operational(10)); err != nil {
+				t.Fatalf("append after an interruption at %s: %v",
+					testCase.boundary, err)
+			}
+		})
+	}
+}
+
+// The sequence never goes backwards over an interruption. A record that was
+// staged and lost still consumed its number, and reusing it would put two
+// different events at one position.
+func TestAnInterruptedSequenceIsNotReused(t *testing.T) {
+	root := t.TempDir()
+	clock := newClock()
+
+	first := openArchive(t, root, clock, Options{})
+	kept, err := first.Append(operational(1))
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	interrupted := openArchive(t, root, clock, Options{
+		Faults: []Boundary{BeforeRename},
+	})
+	if _, err := interrupted.Append(operational(2)); !errors.Is(err, ErrInjectedFault) {
+		t.Fatalf("got %v, want %v", err, ErrInjectedFault)
+	}
+
+	resumed := openArchive(t, root, clock, Options{})
+	next, err := resumed.Append(operational(3))
+	if err != nil {
+		t.Fatalf("append after the interruption: %v", err)
+	}
+	if next <= kept {
+		t.Fatalf("the sequence went %d then %d across an interruption",
+			kept, next)
+	}
+}
+
+func archiveFile(t *testing.T, root string) string {
+	t.Helper()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("read directory: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), stableSuffix) {
+			return filepath.Join(root, entry.Name())
+		}
+	}
+	t.Fatal("no archived record")
+	return ""
 }
