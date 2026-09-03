@@ -50,6 +50,17 @@ type WorkerConfig struct {
 	RetentionInterval      time.Duration
 	JobTimeout             time.Duration
 	ShutdownTimeout        time.Duration
+
+	// The five bundle storage fields are all set or all empty. A deployment
+	// that has not been given storage is a normal state and disables the
+	// bundle pass; a deployment given three of the five is a mistake nobody
+	// meant to make, and starting anyway would hide it behind a pass that
+	// looks merely unconfigured.
+	BundleEndpoint    string
+	BundleRegion      string
+	BundleBucket      string
+	BundleAccessKeyID string
+	BundleSecretKey   string
 }
 
 type MigrationConfig struct {
@@ -141,6 +152,20 @@ func LoadWorkerConfig(environment Environment) (WorkerConfig, error) {
 		RetentionInterval:  time.Hour,
 		JobTimeout:         20 * time.Second,
 		ShutdownTimeout:    10 * time.Second,
+		BundleEndpoint: environmentValue(
+			environment,
+			"HEXROUTE_BUNDLE_ENDPOINT",
+		),
+		BundleRegion: environmentValue(environment, "HEXROUTE_BUNDLE_REGION"),
+		BundleBucket: environmentValue(environment, "HEXROUTE_BUNDLE_BUCKET"),
+		BundleAccessKeyID: environmentValue(
+			environment,
+			"HEXROUTE_BUNDLE_ACCESS_KEY_ID",
+		),
+		BundleSecretKey: environmentValue(
+			environment,
+			"HEXROUTE_BUNDLE_SECRET_KEY",
+		),
 	}
 	if config.WorkerName == "" {
 		config.WorkerName = defaultWorkerName
@@ -235,7 +260,35 @@ func (config WorkerConfig) Validate() error {
 	if _, err := databaseIdentity(config.MaintenanceDatabaseURL); err != nil {
 		return ErrInvalidCloudConfig
 	}
+	if !config.bundleStorageIsWholeOrAbsent() {
+		return ErrInvalidCloudConfig
+	}
 	return nil
+}
+
+// BundleStorageConfigured reports whether this deployment was given somewhere
+// to put an incident bundle.
+func (config WorkerConfig) BundleStorageConfigured() bool {
+	return config.BundleEndpoint != ""
+}
+
+func (config WorkerConfig) bundleStorageIsWholeOrAbsent() bool {
+	set := 0
+	for _, field := range []string{
+		config.BundleEndpoint,
+		config.BundleRegion,
+		config.BundleBucket,
+		config.BundleAccessKeyID,
+		config.BundleSecretKey,
+	} {
+		if strings.TrimSpace(field) != field {
+			return false
+		}
+		if field != "" {
+			set++
+		}
+	}
+	return set == 0 || set == 5
 }
 
 func (config APIConfig) Validate() error {

@@ -226,6 +226,11 @@ func buildWorkerRuntime(
 		return nil, ErrWorkerRuntime
 	}
 
+	bundlePass, err := newBundlePass(config, pool, logger, instanceID, now)
+	if err != nil {
+		return nil, ErrWorkerRuntime
+	}
+
 	jobs := []workerJob{
 		{
 			event:    logging.EventCloudReconcile,
@@ -317,6 +322,7 @@ func buildWorkerRuntime(
 				return err
 			},
 		},
+		bundlePass,
 	}
 	return &workerRuntime{
 		heartbeat: heartbeat,

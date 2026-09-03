@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -516,5 +517,192 @@ func TestRetryDelayIsBounded(t *testing.T) {
 	}
 	if retryDelay(1000) != maxRetryDelay {
 		t.Fatalf("retryDelay(1000) = %v", retryDelay(1000))
+	}
+}
+
+const (
+	closedUnbundledID = metadata.UUID("a1111111-1111-4111-8111-111111111111")
+	closedNoEvidence  = metadata.UUID("a2222222-2222-4222-8222-222222222222")
+	closedExpiredID   = metadata.UUID("a3333333-3333-4333-8333-333333333333")
+	expiredBundleID   = metadata.UUID("a4444444-4444-4444-8444-444444444444")
+)
+
+// TestPostgresOnlyClosedIncidentsNeverBundledArePending fixes the rule the
+// bundle pass selects by. Three of the four incidents it seeds are excluded,
+// and each exclusion is a failure mode the pass would otherwise run into on
+// every interval for as long as the deployment lives:
+//
+// An open incident is not finished producing evidence.
+//
+// A closed incident with nothing linked to it makes Create return
+// ErrNoIncidentEvidence, and no later pass will find it different.
+//
+// A closed incident whose bundle was deleted at its recorded expiry must stay
+// excluded, because Create revives a deleted row rather than skipping it: the
+// pass would put back what expiry just removed, expiry would remove it again,
+// and retention would never take effect.
+func TestPostgresOnlyClosedIncidentsNeverBundledArePending(t *testing.T) {
+	adminDSN := os.Getenv("HEXROUTE_TEST_POSTGRES_ADMIN_DSN")
+	maintenanceDSN := os.Getenv("HEXROUTE_TEST_POSTGRES_MAINTENANCE_DSN")
+	if adminDSN == "" || maintenanceDSN == "" {
+		t.Skip("PostgreSQL integration DSNs are not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	admin := bundleIntegrationPool(t, ctx, adminDSN)
+	maintenance := bundleIntegrationPool(t, ctx, maintenanceDSN)
+	resetBundleData(t, ctx, admin)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(
+			context.Background(),
+			10*time.Second,
+		)
+		defer cleanupCancel()
+		resetBundleData(t, cleanupCtx, admin)
+	})
+
+	now := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
+	seedBundleData(t, ctx, admin, now)
+	seedPendingCandidates(t, ctx, admin, now)
+
+	store, err := NewPostgresStore(maintenance)
+	if err != nil {
+		t.Fatalf("NewPostgresStore() error = %v", err)
+	}
+	pending, err := store.PendingClosedIncidents(ctx, maxPendingBatch)
+	if err != nil {
+		t.Fatalf("PendingClosedIncidents() error = %v", err)
+	}
+	if len(pending) != 1 || pending[0] != closedUnbundledID {
+		t.Fatalf(
+			"PendingClosedIncidents() = %v, want exactly [%s]",
+			pending,
+			closedUnbundledID,
+		)
+	}
+
+	// Bundling the one candidate must empty the selection, or the pass would
+	// meet the same incident again on its next interval.
+	if _, err := admin.Exec(ctx, `
+		INSERT INTO incident_bundles (
+			incident_bundle_id,
+			incident_id,
+			object_key,
+			content_sha256,
+			compressed_bytes,
+			created_at,
+			expires_at,
+			next_delete_attempt_at
+		) VALUES (
+			'a5555555-5555-4555-8555-555555555555',
+			$1,
+			'bundles/just-created',
+			$2,
+			128,
+			$3,
+			$3::timestamptz + INTERVAL '30 days',
+			$3::timestamptz + INTERVAL '30 days'
+		)
+	`, pgx.QueryExecModeSimpleProtocol,
+		string(closedUnbundledID),
+		make([]byte, 32),
+		now,
+	); err != nil {
+		t.Fatalf("record the created bundle: %v", err)
+	}
+	pending, err = store.PendingClosedIncidents(ctx, maxPendingBatch)
+	if err != nil {
+		t.Fatalf("PendingClosedIncidents() after bundling error = %v", err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf(
+			"PendingClosedIncidents() after bundling = %v, want none",
+			pending,
+		)
+	}
+}
+
+// unreachableDatabase fails the test if a bounds check ever lets a query
+// through. A rejected limit must be rejected before anything is asked of the
+// database, not after.
+type unreachableDatabase struct{ t *testing.T }
+
+func (database unreachableDatabase) BeginTx(
+	context.Context,
+	pgx.TxOptions,
+) (pgx.Tx, error) {
+	database.t.Fatal("an out-of-range limit reached the database")
+	return nil, nil
+}
+
+func TestAPendingBatchIsBounded(t *testing.T) {
+	store, err := NewPostgresStore(unreachableDatabase{t: t})
+	if err != nil {
+		t.Fatalf("NewPostgresStore() error = %v", err)
+	}
+	for _, limit := range []int{0, -1, maxPendingBatch + 1} {
+		if _, err := store.PendingClosedIncidents(
+			context.Background(),
+			limit,
+		); !errors.Is(err, ErrInvalidBundle) {
+			t.Fatalf(
+				"PendingClosedIncidents(limit=%d) error = %v, want %v",
+				limit,
+				err,
+				ErrInvalidBundle,
+			)
+		}
+	}
+}
+
+func seedPendingCandidates(
+	t *testing.T,
+	ctx context.Context,
+	admin *pgxpool.Pool,
+	now time.Time,
+) {
+	t.Helper()
+	_, err := admin.Exec(ctx, `
+		INSERT INTO incidents (
+			incident_id, node_id, correlation_key, category, component,
+			severity, incident_status, requires_action, generation,
+			opened_at, last_observed_at, resolved_at, created_at, updated_at
+		) VALUES
+		($2, $1, 'pending:closed-unbundled', 'availability', 'tunnel',
+		 'warning', 'resolved', FALSE, 1, $5, $5, $5, $5, $5),
+		($3, $1, 'pending:closed-no-evidence', 'availability', 'tunnel',
+		 'warning', 'resolved', FALSE, 1, $5, $5, $5, $5, $5),
+		($4, $1, 'pending:closed-expired', 'availability', 'tunnel',
+		 'warning', 'resolved', FALSE, 1, $5, $5, $5, $5, $5);
+
+		INSERT INTO incident_events (incident_id, event_id, evidence_role, linked_at)
+		VALUES ($2, $6, 'trigger', $5),
+		       ($4, $6, 'trigger', $5);
+
+		INSERT INTO incident_bundles (
+			incident_bundle_id, incident_id, object_key, content_sha256,
+			compressed_bytes, created_at, expires_at, deleted_at,
+			next_delete_attempt_at
+		) VALUES (
+			$7, $4, 'bundles/already-expired', $8, 256,
+			$5::timestamptz - INTERVAL '60 days',
+			$5::timestamptz - INTERVAL '30 days',
+			$5::timestamptz - INTERVAL '30 days',
+			$5::timestamptz - INTERVAL '30 days'
+		);
+	`,
+		pgx.QueryExecModeSimpleProtocol,
+		string(bundleNodeID),
+		string(closedUnbundledID),
+		string(closedNoEvidence),
+		string(closedExpiredID),
+		now,
+		string(bundleEvidenceID),
+		string(expiredBundleID),
+		make([]byte, 32),
+	)
+	if err != nil {
+		t.Fatalf("seed pending candidates: %v", err)
 	}
 }

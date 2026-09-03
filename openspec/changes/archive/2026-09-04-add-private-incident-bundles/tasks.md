@@ -16,12 +16,12 @@ read in the tree, not because a document said so.
 ## 2. Close What Was Left Open
 
 - [x] 2.0 Implement the object store the creator and the expiry worker take. `incidentbundle.Storage` is two methods and nothing in the tree implements either, so the worker has nothing to pass. Signed with SigV4 by hand rather than by adding an SDK: this repository has six direct dependencies and sixty lines of go.sum, and two operations do not justify dozens of modules.
-- [ ] 2.1 Call bundle creation from the maintenance worker, so that an incident's evidence is assembled rather than only assemblable. Blocked on a rule nobody has written: `Create` takes one incident by identity, and nothing selects which incidents are owed a bundle. The documentation says which *events* enter a bundle and is silent on which *incidents* get one. Deciding that — every resolved incident without a current bundle, or something narrower — is the open question, and it is not the storage: that has existed since 26 July.
-- [ ] 2.2 Call the expiry worker from the same pass, so that a recorded expiry is acted on rather than only recorded.
-- [ ] 2.3 Disable the pass when no bundle storage is configured, leaving incident correlation, retention and alerting unchanged.
-- [ ] 2.4 Record that the pass was not attempted when storage is absent, so a deployment that was never finished can be told from one with nothing to bundle.
+- [x] 2.1 Call bundle creation from the maintenance worker, so that an incident's evidence is assembled rather than only assemblable. The rule that was missing is now written down: a closed incident with linked evidence that has never been bundled. Two exclusions are load-bearing rather than tidy. An incident with nothing linked returns `ErrNoIncidentEvidence` and nothing about it will change, so selecting it would fail identically on every pass forever. An incident whose bundle was removed at its expiry stays excluded because `Create` revives a deleted row rather than skipping it — the literal reading of "has no current bundle" would have the pass restore what expiry just removed, each undoing the other every interval, and retention would never take effect. `TestPostgresOnlyClosedIncidentsNeverBundledArePending` fails on that literal reading.
+- [x] 2.2 Call the expiry worker from the same pass, so that a recorded expiry is acted on rather than only recorded. One incident failing to bundle does not hold back the expiry half: an expiry that is due stays due whether or not storage accepted some other object.
+- [x] 2.3 Disable the pass when no bundle storage is configured, leaving incident correlation, retention and alerting unchanged. Storage is all five settings or none; three of five is refused at load rather than started, because a misconfigured deployment would otherwise be indistinguishable from an unconfigured one and both write the same log.
+- [x] 2.4 Record that the pass was not attempted when storage is absent, so a deployment that was never finished can be told from one with nothing to bundle. The record is an event name, `cloud_incident_bundle_unconfigured`, because a log record carries a fixed field set and cannot say in a field what it did not do.
 - [x] 2.5 Assert that no path reads a bundle as input to a reduction, policy decision, action lease or mutation, and that the refusal does not depend on the bundle's content. The assertion did exist, which this task said it did not: `internal/incidentbundle` is in the cloud-dependency set of `tests/policy_cloud_independence_test.sh`, so no local binary may import it and the refusal is structural rather than about any bundle's content. That gate now covers twelve local binaries rather than four.
-- [ ] 2.6 Remove `incidentbundle` from the unwired list in `tests/package_reachability_test.sh` once the worker reaches it, and confirm the census reports the debt smaller.
+- [x] 2.6 Remove `incidentbundle` from the unwired list in `tests/package_reachability_test.sh` once the worker reaches it, and confirm the census reports the debt smaller. `objectstore` left the list in the same pass. The census went from six packages and 1800 unrun lines to four and 638.
 
 ## 3. Keep The Boundary
 
@@ -30,6 +30,6 @@ read in the tree, not because a document said so.
 
 ## 4. Verification
 
-- [ ] 4.1 Run `make check` and `make postgres-test` and resolve every failure.
-- [ ] 4.2 Run `openspec validate add-private-incident-bundles --strict` and keep proposal, design, specs and tasks synchronized with what was built.
-- [ ] 4.3 Sync the delta requirement into the baseline `cloud-telemetry` spec only after the worker connection and the storage contract are both in place.
+- [x] 4.1 Run `make check` and `make postgres-test` and resolve every failure.
+- [x] 4.2 Run `openspec validate add-private-incident-bundles --strict` and keep proposal, design, specs and tasks synchronized with what was built.
+- [x] 4.3 Sync the delta requirement into the baseline `cloud-telemetry` spec only after the worker connection and the storage contract are both in place.

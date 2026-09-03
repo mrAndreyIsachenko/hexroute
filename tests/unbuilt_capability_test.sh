@@ -26,13 +26,6 @@ import sys
 # What is waiting, and for what. A reason that names a task or a cutover can be
 # checked against it later; "not yet" cannot.
 ACCEPTED = {
-    # Built, and blocked on object storage configured outside this repository.
-    # add-private-incident-bundles tasks 2.1, 2.2 and 3.1.
-    "internal/incidentbundle.NewCreator":
-        "add-private-incident-bundles 2.1 — needs private object storage",
-    "internal/incidentbundle.NewExpiryWorker":
-        "add-private-incident-bundles 2.2 — needs private object storage",
-
     # Held behind their own cutovers, recorded in the unwired list.
     "internal/credentials.NewKeychainSource":
         "user-domain cutover; Twilight owns Keychain-backed Pritunl today",

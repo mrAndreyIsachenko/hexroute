@@ -28,11 +28,6 @@ test_only=(
 unwired=(
   # connectivityhost is the seam; it is reachable. Nothing else here is.
 
-  # incidentbundle: nothing creates a bundle, so expiry has nothing to expire.
-  # Creation needs private object storage configured outside this repository,
-  # which is why wiring only the expiry job would be motion without effect.
-  incidentbundle
-
   # Local capabilities held behind their own cutover gates.
   credentials     # opaque Keychain handles, for the user-domain cutover
   pritunlrescue   # typed rescue contract, for the OTP-watchdog cutover
@@ -44,15 +39,6 @@ unwired=(
   # is a behaviour change for resume as a whole, not an added capability, and
   # that is what makes it a cutover rather than a connection.
   resumeexecutor
-
-  # objectstore implements the two methods incidentbundle.Storage asks for and
-  # nothing else — it cannot list and cannot read an object back. The worker
-  # cannot construct it yet, and the reason is not the storage: the bucket has
-  # existed since 26 July and the creator takes one incident by identity,
-  # while nothing anywhere selects which incidents are owed a bundle. That
-  # rule is a decision nobody has taken, and inventing one here would be
-  # worse than the gap.
-  objectstore
 
   # policyadvisor turns repeated denials into an unsigned draft an operator
   # reviews by hand. It has no producer at all, and the evidence a producer

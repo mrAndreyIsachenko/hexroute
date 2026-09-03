@@ -97,6 +97,17 @@ const (
 	// EventCloudSLO names the pass that measures availability over closed
 	// windows from evidence already stored.
 	EventCloudSLO EventName = "cloud_slo"
+	// EventCloudIncidentBundle names the pass that assembles evidence for
+	// closed incidents that have never been bundled, and acts on bundles that
+	// have reached their recorded expiry.
+	EventCloudIncidentBundle EventName = "cloud_incident_bundle"
+	// EventCloudIncidentBundleUnconfigured names the same pass reached by a
+	// deployment that was never given storage to put a bundle in. A record
+	// has to be a name here, because a log record carries a fixed field set
+	// and cannot say in a field what it did not do. Without this name, a
+	// deployment that was never finished and one with nothing to bundle
+	// produce identical logs: silence.
+	EventCloudIncidentBundleUnconfigured EventName = "cloud_incident_bundle_unconfigured"
 )
 
 type Result string
@@ -246,7 +257,8 @@ func validEvent(value EventName) bool {
 		EventCloudMigration,
 		EventCloudHeartbeat, EventCloudReconcile, EventCloudAlertQueue,
 		EventCloudAlertDelivery, EventCloudRetention, EventCloudConnectivity,
-		EventCloudSLO:
+		EventCloudSLO, EventCloudIncidentBundle,
+		EventCloudIncidentBundleUnconfigured:
 		return true
 	default:
 		return false
