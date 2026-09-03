@@ -15,7 +15,8 @@ read in the tree, not because a document said so.
 
 ## 2. Close What Was Left Open
 
-- [ ] 2.1 Call bundle creation from the maintenance worker, so that an incident's evidence is assembled rather than only assemblable.
+- [x] 2.0 Implement the object store the creator and the expiry worker take. `incidentbundle.Storage` is two methods and nothing in the tree implements either, so the worker has nothing to pass. Signed with SigV4 by hand rather than by adding an SDK: this repository has six direct dependencies and sixty lines of go.sum, and two operations do not justify dozens of modules.
+- [ ] 2.1 Call bundle creation from the maintenance worker, so that an incident's evidence is assembled rather than only assemblable. Blocked on a rule nobody has written: `Create` takes one incident by identity, and nothing selects which incidents are owed a bundle. The documentation says which *events* enter a bundle and is silent on which *incidents* get one. Deciding that — every resolved incident without a current bundle, or something narrower — is the open question, and it is not the storage: that has existed since 26 July.
 - [ ] 2.2 Call the expiry worker from the same pass, so that a recorded expiry is acted on rather than only recorded.
 - [ ] 2.3 Disable the pass when no bundle storage is configured, leaving incident correlation, retention and alerting unchanged.
 - [ ] 2.4 Record that the pass was not attempted when storage is absent, so a deployment that was never finished can be told from one with nothing to bundle.

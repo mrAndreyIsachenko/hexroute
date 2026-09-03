@@ -45,6 +45,15 @@ unwired=(
   # that is what makes it a cutover rather than a connection.
   resumeexecutor
 
+  # objectstore implements the two methods incidentbundle.Storage asks for and
+  # nothing else — it cannot list and cannot read an object back. The worker
+  # cannot construct it yet, and the reason is not the storage: the bucket has
+  # existed since 26 July and the creator takes one incident by identity,
+  # while nothing anywhere selects which incidents are owed a bundle. That
+  # rule is a decision nobody has taken, and inventing one here would be
+  # worse than the gap.
+  objectstore
+
   # policyadvisor turns repeated denials into an unsigned draft an operator
   # reviews by hand. It has no producer at all, and the evidence a producer
   # would read is not real yet: the reconciler shadow store this host runs is
