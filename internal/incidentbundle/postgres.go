@@ -208,3 +208,81 @@ func rollback(
 		*resultErr = rollbackErr
 	}
 }
+
+// maxPendingBatch bounds one pass over incidents that have never been
+// bundled. The bound exists because the first pass on an installed deployment
+// meets every closed incident it has ever recorded at once.
+const maxPendingBatch = 64
+
+// PendingClosedIncidents names closed incidents that have never been bundled
+// and have evidence to bundle.
+//
+// Two exclusions decide this query, and both come from what Create does.
+//
+// An incident with no linked event returns ErrNoIncidentEvidence, and nothing
+// about the incident will change to make that untrue later; selecting one
+// would fail the same way on every pass, forever, and bury the failures that
+// mean something.
+//
+// An incident whose bundle was deleted is excluded by the absence of any row,
+// not by deleted_at. Deletion happens only at the recorded expiry, and Create
+// revives a deleted row rather than skipping it — so selecting on "no live
+// bundle" would have this pass resurrect what expiry just removed, and the two
+// would undo each other every interval for as long as the deployment runs.
+// Retention is the reason the object went away; recreating it here would make
+// retention unreachable. A deliberate later request may still repopulate the
+// row, which is what the expiry scenario reserves.
+func (store *PostgresStore) PendingClosedIncidents(
+	ctx context.Context,
+	limit int,
+) (incidents []metadata.UUID, err error) {
+	if store == nil ||
+		store.database == nil ||
+		ctx == nil ||
+		limit <= 0 ||
+		limit > maxPendingBatch {
+		return nil, ErrInvalidBundle
+	}
+	transaction, err := store.database.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer rollback(ctx, transaction, &err)
+	rows, err := transaction.Query(ctx, `
+		SELECT i.incident_id::text
+		FROM incidents i
+		WHERE i.incident_status = 'resolved'
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM incident_bundles b
+			WHERE b.incident_id = i.incident_id
+		  )
+		  AND EXISTS (
+			SELECT 1
+			FROM incident_events e
+			WHERE e.incident_id = i.incident_id
+		  )
+		ORDER BY i.last_observed_at, i.incident_id
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var incidentID string
+		if err := rows.Scan(&incidentID); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		incidents = append(incidents, metadata.UUID(incidentID))
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	if err = transaction.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return incidents, nil
+}

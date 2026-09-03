@@ -14,6 +14,13 @@ A bundle SHALL NOT be readable as input to anything. It is redacted evidence a
 person reads, and no host, reducer, policy generation, action lease or
 mutation may be derived from one.
 
+The worker SHALL assemble a bundle for every closed incident that has evidence
+linked to it and has never been bundled, and SHALL NOT assemble one for an
+incident whose bundle has already been removed at its recorded expiry. Removal
+happens only at that expiry, and assembling again would restore what retention
+took away; a bundle that is wanted after its expiry SHALL be requested
+deliberately rather than restored by a pass.
+
 Bundle storage SHALL be configured outside this repository and SHALL provide
 private access with no public URL, an idempotent write when key and content
 are identical, and a lifecycle ceiling no longer than the recorded expiry.
@@ -25,6 +32,24 @@ SHALL remain otherwise unchanged.
 - **WHEN** the worker assembles a bundle from events already linked to an incident
 - **THEN** every record passes the strict event decoder before it is included
 - **AND** an unknown schema, a malformed payload or unrestricted raw output is excluded rather than carried
+
+#### Scenario: A closed incident has never been bundled
+
+- **WHEN** the worker reaches a bundle pass and an incident is closed, has evidence linked to it, and has no bundle
+- **THEN** a bundle is assembled for it
+- **AND** the same incident is not selected again on the next pass
+
+#### Scenario: A closed incident has nothing linked to it
+
+- **WHEN** an incident is closed and no event is linked to it
+- **THEN** the pass does not select it
+- **AND** the pass records no failure for it, on this interval or any later one
+
+#### Scenario: A closed incident's bundle was removed at its expiry
+
+- **WHEN** an incident is closed and the bundle it once had was removed at its recorded expiry
+- **THEN** the pass does not assemble a replacement
+- **AND** retention remains the reason the object is gone
 
 #### Scenario: The same incident snapshot is bundled twice
 
