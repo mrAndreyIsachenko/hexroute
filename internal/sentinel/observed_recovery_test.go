@@ -148,7 +148,7 @@ func TestAPlanIsRecordedOnChangeRatherThanEveryCycle(t *testing.T) {
 			t.Fatalf("emitPlan: %v", err)
 		}
 	}
-	if lines := count(out.String(), "sentinel_recovery_plan"); lines != 1 {
+	if lines := count(out.String(), "sentinel_recovery_monitoring"); lines != 1 {
 		t.Fatalf("five identical plans wrote %d lines, want 1", lines)
 	}
 
@@ -159,8 +159,55 @@ func TestAPlanIsRecordedOnChangeRatherThanEveryCycle(t *testing.T) {
 	if _, err := emitPlan(logger, moved, last); err != nil {
 		t.Fatalf("emitPlan: %v", err)
 	}
-	if lines := count(out.String(), "sentinel_recovery_plan"); lines != 2 {
-		t.Fatalf("a changed plan wrote %d lines in total, want 2", lines)
+	if count(out.String(), "sentinel_recovery_would_restart") != 1 {
+		t.Fatalf("a plan that selected a restart was not named as one: %s",
+			out.String())
+	}
+}
+
+// 2.1 — the record names the plan. The log carries a fixed vocabulary and no
+// free-form fields, so the event has to be the name; a single generic event
+// satisfied the vocabulary and said nothing, which is what the first plan
+// written on a real host did.
+func TestEachPhaseIsNamedByItsOwnEvent(t *testing.T) {
+	for _, testCase := range []struct {
+		phase  RecoveryPhase
+		action RecoveryAction
+		event  string
+		level  string
+	}{
+		{RecoveryMonitoring, RecoveryActionNone, "sentinel_recovery_monitoring", "info"},
+		{RecoveryMonitoring, RecoveryActionRestartRoot, "sentinel_recovery_would_restart", "warn"},
+		{RecoveryVerifying, RecoveryActionNone, "sentinel_recovery_verifying", "info"},
+		{RecoveryCooldown, RecoveryActionNone, "sentinel_recovery_cooldown", "info"},
+	} {
+		t.Run(testCase.event, func(t *testing.T) {
+			var out bytes.Buffer
+			logger, err := logging.New(&out, logging.ComponentSentinel)
+			if err != nil {
+				t.Fatalf("logging: %v", err)
+			}
+			summary := Summary{PlanKnown: true, Plan: RecoveryPlan{
+				ObserveOnly: true, Phase: testCase.phase, Action: testCase.action,
+			}}
+			if _, err := emitPlan(logger, summary, recordedPlan{}); err != nil {
+				t.Fatalf("emitPlan: %v", err)
+			}
+			written := out.String()
+			if count(written, testCase.event) != 1 {
+				t.Fatalf("phase %q action %q wrote %q, want %s",
+					testCase.phase, testCase.action, written, testCase.event)
+			}
+			if !strings.Contains(written, `"level":"`+testCase.level+`"`) {
+				t.Fatalf("%s was written at the wrong level: %s",
+					testCase.event, written)
+			}
+			// Whatever the phase, the record says nothing was done.
+			if !strings.Contains(written, `"mutation_authority":"none"`) {
+				t.Fatalf("%s does not say no action was taken: %s",
+					testCase.event, written)
+			}
+		})
 	}
 }
 

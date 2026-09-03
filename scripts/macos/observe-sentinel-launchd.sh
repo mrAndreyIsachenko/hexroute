@@ -120,7 +120,7 @@ case "${1:-}" in
     ;;
   plans)
     # Usually a handful of lines. The plan is written when it changes.
-    grep -E "sentinel_recovery_plan|sentinel_recovery_bound|sentinel_planner_unavailable" \
+    grep -E "sentinel_recovery_(monitoring|would_restart|verifying|cooldown|bound)|sentinel_planner_unavailable" \
       "$LOG_DIR/sentinel.log" 2>/dev/null | tail -n 20 ||
       printf 'no plan has been recorded\n'
     ;;

@@ -49,11 +49,21 @@ const (
 	// It is said out loud because a host retaining nothing looks exactly like
 	// a host with nothing to retain.
 	EventEventArchiveUnavailable EventName = "event_archive_unavailable"
-	// EventSentinelRecoveryPlan reports what an authorized sentinel would
-	// have done, at the moment it would have done it. It fires on a change of
-	// phase or action, not every cycle: a line repeated every cycle stops
-	// being read after the third one.
-	EventSentinelRecoveryPlan EventName = "sentinel_recovery_plan"
+	// The recovery plan is reported as a named event rather than one generic
+	// event carrying a payload, because this log has a fixed vocabulary and
+	// no free-form fields — deliberately, since a log line is not a status
+	// API. A single sentinel_recovery_plan event satisfied that vocabulary
+	// and said nothing: the first one written on a real host named neither
+	// the phase nor the action, which is what the requirement asks for.
+	//
+	// Each fires on a change, not every cycle.
+	EventSentinelRecoveryMonitoring EventName = "sentinel_recovery_monitoring"
+	// EventSentinelRecoveryWouldRestart is the one line worth waking for:
+	// the planner selected a restart of the root daemon, and nothing was
+	// done because this sentinel holds no means of doing it.
+	EventSentinelRecoveryWouldRestart EventName = "sentinel_recovery_would_restart"
+	EventSentinelRecoveryVerifying    EventName = "sentinel_recovery_verifying"
+	EventSentinelRecoveryCooldown     EventName = "sentinel_recovery_cooldown"
 	// EventSentinelRecoveryBound reports the point at which an authorized
 	// sentinel would have spent its one permitted attempt and stopped. An
 	// observing sentinel has no attempt to spend, so the moment is invisible
@@ -225,7 +235,9 @@ func validEvent(value EventName) bool {
 	case EventCommandStatus, EventStartupCheck, EventVersionRequested, EventArgumentRejected, EventIPCRejected,
 		EventDaemonStarted, EventDaemonStopped, EventConnectivitySnapshot,
 		EventReconcilerShadowUnavailable, EventEventArchiveUnavailable,
-		EventSentinelRecoveryPlan, EventSentinelRecoveryBound,
+		EventSentinelRecoveryMonitoring, EventSentinelRecoveryWouldRestart,
+		EventSentinelRecoveryVerifying, EventSentinelRecoveryCooldown,
+		EventSentinelRecoveryBound,
 		EventSentinelPlannerUnavailable,
 		EventObservationCycle, EventIngressRoute,
 		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect,

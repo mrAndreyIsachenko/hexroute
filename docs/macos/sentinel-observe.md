@@ -17,15 +17,18 @@ through phases and stops.
 
 | Record | What it says |
 | --- | --- |
-| `sentinel_recovery_plan` | the phase the planner is in and the action it selected, written when either changes rather than every cycle |
+| `sentinel_recovery_monitoring` | watching; the planner selected no action |
+| `sentinel_recovery_would_restart` | an authorized sentinel would have restarted the root daemon here, and this one cannot |
+| `sentinel_recovery_verifying` | it would now be checking whether that worked |
+| `sentinel_recovery_cooldown` | the one attempt is spent; nothing further until the window passes |
 | `sentinel_recovery_bound` | the point at which an authorized sentinel would have spent its one permitted attempt and stopped |
 | `sentinel_planner_unavailable` | the planner refused an input; the sentinel keeps watching and stops planning |
 
-| Phase | What it means |
-| --- | --- |
-| `monitoring` | watching; no action selected |
-| `verifying` | an authorized sentinel would have acted and would now be checking whether it worked |
-| `cooldown` | the one attempt is spent; nothing further until the window passes |
+Each is written when the plan changes, not every cycle. The phase is the event
+name rather than a field, because this log carries a fixed vocabulary and no
+free-form ones — a log line is not a status API. One generic event satisfied
+that vocabulary and named nothing, which is what the first plan written on a
+real host did.
 
 `sentinel_recovery_bound` is the number a cutover decision needs. Over a long
 observation it says how often the sentinel would have restarted the root
