@@ -19,6 +19,24 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PLIST_SOURCE="$REPO_ROOT/deploy/macos/$LABEL.plist"
 PLIST_DEST="/Library/LaunchDaemons/$LABEL.plist"
 
+# await_bootout waits until the job is actually gone.
+#
+# bootout is asynchronous: it returns while the job is still unloading, and a
+# bootstrap that follows immediately gets `Bootstrap failed: 5: Input/output
+# error`. It happened on the root daemon after three days of uptime. Waiting
+# for the condition rather than a fixed pause is the only version that holds
+# for a job that takes its time letting go.
+await_bootout() {
+  local target="$1"
+  local deadline=$((SECONDS + 30))
+  while [[ "$SECONDS" -lt "$deadline" ]]; do
+    /bin/launchctl print "$target" >/dev/null 2>&1 || return 0
+    /bin/sleep 1
+  done
+  printf 'the previous job did not unload within 30s; bootstrap will likely fail\n' >&2
+  return 1
+}
+
 die() {
   printf 'error: %s\n' "$*" >&2
   exit 1
@@ -72,6 +90,7 @@ install_sentinel() {
   /usr/bin/install -o root -g wheel -m 0644 "$PLIST_SOURCE" "$PLIST_DEST"
 
   /bin/launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true
+  await_bootout "system/$LABEL" || true
   /bin/launchctl bootstrap system "$PLIST_DEST"
   printf 'installed %s, observing continuously\n' "$LABEL"
 }
