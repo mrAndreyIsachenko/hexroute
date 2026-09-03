@@ -36,4 +36,4 @@
 - [x] 5.3 Run focused unit, race, crash-recovery and secret-canary tests for the affected packages.
 - [x] 5.4 Run `make check` and resolve every static, race, formatting, repository-boundary and secret-leak failure.
 - [x] 5.5 Run `openspec validate add-local-event-archive --strict` and keep proposal, specs and tasks synchronized with implementation evidence.
-- [ ] 5.6 Sync validated delta requirements into baseline specs only after implementation and a first real weekly report exist.
+- [x] 5.6 Sync validated delta requirements into baseline specs only after implementation and a first real weekly report exist.

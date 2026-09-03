@@ -13,7 +13,11 @@ const (
 	// ReportSchema names the shape of one archive report.
 	ReportSchema = "hexroute.event-archive.report.v1"
 	// ReportSchemaVersion is bumped only for an incompatible change.
-	ReportSchemaVersion uint16 = 1
+	//
+	// Version 2 named the window's fields. Version 1 serialized them by their
+	// Go names — Records, First, Oldest — because the type carried no tags,
+	// which put two naming conventions in one persisted artifact.
+	ReportSchemaVersion uint16 = 2
 	// MaxRareFindings bounds the ranking. A report listing everything ranks
 	// nothing.
 	MaxRareFindings = 20
@@ -287,6 +291,17 @@ func describe(payload any) (component, reason string) {
 		return string(value.Component), string(value.Category)
 	case *event.Diagnostic:
 		return string(value.Component), string(value.Code)
+	case *event.ConnectivityFact:
+		// The stream this archive actually receives. Omitting it left
+		// by_component empty and the rarity ranking distinguishable only by
+		// schema, on the first real report ever produced — because every
+		// fixture used event types this host does not emit.
+		//
+		// The outcome is what the acceptor decided: accepted, duplicate,
+		// conflict, stale. That is the rare thing a review is looking for —
+		// three conflicts among fifty thousand acceptances is a finding, and
+		// counting them all as "connectivity.observation" is not.
+		return string(value.Component), value.Outcome
 	case *event.ArchiveOverflow:
 		return string(control.ComponentRuntime), string(value.Reason)
 	default:

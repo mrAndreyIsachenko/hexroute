@@ -121,14 +121,14 @@ type Record struct {
 // shorter period than was asked for, and a reader who cannot see that reads an
 // eviction as a quiet week.
 type Window struct {
-	Records uint32
-	First   uint64
-	Last    uint64
-	Oldest  time.Time
-	Newest  time.Time
+	Records uint32    `json:"records"`
+	First   uint64    `json:"first"`
+	Last    uint64    `json:"last"`
+	Oldest  time.Time `json:"oldest"`
+	Newest  time.Time `json:"newest"`
 	// Empty distinguishes an archive holding nothing from one whose window
 	// happens to start at the zero time.
-	Empty bool
+	Empty bool `json:"empty"`
 }
 
 type wireRecord struct {

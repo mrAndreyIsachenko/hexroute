@@ -1,6 +1,10 @@
 package eventarchive
 
 import (
+	"encoding/json"
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
+	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
+	"strings"
 	"testing"
 	"time"
 
@@ -240,5 +244,108 @@ func TestCommentaryDoesNotMoveTheDigest(t *testing.T) {
 	}
 	if recomputed != report.Digest {
 		t.Fatal("adding commentary changed what the report says happened")
+	}
+}
+
+// connectivityFact builds what the journal's mirror actually hands the
+// archive. Every fixture above uses event types this host does not emit, and
+// the first real report on a machine came back with by_component empty and a
+// rarity ranking distinguishable only by schema because of it.
+func connectivityFact(
+	component connectivity.Component, sequence uint64, outcome string,
+) []byte {
+	fact := connectivity.FixtureBaseline(component, sequence)
+	// An event the acceptor refused a place in the accepted order carries no
+	// host sequence, and the encoder refuses one that claims otherwise. The
+	// fold position counts every event either way.
+	hostSequence := sequence
+	if outcome != event.OutcomeAccepted {
+		hostSequence = 0
+	}
+	schema, record, err := event.CanonicalConnectivityRecord(
+		fact, hostSequence, sequence, outcome, string(safety.RoleAuthoritative))
+	if err != nil {
+		panic(err)
+	}
+	encoded, err := event.Encode(schema, record)
+	if err != nil {
+		panic(err)
+	}
+	return encoded
+}
+
+// The report says which component a connectivity fact was about, and what the
+// acceptor decided. Those two are the whole reason a per-component count and
+// a rarity ranking are worth having on this host.
+func TestAConnectivityStreamIsCountedByComponentAndOutcome(t *testing.T) {
+	archive := openArchive(t, t.TempDir(), newClock(), Options{})
+	for index := 0; index < 4; index++ {
+		if _, err := archive.Append(connectivityFact(
+			connectivity.ComponentRelays, uint64(index+1), "accepted")); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	// One conflict among many acceptances is exactly what the ranking is for.
+	if _, err := archive.Append(connectivityFact(
+		connectivity.ComponentTransports, 9, "conflict")); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	report := summarize(t, readAll(t, archive))
+
+	byComponent := map[string]uint32{}
+	for _, count := range report.ByComponent {
+		byComponent[count.Component] = count.Count
+	}
+	if byComponent["relay_ingress"] != 4 {
+		t.Fatalf("counted %v by component; the stream this archive receives "+
+			"was not attributed to any", report.ByComponent)
+	}
+	if byComponent["managed_transports"] != 1 {
+		t.Fatalf("counted %v by component", report.ByComponent)
+	}
+
+	if len(report.Rare) == 0 {
+		t.Fatal("nothing was ranked")
+	}
+	rarest := report.Rare[0]
+	if rarest.Component != "managed_transports" || rarest.Reason != "conflict" {
+		t.Fatalf("the rarest finding is %+v; one conflict among four "+
+			"acceptances is what a review is looking for", rarest)
+	}
+	if rarest.Count != 1 {
+		t.Fatalf("the rarest finding counted %d", rarest.Count)
+	}
+}
+
+// The window's fields are named, so a persisted report does not carry two
+// naming conventions. Version 1 wrote Records, First and Oldest.
+func TestTheWindowIsNamedInSnakeCase(t *testing.T) {
+	archive := openArchive(t, t.TempDir(), newClock(), Options{})
+	if _, err := archive.Append(connectivityFact(
+		connectivity.ComponentRelays, 1, "accepted")); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	report := summarize(t, readAll(t, archive))
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	rendered := string(encoded)
+	for _, named := range []string{
+		`"records":`, `"first":`, `"last":`, `"oldest":`, `"newest":`,
+	} {
+		if !strings.Contains(rendered, named) {
+			t.Fatalf("the window does not carry %s", named)
+		}
+	}
+	for _, unnamed := range []string{`"Records":`, `"First":`, `"Oldest":`} {
+		if strings.Contains(rendered, unnamed) {
+			t.Fatalf("the window still carries the Go field name %s", unnamed)
+		}
+	}
+	if report.Version != ReportSchemaVersion || ReportSchemaVersion < 2 {
+		t.Fatalf("naming the window is an incompatible change and the version "+
+			"is %d", report.Version)
 	}
 }
