@@ -71,7 +71,7 @@
 - [x] 9.1 Add an offline replay harness that verifies checkpoint lineage and canonical snapshot, diff and proposal digests from a valid ancestor, current policy descriptor and synthetic accepted-fact trace.
 - [x] 9.2 Add synthetic fault traces for duplicate, reorder, gap, collector loss, conflict, parent/output tamper, missing ancestor, bounded recovery-depth exhaustion, checkpoint corruption, policy change, sleep/wake and reboot.
 - [x] 9.3 Add a shadow comparison recorder that correlates normalized proposals with existing component planner output without executing either proposal.
-- [ ] 9.4 Record the qualification gate as a canonical append-only hash-linked evidence chain for 72 eligible hours, two sleep/wake cycles, one reboot and every mandatory injected failure with no unexplained divergence; bind each result to source checkpoint/snapshot/diff/proposal/fault-trace digests and reject gaps, tamper and cross-session evidence.
+- [x] 9.4 Recorded and passing: 260,921 eligible seconds of 259,200 required, two sleep/wake cycles, one reboot, all thirteen mandatory faults injected with none missing, diverged 0, unbound 0, guessed_healthy false. Evidence captured before any reinstall, in `.local/qualification/connectivity-20260903T145923Z.json`. Original wording: record the qualification gate as a canonical append-only hash-linked evidence chain for 72 eligible hours, two sleep/wake cycles, one reboot and every mandatory injected failure with no unexplained divergence; bind each result to source checkpoint/snapshot/diff/proposal/fault-trace digests and reject gaps, tamper and cross-session evidence.
 - [x] 9.5 Capture rollback evidence showing the reducer, collectors and status integration can be disabled while existing observation, Twilight, AdGuard and both Codex paths remain unchanged.
 - [x] 9.6 Block completion and any follow-up executor proposal when retained facts cannot reproduce a published snapshot or proposal.
 
@@ -81,7 +81,7 @@
 - [x] 10.2 Document the pinned Firezone, NetBird, Agent Framework and Chain Indexer architectural references, adopted mechanisms and Hexroute-specific safety differences.
 - [x] 10.3 Document startup replay, sleep/wake re-baselining, cloud-loss behavior, observe-only rollout and independently executable rollback.
 - [x] 10.4 Run focused unit, race, replay, crash-recovery, IPC, cloud projection, secret-canary and cross-platform build tests for affected packages.
-- [ ] 10.5 Run `make check` and resolve every static, race, formatting, repository-boundary and secret-leak failure.
-- [ ] 10.6 Run `openspec validate add-observable-connectivity-state-machine --strict` and keep proposal, design, specs and tasks synchronized with implementation evidence.
-- [ ] 10.7 Sync validated delta requirements into baseline specs only after implementation and shadow qualification are complete.
+- [x] 10.5 Run `make check` and resolve every static, race, formatting, repository-boundary and secret-leak failure.
+- [x] 10.6 Run `openspec validate add-observable-connectivity-state-machine --strict` and keep proposal, design, specs and tasks synchronized with implementation evidence.
+- [x] 10.7 Sync validated delta requirements into baseline specs only after implementation and shadow qualification are complete.
 - [x] 10.8 Assert that every connectivity component keeping durable state resumes across two consecutive process restarts, and keep a census so a new such component cannot arrive uncovered.
