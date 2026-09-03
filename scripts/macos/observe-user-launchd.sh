@@ -72,7 +72,15 @@ install_observer() {
     /usr/bin/install -d -m 0755 "$HOME/Library/LaunchAgents"
   fi
   /usr/bin/install -m 0755 "$binary" "$BIN_DIR/hexroute-userd"
-  /usr/bin/install -m 0600 "$config" "$CONFIG_DIR/user-observe.json"
+  # Same as the root installer: a configuration already at its destination is
+  # the ordinary case on reinstall, and copying a file onto itself fails
+  # midway, leaving the binary replaced and the plist not.
+  if [[ "$config" -ef "$CONFIG_DIR/user-observe.json" ]]; then
+    printf 'configuration is already in place; keeping it\n'
+    /bin/chmod 0600 "$CONFIG_DIR/user-observe.json"
+  else
+    /usr/bin/install -m 0600 "$config" "$CONFIG_DIR/user-observe.json"
+  fi
   /usr/bin/install -m 0644 "$PLIST_SOURCE" "$PLIST_DEST"
 
   set_plist_string "ProgramArguments.0" "$BIN_DIR/hexroute-userd"

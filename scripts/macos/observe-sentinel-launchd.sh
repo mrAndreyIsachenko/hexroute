@@ -58,8 +58,17 @@ install_sentinel() {
   /usr/bin/install -d -o root -g wheel -m 0700 \
     "$ROOT_DIR" "$BIN_DIR" "$CONFIG_DIR" "$STATE_DIR" "$LOG_DIR"
   /usr/bin/install -o root -g wheel -m 0755 "$binary" "$BIN_DIR/hexroute-sentinel"
-  /usr/bin/install -o root -g wheel -m 0600 \
-    "$config" "$CONFIG_DIR/sentinel-observe.json"
+  # A configuration already at its destination is the ordinary case on
+  # reinstall, and `install` refuses to copy a file onto itself. Refusing
+  # midway leaves the binary replaced and the plist not.
+  if [[ "$config" -ef "$CONFIG_DIR/sentinel-observe.json" ]]; then
+    printf 'configuration is already in place; keeping it\n'
+    /usr/sbin/chown root:wheel "$CONFIG_DIR/sentinel-observe.json"
+    /bin/chmod 0600 "$CONFIG_DIR/sentinel-observe.json"
+  else
+    /usr/bin/install -o root -g wheel -m 0600 \
+      "$config" "$CONFIG_DIR/sentinel-observe.json"
+  fi
   /usr/bin/install -o root -g wheel -m 0644 "$PLIST_SOURCE" "$PLIST_DEST"
 
   /bin/launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true

@@ -124,6 +124,25 @@ for binary in "${resident[@]}" "${scheduled[@]}"; do
   fi
 done
 
+# An installer that copies a configuration has to survive that configuration
+# already being at its destination. That is the ordinary case on reinstall —
+# a new binary, or a plist that gained an argument — and `install` refuses to
+# copy a file onto itself.
+#
+# It failed exactly this way on the root daemon, and because it failed midway
+# the binary was already replaced while the plist was not: a half-installed
+# daemon whose loaded job was still the old one, and no message saying so.
+for installer in scripts/macos/*-launchd.sh; do
+  grep -q '"\$config"' "$installer" || continue
+  if ! grep -q -- '-ef' "$installer"; then
+    printf '%s copies a configuration and does not survive it already being\n' \
+      "$installer" >&2
+    printf '  in place; install refuses to copy a file onto itself and exits\n' >&2
+    printf '  midway, leaving the binary replaced and the plist not\n' >&2
+    status=1
+  fi
+done
+
 [[ "$status" -eq 0 ]] || exit 1
 
 printf 'ok: every launchd job answers to the name it is installed under, and every binary meant to run has one (%d jobs, %d run continuously)\n' \
