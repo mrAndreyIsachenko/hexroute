@@ -70,6 +70,36 @@ stopped when it should.
 
 ## Open Questions
 
+- Whether a one-sided failure should be reported, and how. The gate needs both
+  a stale heartbeat and a broken data path, and an outage on this machine had
+  only the second: Twilight's outbound was failing for the whole supervisor
+  log, across seventy-two restarts, while the root daemon's heartbeat stayed
+  healthy throughout.
+
+  The gate was right to refuse. Restarting the root daemon would not have
+  helped, because the daemon was not what had broken — the fault was a
+  selector pinned by its default to a server that was failing. Requiring two
+  sources is exactly what stops that restart, and it worked.
+
+  What it also did was stay quiet. The sentinel emits a per-cycle summary that
+  goes degraded when the data path is down, and a two-source evidence event
+  when the gate is met. Neither says "the data path has been broken for
+  seventy hours while the daemon was healthy" — the first is a line repeated
+  every cycle, which is the shape nobody reads, and the second never fired.
+  The condition ran for months and no record named it.
+
+  So the question is not whether the gate should loosen. It is whether the
+  observing sentinel should record a persistent one-sided condition as its own
+  transition — a thing that started, has lasted, and warrants no action —
+  distinctly from the cycle line and from evidence readiness.
+
+  The plan machinery added here is the natural place: it already records phase
+  transitions rather than per-cycle state, and a one-sided condition is a
+  phase in everything but name. What it needs is a number to compare against,
+  and that is what a continuous per-ingress record produces. There is now one
+  on this machine, on the Twilight side, and it should have a day of data
+  before this is designed against it.
+
 - Whether one data-path target is enough, and what the observation said about
   it. The configuration takes exactly one endpoint and the cycle makes one
   probe. A second would need a combining rule, and the right one is "both
