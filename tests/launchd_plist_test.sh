@@ -124,7 +124,34 @@ for binary in "${resident[@]}" "${scheduled[@]}"; do
   fi
 done
 
-# An installer that copies a configuration has to survive that configuration
+# An installer that bootstraps has to wait for the previous job to be gone.
+#
+# bootout is asynchronous. It returns while the job is still unloading, and a
+# bootstrap immediately after gets `Bootstrap failed: 5: Input/output error` —
+# which left the root daemon down, unloaded and not reloaded, after three days
+# of uptime. The retry that was supposed to absorb it waited two seconds in
+# total, which is counting attempts rather than waiting for the condition.
+for installer in scripts/macos/*-launchd.sh; do
+  grep -q 'launchctl bootstrap' "$installer" || continue
+  if ! grep -q 'await_bootout' "$installer"; then
+    printf '%s bootstraps without waiting for the previous job to unload\n' \
+      "$installer" >&2
+    printf '  bootout returns early; a bootstrap that follows gets EIO and the\n' >&2
+    printf '  job is left unloaded and not reloaded\n' >&2
+    status=1
+  fi
+done
+
+# And the wait has to be on the condition, not on a count of tries.
+for installer in scripts/macos/*-launchd.sh; do
+  grep -q 'await_bootout()' "$installer" || continue
+  grep -q 'launchctl print' "$installer" || {
+    printf '%s waits without asking whether the job is gone\n' "$installer" >&2
+    status=1
+  }
+done
+
+# An installer that copies a configuration has to survive# An installer that copies a configuration has to survive that configuration
 # already being at its destination. That is the ordinary case on reinstall —
 # a new binary, or a plist that gained an argument — and `install` refuses to
 # copy a file onto itself.
