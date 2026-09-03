@@ -255,17 +255,27 @@ func emitPlan(
 		return last, nil
 	}
 
+	// The event names the plan. This log carries a fixed vocabulary and no
+	// free-form fields, so a single event with the phase in a payload is not
+	// available — and a single event without one says nothing, which is what
+	// the first plan written on a real host did.
 	level := logging.LevelInfo
-	result := logging.ResultReported
-	if plan.Action == RecoveryActionRestartRoot {
-		// The one line worth waking for: this is where an authorized sentinel
-		// would have restarted the root daemon.
+	event := logging.EventSentinelRecoveryMonitoring
+	switch {
+	case plan.Action == RecoveryActionRestartRoot:
+		// The one line worth waking for: an authorized sentinel would have
+		// restarted the root daemon here, and this one cannot.
+		event = logging.EventSentinelRecoveryWouldRestart
 		level = logging.LevelWarn
+	case plan.Phase == RecoveryVerifying:
+		event = logging.EventSentinelRecoveryVerifying
+	case plan.Phase == RecoveryCooldown:
+		event = logging.EventSentinelRecoveryCooldown
 	}
 	if err := logger.Emit(
 		level,
-		logging.EventSentinelRecoveryPlan,
-		result,
+		event,
+		logging.ResultReported,
 		"",
 	); err != nil {
 		return last, err
