@@ -24,8 +24,8 @@ read in the tree, not because a document said so.
 
 ## 3. Keep The Boundary
 
-- [ ] 3.1 Configure object storage in `hexroute-infra`: private access, no public URL, idempotent write on identical key and content, and a lifecycle ceiling no longer than the recorded expiry.
-- [ ] 3.2 Confirm no bucket name, credential, endpoint or lifecycle value enters public Git, and that `make secret-test` and the repository-boundary guard still pass.
+- [x] 3.1 Already configured, and since 2026-07-26 — this task was written as though it were pending and never checked. `roots/production/foundation.tf` in `hexroute-infra` declares `module "incident_storage"` from `modules/private-spaces` with `retention_days = 30`, matching the expiry the bundle records, and creates a runtime key scoped to that bucket alone. The apply evidence records anonymous HTTP refused with 403, versioning on, retention 30, the runtime key allowed on its own bucket and denied on a foreign one. Idempotent write on identical key and content is the object store's own semantics rather than something the module configures.
+- [x] 3.2 Confirmed. The live bucket name appears nowhere in this repository; the only matches are Terraform resource names in the generic module and, in `modules/app-platform`, a guard that refuses to hand the incident storage keys to the API component. `make secret-test` and the repository-boundary guard pass, and no local Terraform state exists here.
 
 ## 4. Verification
 
