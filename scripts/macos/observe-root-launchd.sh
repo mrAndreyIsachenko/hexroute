@@ -90,7 +90,24 @@ install_observer() {
     "$ROOT_DIR" "$BIN_DIR" "$CONFIG_DIR" "$STATE_DIR" "$LOG_DIR"
   /usr/bin/install -d -o root -g wheel -m 0711 "$SOCKET_DIR"
   /usr/bin/install -o root -g wheel -m 0755 "$binary" "$BIN_DIR/hexrouted"
-  /usr/bin/install -o root -g wheel -m 0600 "$config" "$CONFIG_DIR/root-observe.json"
+  # Reinstalling a daemon whose configuration is already in place is an
+  # ordinary operation — a new binary, or a plist that gained an argument, with
+  # the configuration untouched. `install` refuses to copy a file onto itself
+  # and exits, and because that happens midway the binary is already replaced
+  # while the plist is not: a half-installed daemon whose loaded job is still
+  # the old one.
+  #
+  # So the copy is skipped when the source already is the destination, and the
+  # permissions are still asserted, because the reason to copy was never the
+  # bytes.
+  if [[ "$config" -ef "$CONFIG_DIR/root-observe.json" ]]; then
+    printf 'configuration is already in place; keeping it\n'
+    /usr/sbin/chown root:wheel "$CONFIG_DIR/root-observe.json"
+    /bin/chmod 0600 "$CONFIG_DIR/root-observe.json"
+  else
+    /usr/bin/install -o root -g wheel -m 0600 \
+      "$config" "$CONFIG_DIR/root-observe.json"
+  fi
   /usr/bin/install -o root -g wheel -m 0644 "$PLIST_SOURCE" "$PLIST_DEST"
   if [[ -n "$session" ]]; then
     add_qualification "$PLIST_DEST" "$session"
