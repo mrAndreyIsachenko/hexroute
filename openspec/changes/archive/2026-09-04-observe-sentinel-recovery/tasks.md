@@ -20,5 +20,5 @@
 - [x] 3.2 Remove `NewRecoveryPlanner` and `NewRecoveryController` from the unbuilt-capability list, and restate why `NewMacOSRootRestarter` remains.
 - [x] 3.3 Run focused unit and race tests for the sentinel, and `make check`.
 - [x] 3.4 Run `openspec validate observe-sentinel-recovery --strict` and keep proposal, design, specs and tasks synchronized with what was built.
-- [ ] 3.5 Sync the delta requirement into the baseline spec only after an observing sentinel has recorded a plan on a real host.
+- [x] 3.5 Sync the delta requirement into the baseline spec only after an observing sentinel has recorded a plan on a real host.
 - [x] 3.6 Give the sentinel a way to run. It had no launchd job and no installer, so the binary a SHALL requirement describes had never been deployed and could not be — which is what task 3.5 was actually waiting on.
