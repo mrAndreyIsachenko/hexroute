@@ -77,10 +77,11 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None. The last three closed on 2026-09-03 and 2026-09-04:
+None. `record-ingress-fleet-purpose` closed on 2026-09-05, recording what each
+ingress host is for, correcting the provider-B lifecycle state and rewriting
+item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
 `add-observable-connectivity-state-machine`, `add-local-event-archive` and
-`add-private-incident-bundles`, each synced into the baseline specs and
-archived. `observe-sentinel-recovery` closed with them.
+`add-private-incident-bundles`, with `observe-sentinel-recovery` alongside them.
 
 ## Ordered Changes
 
@@ -98,8 +99,17 @@ archived. `observe-sentinel-recovery` closed with them.
    evidence: divergences were zero and nothing was left unbound, so there was
    no divergent proposed action to resolve. The sentinel observes recovery and
    records the plan it would run, with no restarter attached.
-4. Run an evidence-based provider-B bake-off and deploy an independent
-   VLESS/Reality ingress in a different provider and ASN.
+4. ~~Run an evidence-based provider-B bake-off and deploy an independent
+   VLESS/Reality ingress in a different provider and ASN.~~ The deployment half
+   was delivered before this item was read: the provider-B ingress exists, its
+   provider and ASN are distinct, and a private workload consumes it. The
+   bake-off half cannot be run and was ruled out on evidence — the word appears
+   nowhere in this repository except in this line, no criterion or threshold is
+   written anywhere, and exactly one provider serves ingress, so there is no
+   second candidate to compare against. Standing one up purely to have a
+   comparison would pay for an answer nobody needs. What remains is recorded by
+   `record-ingress-fleet-purpose`: the fleet's purposes, the corrected lifecycle
+   state, and the failure domain that two configured entries share.
 5. Deploy and qualify two-provider Telegram ingress using native MTG, Nginx SNI
    pass-through and functional MTProto health evidence.
 6. Add signed configuration and A/B release delivery with local rollback.
@@ -107,6 +117,13 @@ archived. `observe-sentinel-recovery` closed with them.
 8. Cut user Pritunl recovery ownership from the legacy OTP watchdog to
    `hexroute-userd` transactionally.
 9. Complete public qualification, supply-chain evidence and legacy cleanup.
+
+Item 4 also ruled out two placements that were proposed and withdrawn during its
+grill session. Moving the named-country host nearer the operator was recommended
+before its purpose was known and would have cost latency to serve a need already
+met. Holding a permanent host for the occasional heavily filtered country was
+dropped because the need is rare, is met by buying a service locally, and could
+not be verified from any vantage point that exists.
 
 Each numbered item requires its own grill session and bounded OpenSpec change.
 No future item may be bundled into an earlier cutover merely because

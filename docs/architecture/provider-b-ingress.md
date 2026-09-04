@@ -2,9 +2,17 @@
 
 ## Current State
 
-Hexroute has published reusable provider-B components, but no public repository
-fact proves that a provider-B workload is instantiated, provisioned, qualified,
-inventory-admitted or failover-enabled. The current state is **published**.
+Hexroute has published reusable provider-B components. A provider-B workload is
+**provisioned**: it exists, it carries traffic for a private workload, and its
+provider and ASN are distinct from the other ingress. It is not qualified, not
+inventory-admitted and not failover-enabled by Hexroute.
+
+No public repository fact proves any of that, and none is added here. The
+evidence lives in the private infrastructure repository, as does every address,
+provider identity and region. This document previously reported the state as
+`published` on the strength of that silence — accurate about the public record,
+untrue about the world, and the wrong answer to a requirement that asks for the
+current state rather than the last state the public record can prove.
 
 Twilight remains the selected production traffic owner and the owner of local
 sing-box, scoped routes and Pritunl recovery. Provider-B code and probes have no
@@ -62,12 +70,15 @@ Provider-B state advances only in this order:
 
 | State | Required evidence | Traffic effect |
 | --- | --- | --- |
-| **Published** | Public modules, bootstrap, probes and tests are available | None; this is the current state |
-| **Instantiated** | Exact private saved plan creates only the reviewed provider-B foundation and the next plan is no-op | None |
-| **Provisioned** | Pinned runtime is installed, secrets arrive out of band, services validate and temporary operator access is removed | None |
+| **Published** | Public modules, bootstrap, probes and tests are available | None; passed |
+| **Instantiated** | Exact private saved plan creates only the reviewed provider-B foundation and the next plan is no-op | None; passed |
+| **Provisioned** | Pinned runtime is installed, secrets arrive out of band, services validate and temporary operator access is removed | None; **this is the current state** |
 | **Qualified** | Instance status, external reachability, authenticated transport, signed heartbeat and replacement recovery pass one generation-bound soak | None |
 | **Inventory-admitted** | Independent provider/ASN identity, cost and qualification evidence are reviewed and committed | Still none; selection remains disabled |
 | **Failover-enabled** | A separate signed client-delivery and transactional selection change passes its own rollout and rollback gates | Outside the current provider-B change |
+
+A private workload consuming this ingress does not advance its state either: it
+is traffic, not evidence, and Hexroute neither selected it nor measured it.
 
 Publishing code is not deployment. A reachable socket is not qualification.
 Inventory admission is not client activation. No state can be skipped or
