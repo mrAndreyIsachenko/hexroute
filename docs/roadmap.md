@@ -1,6 +1,6 @@
 # Hexroute Roadmap
 
-Status date: 2026-08-30.
+Status date: 2026-09-04.
 
 ## Current Baseline
 
@@ -20,8 +20,11 @@ Status date: 2026-08-30.
   enough to answer what its shadow store holds; it compares nothing against the
   host and cannot, because its dependencies forbid every package that could
   reach one.
-- The observable connectivity read model runs on the host behind an off-by-
-  default gate. Root adapts its existing network, default-path, scoped-route,
+- The observable connectivity read model is qualified and synced into the
+  baseline specs. Its shadow evidence chain is complete: 260,921 eligible
+  seconds against the 259,200 required, two sleep/wake cycles, one reboot and
+  all thirteen mandatory injected faults, with zero divergences and nothing
+  left unbound. It runs on the host behind an off-by-default gate. Root adapts its existing network, default-path, scoped-route,
   transport and relay observations into facts; the user daemon publishes what
   only it can see over authenticated IPC; the aggregate reduces both into one
   snapshot and checkpoints it on effective change. DNS has no observer, so that
@@ -36,9 +39,19 @@ Status date: 2026-08-30.
   upserted, so the dashboard's SLO section reports measured availability. A
   window whose opening state cannot be established, or whose failed time no
   incident explains, is left uncomputed rather than filled in.
-- Incident-bundle creation and expiry are implemented and **not scheduled**:
-  nothing creates a bundle, so expiry has nothing to expire, and creation needs
-  private object storage configured outside this repository.
+- Incident-bundle creation and expiry are scheduled in the maintenance worker.
+  A closed incident with linked evidence is bundled once; an incident with
+  nothing linked is never selected, and one whose bundle was removed at its
+  recorded expiry is not bundled again, so retention is not undone by the pass
+  that would restore it. Where bundle storage is unconfigured the pass records
+  `cloud_incident_bundle_unconfigured` on every interval, so a deployment that
+  was never finished reads differently from one with nothing to bundle. The
+  object store it writes through implements two methods and cannot read; its
+  SigV4 signing is checked against fourteen of the provider's published test
+  vectors at all three stages, not against itself alone.
+- Durable local event retention keeps typed events by age and size rather than
+  by upload state, with a scheduled review and an annotator that refuses to
+  write when attaching commentary would move the digest.
 - Public reusable Terraform modules exist; live roots and deployment evidence
   remain in the private `hexroute-infra` repository.
 - The first cloud foundation is live behind `status.hexroute.app` with external
@@ -56,7 +69,7 @@ Status date: 2026-08-30.
 - Repository checks run in CI on every pull request and on `main`: `make check`
   on macOS, the Go gate on Linux, and `make postgres-test`. A package that no
   binary contains fails `make check`, so code cannot be written, marked done
-  and left reachable from nothing without saying so. Six packages are currently
+  and left reachable from nothing without saying so. Four packages are currently
   recorded as unwired.
 - The operational acceptance drill in
   [`docs/testing/operational-acceptance.md`](testing/operational-acceptance.md)
@@ -64,18 +77,10 @@ Status date: 2026-08-30.
 
 ## Active Changes
 
-`add-observable-connectivity-state-machine` is active. Sections 1 through 8 are
-implemented and running observe-only on the host; sections 9 and 10 — replay
-and shadow qualification, then documentation and baseline sync — are open. Its
-qualification gate requires 72 eligible hours of shadow evidence, two
-sleep/wake cycles, one reboot and every mandatory injected failure. That
-evidence is produced by running the host, not by this repository, and it is
-retained privately.
-
-`add-local-event-archive` is proposed and unstarted. It would retain typed
-events locally by age and size rather than by upload state, so the host can
-answer questions about last week. It cannot begin while the connectivity change
-is mid-qualification.
+None. The last three closed on 2026-09-03 and 2026-09-04:
+`add-observable-connectivity-state-machine`, `add-local-event-archive` and
+`add-private-incident-bundles`, each synced into the baseline specs and
+archived. `observe-sentinel-recovery` closed with them.
 
 ## Ordered Changes
 
@@ -83,14 +88,16 @@ is mid-qualification.
    path, including baseline and recovery evidence.~~ Done. See the archived
    `add-operational-acceptance-drill` change and
    [`docs/testing/operational-acceptance.md`](testing/operational-acceptance.md).
-2. Qualify the observable connectivity state machine without enabling
-   production mutations. Implementation is complete and running observe-only;
-   the replay harness, the thirteen fault traces and the shadow comparison
-   recorder exist. What remains is the evidence chain itself: 72 eligible
-   hours, two sleep/wake cycles, one reboot and every trace injected. That is
-   produced by running the host, and its evidence is retained privately.
-3. Complete root observe-only soak and resolve every materially divergent
-   proposed action without enabling mutations.
+2. ~~Qualify the observable connectivity state machine without enabling
+   production mutations.~~ Done. The evidence chain closed on 2026-09-03 with
+   260,921 eligible seconds against the 259,200 required, two sleep/wake
+   cycles, one reboot and all thirteen mandatory faults injected. Evidence is
+   retained privately.
+3. ~~Complete root observe-only soak and resolve every materially divergent
+   proposed action without enabling mutations.~~ Done, and closed by that same
+   evidence: divergences were zero and nothing was left unbound, so there was
+   no divergent proposed action to resolve. The sentinel observes recovery and
+   records the plan it would run, with no restarter attached.
 4. Run an evidence-based provider-B bake-off and deploy an independent
    VLESS/Reality ingress in a different provider and ASN.
 5. Deploy and qualify two-provider Telegram ingress using native MTG, Nginx SNI
@@ -111,13 +118,13 @@ Code that exists and no binary contains. Each entry is a claim this repository
 has made and not yet kept; the list is enforced by `make check`, so it cannot
 grow in silence.
 
-- `incidentbundle` — bundle creation and expiry. Nothing creates a bundle, so
-  expiry has nothing to expire; creation needs private object storage
-  configured outside this repository.
 - `credentials`, `pritunlrescue` — held behind the user-domain cutover, item 8.
 - `resumeexecutor` — operator resume enforcement.
 - `policyadvisor` — redacted policy observability.
 
-`reconciler` and `slo` left this list on 2026-08-30, the first when its shadow
-status became answerable and the second when its calculation was scheduled. It still compares nothing: correlating its planner output with the
+`incidentbundle` and `objectstore` left this list on 2026-09-04, when the
+maintenance worker began calling bundle creation and expiry: the census fell
+from six packages and 1800 unrun lines to four and 638. `reconciler` and `slo`
+left it on 2026-08-30, the first when its shadow status became answerable and
+the second when its calculation was scheduled. It still compares nothing: correlating its planner output with the
 read model's proposals is part of item 2.
