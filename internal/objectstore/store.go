@@ -69,6 +69,7 @@ func New(config Config) (*Store, error) {
 			accessKeyID: config.AccessKeyID,
 			secretKey:   config.SecretKey,
 			region:      config.Region,
+			service:     s3Service,
 		},
 		now: time.Now,
 	}, nil

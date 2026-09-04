@@ -26,7 +26,7 @@ import (
 
 const (
 	algorithm   = "AWS4-HMAC-SHA256"
-	service     = "s3"
+	s3Service   = "s3"
 	terminator  = "aws4_request"
 	longFormat  = "20060102T150405Z"
 	shortFormat = "20060102"
@@ -39,6 +39,11 @@ type credentials struct {
 	accessKeyID string
 	secretKey   string
 	region      string
+	// service is fixed to s3 by the store. It is a field rather than a
+	// constant so that the published SigV4 test vectors, which are all signed
+	// for a service literally named "service", can be driven through this code
+	// instead of through a copy of it written to be testable.
+	service string
 }
 
 // sign attaches the SigV4 headers to a request whose body hash is known.
@@ -56,7 +61,8 @@ func sign(
 	if request == nil || request.URL == nil {
 		return fmt.Errorf("%w: no request", ErrObjectStore)
 	}
-	if creds.accessKeyID == "" || creds.secretKey == "" || creds.region == "" {
+	if creds.accessKeyID == "" || creds.secretKey == "" ||
+		creds.region == "" || creds.service == "" {
 		return fmt.Errorf("%w: incomplete credentials", ErrObjectStore)
 	}
 
@@ -65,6 +71,32 @@ func sign(
 	request.Header.Set("X-Amz-Date", stamp.Format(longFormat))
 	request.Header.Set("X-Amz-Content-Sha256", payloadHash)
 
+	derived := derive(request, payloadHash, creds, stamp)
+	request.Header.Set("Authorization", derived.authorization)
+	return nil
+}
+
+// derived is what signing computes, at each stage the specification names.
+//
+// The stages are separated because they are separately checkable: the
+// published SigV4 test vectors give a canonical request, a string to sign and
+// an authorization header for the same input, so a signer that disagrees with
+// the specification can be told apart from one that agrees at every stage. A
+// signature is a single opaque number, and comparing only that says which of
+// them is wrong without saying where.
+type derived struct {
+	canonicalRequest string
+	stringToSign     string
+	signature        string
+	authorization    string
+}
+
+func derive(
+	request *http.Request,
+	payloadHash string,
+	creds credentials,
+	stamp time.Time,
+) derived {
 	signed, canonicalHeaders := canonicalize(request.Header, request.URL.Host)
 	canonicalRequest := strings.Join([]string{
 		request.Method,
@@ -76,7 +108,7 @@ func sign(
 	}, "\n")
 
 	scope := strings.Join([]string{
-		stamp.Format(shortFormat), creds.region, service, terminator,
+		stamp.Format(shortFormat), creds.region, creds.service, terminator,
 	}, "/")
 	stringToSign := strings.Join([]string{
 		algorithm,
@@ -88,10 +120,14 @@ func sign(
 	signature := hex.EncodeToString(
 		mac(signingKey(creds, stamp), []byte(stringToSign)))
 
-	request.Header.Set("Authorization", fmt.Sprintf(
-		"%s Credential=%s/%s, SignedHeaders=%s, Signature=%s",
-		algorithm, creds.accessKeyID, scope, signed, signature))
-	return nil
+	return derived{
+		canonicalRequest: canonicalRequest,
+		stringToSign:     stringToSign,
+		signature:        signature,
+		authorization: fmt.Sprintf(
+			"%s Credential=%s/%s, SignedHeaders=%s, Signature=%s",
+			algorithm, creds.accessKeyID, scope, signed, signature),
+	}
 }
 
 // signingKey derives the key for one day, region and service. Every input is
@@ -99,7 +135,7 @@ func sign(
 func signingKey(creds credentials, at time.Time) []byte {
 	key := mac([]byte("AWS4"+creds.secretKey), []byte(at.Format(shortFormat)))
 	key = mac(key, []byte(creds.region))
-	key = mac(key, []byte(service))
+	key = mac(key, []byte(creds.service))
 	return mac(key, []byte(terminator))
 }
 
