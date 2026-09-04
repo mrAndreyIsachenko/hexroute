@@ -26,6 +26,14 @@ report() {
 
 tracked=$(git ls-files)
 
+# One file is allowed to carry the published example secret: the conformance
+# test that drives AWS's own SigV4 vectors. Those vectors are computed from that
+# exact secret, so substituting a safer-looking value would leave the test
+# unable to reproduce any published answer — which is the whole reason it
+# exists. The exemption is one named path, not a pattern, so it cannot quietly
+# widen; every other file, including every other test, is still checked.
+VECTOR_TEST=internal/objectstore/vectors_test.go
+
 # Provider access key identifiers. The prefixes are assigned by AWS and are
 # what the forge's own scanner matches; ASIA is the temporary-credential form.
 hits=$(printf '%s\n' "$tracked" | grep -vFx "tests/credential_shape_test.sh" |
@@ -36,8 +44,17 @@ hits=$(printf '%s\n' "$tracked" | grep -vFx "tests/credential_shape_test.sh" |
 # why it spreads: it looks like a real secret in every context but the page it
 # came from.
 hits=$(printf '%s\n' "$tracked" | grep -vFx "tests/credential_shape_test.sh" |
+	grep -vFx "$VECTOR_TEST" |
 	xargs grep -nF 'wJalrXUtnFEMI/K7MDENG' 2>/dev/null || true)
 [ -n "$hits" ] && report "documented example secret" "$hits"
+
+# The exemption is only worth having while the file it names still uses it. A
+# stale exemption is a hole nobody remembers opening.
+if ! grep -qF 'wJalrXUtnFEMI/K7MDENG' "$VECTOR_TEST" 2>/dev/null; then
+	printf 'the exemption for %s is no longer used; remove it\n' \
+		"$VECTOR_TEST" >&2
+	failed=1
+fi
 
 # Private key material of any kind. Nothing in this repository has a reason to
 # carry one, including as a fixture: a test that needs a key generates it.
