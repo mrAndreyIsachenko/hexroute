@@ -77,7 +77,15 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None. `record-ingress-fleet-purpose` closed on 2026-09-05, recording what each
+`deliver-signed-ingress-configuration` is active. The provider-B ingress starts
+only if its runtime configuration file already exists and Terraform deliberately
+does not write it, so today that file arrives only by a person opening bounded
+operator access. This gives it a signed version it can pull, verify and apply on
+its own, and return from when the running generation does not prove healthy. It
+is item 6 below, brought in front of item 5 because item 5 cannot be delivered
+without it.
+
+Previously closed: `record-ingress-fleet-purpose` closed on 2026-09-05, recording what each
 ingress host is for, correcting the provider-B lifecycle state and rewriting
 item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
 `add-observable-connectivity-state-machine`, `add-local-event-archive` and
@@ -110,9 +118,24 @@ item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
    comparison would pay for an answer nobody needs. What remains is recorded by
    `record-ingress-fleet-purpose`: the fleet's purposes, the corrected lifecycle
    state, and the failure domain that two configured entries share.
-5. Deploy and qualify two-provider Telegram ingress using native MTG, Nginx SNI
-   pass-through and functional MTProto health evidence.
-6. Add signed configuration and A/B release delivery with local rollback.
+5. Add signed configuration delivery to an ingress, with verification on the
+   host and return to the previous version when the running generation does not
+   prove healthy. Moved in front of the Telegram item, which was numbered 5 and
+   cannot be started without this: the provider-B unit refuses to start without
+   a runtime configuration file that Terraform deliberately does not write, so
+   the only way that file changes today is a person opening bounded operator
+   access. Half the model exists already — `config_versions` and `deployments`
+   carry the full lifecycle in the schema and have never had a producer — and
+   `proven` needs no new mechanism, because the ingress observer already
+   reports the exact deployment generation in a signed heartbeat.
+6. Deploy and qualify two-provider Telegram ingress using native MTG, SNI
+   pass-through and functional MTProto health evidence. Its grill established
+   that this is Hexroute's item and not Twilight's, that it splits in two —
+   MTProto on the existing ingress first, a second provider after — and that
+   the provider-B host cannot take a second port at all: its module specifies a
+   single public port and Terraform validation fails before apply if another is
+   requested. So SNI sharing of 443 is not one feature among three but the
+   precondition for the rest.
 7. Cut root tunnel ownership from Twilight to Hexroute transactionally.
 8. Cut user Pritunl recovery ownership from the legacy OTP watchdog to
    `hexroute-userd` transactionally.
