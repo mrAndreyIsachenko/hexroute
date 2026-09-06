@@ -2,18 +2,18 @@
 
 ## 1. Record The Clients
 
-- [ ] 1.1 Add a public document recording the client population the way the fleet document records hosts: what each client is for, that each holds its own identity, and how one is removed. It names no credential, address or transport parameter.
-- [ ] 1.2 Gate the document the way the fleet document is gated, so it cannot come to name a live address or a transport parameter later.
+- [x] 1.1 Add a public document recording the client population the way the fleet document records hosts: what each client is for, that each holds its own identity, and how one is removed. It names no credential, address or transport parameter.
+- [x] 1.2 Gate the document the way the fleet document is gated, so it cannot come to name a live address or a transport parameter later.
 
 ## 2. Recover A Published Version
 
-- [ ] 2.1 Add an operator step that verifies a published version against the pinned operator public key and the content digest, and emits the exact bytes unparsed. Assert that a version failing either check emits nothing and names the check that failed.
-- [ ] 2.2 Put it in the binary that already signs, and assert it stays offline: no network and no database, so the ability to read a version is not the ability to publish one.
-- [ ] 2.3 Assert the emitted content cannot be written into this repository.
+- [x] 2.1 Add an operator step that verifies a published version against the pinned operator public key and the content digest, and emits the exact bytes unparsed. Assert that a version failing either check emits nothing and names the check that failed.
+- [x] 2.2 Put it in the binary that already signs, and assert it stays offline: no network and no database, so the ability to read a version is not the ability to publish one.
+- [x] 2.3 Assert the emitted content cannot be written into this repository.
 
 ## 3. Keep Delivery Blind
 
-- [ ] 3.1 Assert that the version format, its verification and the agent decode nothing of a version's content beyond the digest that binds it. A version carrying a configuration for a runtime this repository knows nothing about is delivered, verified, applied and returned from exactly as any other.
+- [x] 3.1 Assert that the version format, its verification and the agent decode nothing of a version's content beyond the digest that binds it. A version carrying a configuration for a runtime this repository knows nothing about is delivered, verified, applied and returned from exactly as any other.
 
 ## 4. Correct The Record
 
@@ -23,6 +23,6 @@
 
 ## 5. Verify
 
-- [ ] 5.1 Run `make check` and resolve every failure.
-- [ ] 5.2 Run `openspec validate admit-a-second-ingress-client --strict` and keep proposal, design, specs and tasks consistent with what was built.
+- [x] 5.1 Run `make check` and resolve every failure.
+- [x] 5.2 Run `openspec validate admit-a-second-ingress-client --strict` and keep proposal, design, specs and tasks consistent with what was built.
 - [ ] 5.3 Sync the delta into the baseline specs and archive the change.

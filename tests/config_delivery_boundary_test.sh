@@ -72,6 +72,34 @@ for package in internal/configpublish internal/configprove internal/cloudruntime
   fi
 done
 
+# Delivery does not interpret what it delivers. The version format, its
+# verification and the agent handle content as bytes: the digest binds it and
+# nothing else looks inside. That is what makes the path usable by a runtime it
+# was not written for, and the first code to read a delivered configuration has
+# to argue for itself here rather than arrive unnoticed.
+#
+# Two rules, both narrow enough to mean something. The artifact's content field
+# is touched only where it is decoded from base64 and checked against the signed
+# digest, which is the format package and nowhere else. And no package on this
+# path names a runtime's configuration schema, because knowing one is the whole
+# of what interpreting content would require.
+content_readers="$(grep -rn '\.Content\b' internal/configversion internal/ingressagent \
+  internal/configpublish internal/configprove | grep -v '_test\.go' \
+  | grep -v '^internal/configversion/version.go:' || true)"
+if [ -n "$content_readers" ]; then
+  fail 'version content is read outside the format that binds it:'
+  printf '%s\n' "$content_readers" >&2
+fi
+
+for package in "${delivery_packages[@]}"; do
+  schema="$(grep -rnE '\b(inbounds|outbounds|serverNames|shortIds|dokodemo|freedom)\b' \
+    "$package" | grep -v '_test\.go' || true)"
+  if [ -n "$schema" ]; then
+    fail "$package names a runtime configuration schema:"
+    printf '%s\n' "$schema" >&2
+  fi
+done
+
 # 2. Everything live arrives from the environment or from a file placed on the
 #    host. A literal here would be the leak.
 for package in "${delivery_packages[@]}"; do

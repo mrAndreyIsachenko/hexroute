@@ -10,7 +10,12 @@
 #
 # Provider names are not banned repository-wide: docs/architecture/
 # provider-b-ingress.md names them legitimately. The rule is narrow and applies
-# to the one document where the mapping would be complete.
+# to the documents where the mapping would be complete.
+#
+# docs/architecture/ingress-clients.md is the same document from the other end.
+# It maps purpose to client, and must never also map a client to an identity, a
+# credential or a host: the two documents read together would say who can reach
+# what, which is the whole of what the private repository holds.
 #
 # The second check is general. No public document may carry a routable IPv4
 # address. Loopback, private and documentation ranges are allowed, because
@@ -20,9 +25,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 fleet=docs/architecture/ingress-fleet.md
+clients=docs/architecture/ingress-clients.md
 failed=0
 
-[ -s "$fleet" ] || { printf '%s is missing or empty\n' "$fleet" >&2; exit 1; }
+for document in "$fleet" "$clients"; do
+	[ -s "$document" ] || {
+		printf '%s is missing or empty\n' "$document" >&2
+		exit 1
+	}
+done
 
 # The document must actually record the things it exists to record.
 for phrase in \
@@ -37,12 +48,38 @@ do
 	}
 done
 
-# It must not name a provider, a region or a product.
-hits=$(grep -inE 'digitalocean|lightsail|\baws\b|amazon|droplet|frankfurt|virginia|amsterdam|singapore|hong kong|[a-z]{2}-(east|west|north|south|central|southeast|northeast)-[0-9]' \
-	"$fleet" || true)
-if [ -n "$hits" ]; then
-	printf '%s names a provider, product or region:\n' "$fleet" >&2
-	printf '%s\n' "$hits" | sed 's/^/  /' >&2
+# The client document must record what it exists to record: that each client
+# holds its own identity, and that removal is a published version.
+for phrase in \
+	'identity of its own' \
+	'publishing a configuration version' \
+	'derived from the configuration version'
+do
+	grep -qF "$phrase" "$clients" || {
+		printf '%s does not record: %s\n' "$clients" "$phrase" >&2
+		failed=1
+	}
+done
+
+# Neither may name a provider, a region or a product.
+for document in "$fleet" "$clients"; do
+	hits=$(grep -inE 'digitalocean|lightsail|\baws\b|amazon|droplet|frankfurt|virginia|amsterdam|singapore|hong kong|[a-z]{2}-(east|west|north|south|central|southeast|northeast)-[0-9]' \
+		"$document" || true)
+	if [ -n "$hits" ]; then
+		printf '%s names a provider, product or region:\n' "$document" >&2
+		printf '%s\n' "$hits" | sed 's/^/  /' >&2
+		failed=1
+	fi
+done
+
+# The client document must not carry an identity or a credential. A client's
+# identity is a UUID in the private repository; one appearing here would say
+# which client is which, and the purposes above would say what that one reaches.
+identities=$(grep -inoE '\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[A-Za-z0-9_-]{43}\b' \
+	"$clients" || true)
+if [ -n "$identities" ]; then
+	printf '%s carries what could be a client identity or key:\n' "$clients" >&2
+	printf '%s\n' "$identities" | sed 's/^/  /' >&2
 	failed=1
 fi
 
@@ -57,4 +94,4 @@ if [ -n "$routable" ]; then
 fi
 
 [ "$failed" -ne 0 ] && exit 1
-printf 'ok: the fleet document records purpose and publishes no shape\n'
+printf 'ok: the fleet and client documents record purpose and publish no shape\n'
