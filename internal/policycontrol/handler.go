@@ -419,6 +419,14 @@ func (handler *Handler) MutationAllowed() bool {
 	}
 	handler.mu.Lock()
 	defer handler.mu.Unlock()
+	return handler.mutationAllowedLocked()
+}
+
+// mutationAllowedLocked is the gate itself. It exists so that a caller which
+// also evaluates an action can ask both questions under one lock: asking them
+// separately leaves a window in which a suspension lands between the two, and
+// the act would proceed on an answer that was true a moment ago.
+func (handler *Handler) mutationAllowedLocked() bool {
 	handler.refreshAuthorizationLocked()
 	handler.refreshExistingStateLocked()
 	if handler.authorizationSuspension.Suspended {
@@ -437,6 +445,44 @@ func (handler *Handler) MutationAllowed() bool {
 
 // EvaluateOperatorResume performs side-effect-free shadow evaluation against
 // the fully revalidated active policy. Enforcement remains outside this method.
+// AuthorizePritunlRecovery answers whether this runtime may act on a Pritunl
+// recovery right now.
+//
+// It is the only way to that answer. Both halves of the act ask it — the user
+// runtime before it submits a credential, the root runtime before it restarts
+// the service — so that an authority nobody signed cannot exist for either.
+//
+// The mutation gate is asked first and separately from the capability. They
+// answer different questions: the gate is about this runtime's standing at all,
+// and the evaluation is about this act under the active generation. A caller
+// that asked only the second would act while suspended.
+func (handler *Handler) AuthorizePritunlRecovery(
+	domain policy.Domain,
+	target string,
+	controlStateGeneration uint64,
+	planSHA256 string,
+) policy.ActionAuthorizationDecision {
+	if handler == nil {
+		return policy.ActionAuthorizationDecision{Reason: policy.ActionInvalidRequest}
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	if !handler.mutationAllowedLocked() {
+		return policy.ActionAuthorizationDecision{Reason: policy.ActionInactivePolicy}
+	}
+	now, err := handler.checkedNowLocked()
+	if err != nil {
+		return policy.ActionAuthorizationDecision{Reason: policy.ActionAuthorizationSuspended}
+	}
+	return handler.evaluateActionLocked(policy.ActionAuthorizationRequest{
+		Domain: domain, Capability: policy.CapabilityPritunlRecovery,
+		BundleGeneration:       handler.status.BundleGeneration,
+		DomainPolicyGeneration: handler.status.PolicyGeneration,
+		ControlStateGeneration: controlStateGeneration,
+		Target:                 target, PlanSHA256: planSHA256,
+	}, now)
+}
+
 func (handler *Handler) EvaluateOperatorResume(
 	domain policy.Domain,
 	target string,

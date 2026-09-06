@@ -64,14 +64,18 @@ func DefaultSafetyEnvelope() SafetyEnvelope {
 		Root: DomainEnvelope{
 			Domain:               DomainRoot,
 			NamespacePrefix:      "root.",
-			AllowedCapabilities:  []Capability{CapabilityOperatorResume},
+			AllowedCapabilities:  []Capability{CapabilityOperatorResume, CapabilityPritunlRecovery},
 			AllowedSelectorKinds: []SelectorKind{SelectorAction},
-			AllowedTargets:       []string{"codex", "network", "routes", "runtime", "telegram", "tunnel"},
+			// pritunl is here because root restarts that one service, and
+			// naming it is more honest than folding it into "runtime": a
+			// reader of a granted generation should see which service the
+			// grant is about.
+			AllowedTargets: []string{"codex", "network", "pritunl", "routes", "runtime", "telegram", "tunnel"},
 		},
 		User: DomainEnvelope{
 			Domain:               DomainUser,
 			NamespacePrefix:      "user.",
-			AllowedCapabilities:  []Capability{CapabilityOperatorResume},
+			AllowedCapabilities:  []Capability{CapabilityOperatorResume, CapabilityPritunlRecovery},
 			AllowedSelectorKinds: []SelectorKind{SelectorAction},
 			AllowedTargets:       []string{"pritunl"},
 		},
