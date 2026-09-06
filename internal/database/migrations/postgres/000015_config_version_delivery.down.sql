@@ -1,3 +1,6 @@
+DROP INDEX deployments_config_version_target_uidx;
+ALTER TABLE config_versions DROP COLUMN unproven_reason;
+
 DROP TRIGGER hexroute_write_gate ON deployments;
 DROP TRIGGER hexroute_write_gate ON config_versions;
 

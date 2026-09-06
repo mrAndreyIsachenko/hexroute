@@ -273,6 +273,7 @@ var baselineIndexes = []string{
 	"batches_retention_idx",
 	"incident_bundles_incident_content_uidx",
 	"incident_bundles_delete_due_idx",
+	"deployments_config_version_target_uidx",
 }
 
 var baselineColumns = []string{
@@ -294,6 +295,7 @@ var baselineColumns = []string{
 	"passkey_credentials.backup_state",
 	"passkey_credentials.clone_warning",
 	"passkey_credentials.authenticator_attachment",
+	"config_versions.unproven_reason",
 }
 
 func verifyLegacyBaseline(ctx context.Context, transaction pgx.Tx) (bool, error) {

@@ -384,6 +384,13 @@ GOCACHE=/tmp/hexroute-postgres-go-cache \
     -count=1
 
 HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_MAINTENANCE_DSN="postgres://hexroute_test_maintenance@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+GOCACHE=/tmp/hexroute-postgres-go-cache \
+  go test ./internal/configprove \
+    -run TestPostgresProvingRecordsTheDeploymentAndTheLifecycle \
+    -count=1
+
+HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 HEXROUTE_TEST_POSTGRES_PUBLISHER_DSN="postgres://hexroute_test_publisher@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 GOCACHE=/tmp/hexroute-postgres-go-cache \
   go test ./internal/configpublish \
