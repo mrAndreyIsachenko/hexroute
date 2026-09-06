@@ -2,7 +2,7 @@
 
 CONTAINER_IMAGE ?= hexroute-ingest:contract
 
-.PHONY: build build-archive-report build-sentinel build-connectivity-replay build-ctl build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt fuzz ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-summary policy-qualification-arm-sleep postgres-test race secret-test shell-test shell-test-tools spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
+.PHONY: build build-archive-report build-sentinel build-connectivity-replay build-ctl build-ingress-agent build-ingress-observer build-ingress-probe build-observe-root build-observe-user build-policy build-policy-installer build-policy-qualification check container-build container-test fmt fuzz ingress-observer-release-test install-policy-qualification logs-policy-qualification policy-qualification-faults policy-qualification-restart-session policy-qualification-status policy-qualification-summary policy-qualification-arm-sleep postgres-test race secret-test shell-test shell-test-tools spec-check terraform-contract-test terraform-state-test terraform-test test uninstall-policy-qualification vet
 
 build:
 	go build ./cmd/...
@@ -77,6 +77,10 @@ build-ingress-probe:
 build-ingress-observer:
 	mkdir -p bin
 	go build -o bin/hexroute-ingress-observer ./cmd/hexroute-ingress-observer
+
+build-ingress-agent:
+	mkdir -p bin
+	go build -o bin/hexroute-ingress-agent ./cmd/hexroute-ingress-agent
 
 ingress-observer-release-test:
 	tests/ingress_observer_release_test.sh

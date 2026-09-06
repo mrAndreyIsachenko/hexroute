@@ -84,8 +84,23 @@ func New(storage Storage, ledger Ledger, pinned ed25519.PublicKey) (*Publisher, 
 // signed, so a retry after a failure writes the same object rather than a
 // second one.
 func ObjectKey(statement configversion.Statement) string {
-	return KeyPrefix + "/" + statement.TargetKind + "/" +
-		statement.TargetKey + "/" + statement.VersionLabel + ".json"
+	return prefixFor(statement.TargetKind, statement.TargetKey) +
+		statement.VersionLabel + ".json"
+}
+
+// CurrentKey is the one key a host reads. It is how a node learns a version
+// exists without the cloud telling it: the node asks, on its own schedule, and
+// what it finds there is either a version it can verify or nothing it will
+// act on.
+//
+// The pointer is not an instruction. It carries the same signed statement as
+// the labelled object, so a host that read it still decides for itself.
+func CurrentKey(kind string, key string) string {
+	return prefixFor(kind, key) + "current.json"
+}
+
+func prefixFor(kind string, key string) string {
+	return KeyPrefix + "/" + kind + "/" + key + "/"
 }
 
 // Publish verifies, records and stores one version.
@@ -140,6 +155,13 @@ func (publisher *Publisher) Publish(
 		return Record{}, fmt.Errorf("%w: %w", ErrPublish, err)
 	}
 	if err := publisher.storage.PutVersion(ctx, record.ObjectKey, encoded); err != nil {
+		return Record{}, fmt.Errorf("%w: %w", ErrPublish, err)
+	}
+	// The labelled object is written first, so the key a host reads never
+	// names bytes that are not already stored under their own name.
+	if err := publisher.storage.PutVersion(
+		ctx, CurrentKey(statement.TargetKind, statement.TargetKey), encoded,
+	); err != nil {
 		return Record{}, fmt.Errorf("%w: %w", ErrPublish, err)
 	}
 	return record, nil
