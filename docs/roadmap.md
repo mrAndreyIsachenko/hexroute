@@ -165,9 +165,60 @@ item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
    other port fails validation before apply. And SNI is secret material by this
    repository's own contract test, so a demultiplexer's configuration could
    never have lived in Terraform.
-7. Cut root tunnel ownership from Twilight to Hexroute transactionally.
-8. Cut user Pritunl recovery ownership from the legacy OTP watchdog to
-   `hexroute-userd` transactionally.
+7. Cut user Pritunl recovery ownership from the legacy OTP watchdog to
+   `hexroute-userd` transactionally. Moved in front of the root tunnel cutover,
+   which was numbered 7, on three measurements. This one is nearly built and
+   held back rather than unfinished — `credentials` is 442 lines against 234 of
+   tests and `pritunlrescue` 308 against 202 — while the root cutover has no
+   executor at all and a guard that refuses to name a production thing.
+   Failure here means Pritunl does not reconnect by itself; failure there means
+   the machine has no tunnel. And both are the same transaction — boot out a
+   Twilight agent, hand ownership to a Hexroute daemon, prove it, put the old
+   one back if it does not — which is cheaper to learn where being wrong costs
+   a manual reconnect.
+
+   It is not free of the other item: the Pritunl service is a system daemon, so
+   restarting it needs root that `hexroute-userd` does not have. That makes
+   this the smallest possible first grant of production authority — one
+   `launchctl kickstart` of one named service — rather than an argument against
+   the order.
+8. Cut root tunnel ownership from Twilight to Hexroute transactionally. Its
+   grill was run before the reorder and settled its shape, recorded here so it
+   is not derived again.
+
+   The unit is the whole supervisor, not the tunnel. `com.twilight.supervisor`
+   runs 999 lines in which the tunnel is one job among several, and the monitor
+   loop interleaves route enforcement, ingress failover, the reserve probe,
+   automatic restore and the Codex and Pritunl paths. Measured against the live
+   configuration the set is about ten behaviours rather than thirty-two: the
+   OTP watchdog supervision, XRay auto-recovery and health-driven restart are
+   all switched off.
+
+   sing-box stays, and so do its bytes. The configuration moves into a signed
+   configuration version — the format from item 5, which never looks inside
+   what it carries — with the first version byte-identical to the file running
+   today, so that the only thing the cutover changes is who owns it. The Mac
+   does not pull it over the network: a host needs its tunnel configuration
+   exactly when it has no network.
+
+   The transaction is held by an operator command in the foreground, not by a
+   daemon. Handing a Hexroute daemon the authority to start Twilight's launchd
+   label would outlive the forty seconds it is needed for, and a written
+   procedure is not a transaction at all. A durable session envelope covers the
+   terminal dying mid-switch. Handing over through Twilight's own lock is not
+   available: it defends only against another `twilight-up.sh` and breaks any
+   other holder's claim.
+
+   Completing the switch requires evidence that traffic traversed the tunnel,
+   not that an interface came up. This repository has already written down that
+   a reachable socket is not qualification, and has already made the weaker
+   mistake once.
+
+   One thing is owed before it: the Codex fallback watchdog is a child of the
+   supervisor that loops while its parent lives, so booting the supervisor out
+   takes the fallback with it. It is lifted into its own agent first — no
+   roadmap item moves it otherwise, and an escape hatch must not belong to the
+   experiment it exists to escape.
 9. Complete public qualification, supply-chain evidence and legacy cleanup.
 
 Item 4 also ruled out two placements that were proposed and withdrawn during its
@@ -214,7 +265,7 @@ Code that exists and no binary contains. Each entry is a claim this repository
 has made and not yet kept; the list is enforced by `make check`, so it cannot
 grow in silence.
 
-- `credentials`, `pritunlrescue` — held behind the user-domain cutover, item 8.
+- `credentials`, `pritunlrescue` — held behind the user-domain cutover, item 7.
 - `resumeexecutor` — operator resume enforcement.
 - `policyadvisor` — redacted policy observability.
 
