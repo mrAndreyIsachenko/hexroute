@@ -30,4 +30,4 @@
 - [x] 5.1 Run `make check` and `make postgres-test` and resolve every failure.
 - [x] 5.2 Run `openspec validate deliver-signed-ingress-configuration --strict` and keep proposal, design, specs and tasks consistent with what was built.
 - [x] 5.3 Swap items 5 and 6 in the roadmap with the reason, and record what the grill ruled out so the next reader does not re-derive it. Done when the change was planned rather than after it was built: the roadmap must not state an order the project has already decided against.
-- [ ] 5.4 Sync the delta into the baseline specs and archive the change.
+- [x] 5.4 Sync the delta into the baseline specs and archive the change.
