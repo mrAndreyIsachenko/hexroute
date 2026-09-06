@@ -26,8 +26,14 @@ type Fetcher interface {
 // Applier puts a configuration into service. It is separate from this package's
 // decision to apply, so that what is verified and what is written are two
 // steps and the first cannot be skipped by doing the second.
+//
+// The generation goes with the content because it is what the host will report
+// about itself afterwards. A configuration applied without saying which
+// version it is could never be proven: the heartbeat would name something
+// else, and nothing downstream could tell the difference between a version
+// that worked and one that was never installed.
 type Applier interface {
-	Apply(ctx context.Context, content []byte) error
+	Apply(ctx context.Context, content []byte, generation string) error
 }
 
 // Outcome is what one synchronisation did.
@@ -175,7 +181,7 @@ func (agent *Agent) Sync(ctx context.Context) (Result, error) {
 			return Result{}, err
 		}
 	}
-	if err := agent.applier.Apply(ctx, content); err != nil {
+	if err := agent.applier.Apply(ctx, content, artifact.Statement.VersionLabel); err != nil {
 		// The host is now serving something nobody chose. Putting the
 		// retained configuration back is the only outcome that leaves it
 		// where it was.
@@ -188,7 +194,7 @@ func (agent *Agent) Sync(ctx context.Context) (Result, error) {
 			Reason:       "apply_failed",
 		})
 	}
-	if err := agent.store.SetApplied(encoded); err != nil {
+	if err := agent.store.SetApplied(encoded, agent.now().UTC()); err != nil {
 		return Result{}, err
 	}
 	return agent.record(Result{
@@ -221,10 +227,10 @@ func (agent *Agent) Return(ctx context.Context) (Result, error) {
 			Outcome: OutcomeRefused, Reason: configversion.Reason(err),
 		})
 	}
-	if err := agent.applier.Apply(ctx, content); err != nil {
+	if err := agent.applier.Apply(ctx, content, retained.Statement.VersionLabel); err != nil {
 		return Result{}, fmt.Errorf("%w: %w", ErrApply, err)
 	}
-	if err := agent.store.PromoteRetained(); err != nil {
+	if err := agent.store.PromoteRetained(agent.now().UTC()); err != nil {
 		return Result{}, err
 	}
 	return agent.record(Result{
@@ -243,7 +249,7 @@ func (agent *Agent) applyRetained(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return agent.applier.Apply(ctx, content)
+	return agent.applier.Apply(ctx, content, retained.Statement.VersionLabel)
 }
 
 func (agent *Agent) record(result Result) (Result, error) {

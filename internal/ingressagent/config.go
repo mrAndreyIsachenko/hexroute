@@ -8,25 +8,38 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/configversion"
 	"github.com/mrAndreyIsachenko/hexroute/internal/objectstore"
 )
 
 const (
-	envStoreEndpoint = "HEXROUTE_AGENT_STORE_ENDPOINT"
-	envStoreRegion   = "HEXROUTE_AGENT_STORE_REGION"
-	envStoreBucket   = "HEXROUTE_AGENT_STORE_BUCKET"
-	envStoreKeyID    = "HEXROUTE_AGENT_STORE_ACCESS_KEY_ID"
-	envStoreSecret   = "HEXROUTE_AGENT_STORE_SECRET_KEY"
-	envPublicKeyFile = "HEXROUTE_AGENT_PUBLIC_KEY_FILE"
-	envTargetKind    = "HEXROUTE_AGENT_TARGET_KIND"
-	envTargetKey     = "HEXROUTE_AGENT_TARGET_KEY"
-	envStateDir      = "HEXROUTE_AGENT_STATE_DIR"
-	envConfigPath    = "HEXROUTE_AGENT_CONFIG_PATH"
-	envReloadCommand = "HEXROUTE_AGENT_RELOAD_COMMAND"
-	envReloadArgs    = "HEXROUTE_AGENT_RELOAD_ARGS"
+	envStoreEndpoint  = "HEXROUTE_AGENT_STORE_ENDPOINT"
+	envStoreRegion    = "HEXROUTE_AGENT_STORE_REGION"
+	envStoreBucket    = "HEXROUTE_AGENT_STORE_BUCKET"
+	envStoreKeyID     = "HEXROUTE_AGENT_STORE_ACCESS_KEY_ID"
+	envStoreSecret    = "HEXROUTE_AGENT_STORE_SECRET_KEY"
+	envPublicKeyFile  = "HEXROUTE_AGENT_PUBLIC_KEY_FILE"
+	envTargetKind     = "HEXROUTE_AGENT_TARGET_KIND"
+	envTargetKey      = "HEXROUTE_AGENT_TARGET_KEY"
+	envStateDir       = "HEXROUTE_AGENT_STATE_DIR"
+	envConfigPath     = "HEXROUTE_AGENT_CONFIG_PATH"
+	envGenerationPath = "HEXROUTE_AGENT_GENERATION_PATH"
+	envReloadCommand  = "HEXROUTE_AGENT_RELOAD_COMMAND"
+	envReloadArgs     = "HEXROUTE_AGENT_RELOAD_ARGS"
+	envHeartbeatURL   = "HEXROUTE_AGENT_HEARTBEAT_URL"
+	envIdentityFile   = "HEXROUTE_AGENT_NODE_IDENTITY_FILE"
+	envProveWindow    = "HEXROUTE_AGENT_PROVE_WINDOW_SECONDS"
+
+	// minProveWindow and maxProveWindow bound how long a version may go
+	// unproven. Too short and a host merely slow to come back is returned
+	// from; too long and a broken version serves for hours with nothing
+	// having decided that it should.
+	minProveWindow = time.Minute
+	maxProveWindow = 24 * time.Hour
 
 	maxPublicKeyFileBytes = 1024
 )
@@ -40,13 +53,17 @@ type LookupEnv func(string) (string, bool)
 // defaulted its bucket, its target or its public key would be an agent nobody
 // decided the behaviour of.
 type Config struct {
-	Store         objectstore.Config
-	PublicKeyFile string
-	Target        configversion.Target
-	StateDir      string
-	ConfigPath    string
-	ReloadCommand string
-	ReloadArgs    []string
+	Store          objectstore.Config
+	PublicKeyFile  string
+	Target         configversion.Target
+	StateDir       string
+	ConfigPath     string
+	GenerationPath string
+	ReloadCommand  string
+	ReloadArgs     []string
+	HeartbeatURL   string
+	IdentityFile   string
+	ProveWindow    time.Duration
 }
 
 // LoadConfig reads the agent's configuration from the environment.
@@ -64,14 +81,29 @@ func LoadConfig(lookup LookupEnv) (Config, error) {
 	targetKey, keyOK := requiredEnv(lookup, envTargetKey)
 	stateDir, stateOK := requiredEnv(lookup, envStateDir)
 	configPath, configOK := requiredEnv(lookup, envConfigPath)
+	generationPath, generationOK := requiredEnv(lookup, envGenerationPath)
 	reloadCommand, reloadOK := requiredEnv(lookup, envReloadCommand)
+	heartbeatURL, heartbeatOK := requiredEnv(lookup, envHeartbeatURL)
+	identityFile, identityOK := requiredEnv(lookup, envIdentityFile)
+	rawWindow, windowOK := requiredEnv(lookup, envProveWindow)
 	if !endpointOK || !regionOK || !bucketOK || !keyIDOK || !secretOK ||
-		!publicKeyOK || !kindOK || !keyOK || !stateOK || !configOK || !reloadOK {
+		!publicKeyOK || !kindOK || !keyOK || !stateOK || !configOK ||
+		!generationOK || !reloadOK || !heartbeatOK || !identityOK || !windowOK {
 		return Config{}, fmt.Errorf("%w: incomplete environment", ErrAgent)
 	}
 	if !validAbsolutePath(publicKeyFile) || !validAbsolutePath(stateDir) ||
-		!validAbsolutePath(configPath) || !validAbsolutePath(reloadCommand) {
+		!validAbsolutePath(configPath) || !validAbsolutePath(generationPath) ||
+		!validAbsolutePath(reloadCommand) || !validAbsolutePath(identityFile) ||
+		configPath == generationPath {
 		return Config{}, fmt.Errorf("%w: paths must be absolute", ErrAgent)
+	}
+	seconds, err := strconv.Atoi(rawWindow)
+	if err != nil {
+		return Config{}, fmt.Errorf("%w: prove window", ErrAgent)
+	}
+	window := time.Duration(seconds) * time.Second
+	if window < minProveWindow || window > maxProveWindow {
+		return Config{}, fmt.Errorf("%w: prove window", ErrAgent)
 	}
 	target := configversion.Target{
 		Kind: configversion.TargetKind(targetKind),
@@ -94,12 +126,16 @@ func LoadConfig(lookup LookupEnv) (Config, error) {
 			AccessKeyID: keyID,
 			SecretKey:   secret,
 		},
-		PublicKeyFile: publicKeyFile,
-		Target:        target,
-		StateDir:      stateDir,
-		ConfigPath:    configPath,
-		ReloadCommand: reloadCommand,
-		ReloadArgs:    args,
+		PublicKeyFile:  publicKeyFile,
+		Target:         target,
+		StateDir:       stateDir,
+		ConfigPath:     configPath,
+		GenerationPath: generationPath,
+		ReloadCommand:  reloadCommand,
+		ReloadArgs:     args,
+		HeartbeatURL:   heartbeatURL,
+		IdentityFile:   identityFile,
+		ProveWindow:    window,
 	}, nil
 }
 

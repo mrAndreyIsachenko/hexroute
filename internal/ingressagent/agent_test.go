@@ -34,13 +34,15 @@ func (fetcher *stubFetcher) GetVersion(_ context.Context, key string) ([]byte, e
 }
 
 type stubApplier struct {
-	applied [][]byte
-	err     error
-	failOn  int
+	applied     [][]byte
+	generations []string
+	err         error
+	failOn      int
 }
 
-func (applier *stubApplier) Apply(_ context.Context, content []byte) error {
+func (applier *stubApplier) Apply(_ context.Context, content []byte, generation string) error {
 	applier.applied = append(applier.applied, append([]byte(nil), content...))
+	applier.generations = append(applier.generations, generation)
 	if applier.err != nil && (applier.failOn == 0 || applier.failOn == len(applier.applied)) {
 		return applier.err
 	}
@@ -111,6 +113,11 @@ func TestTheAgentAppliesAVersionItVerified(t *testing.T) {
 	}
 	if len(applier.applied) != 1 || !bytes.Equal(applier.applied[0], content) {
 		t.Fatal("the applied bytes are not the ones signed")
+	}
+	// The host is told which version it is now running, so its heartbeat can
+	// report it and the version can be proven by what is serving.
+	if applier.generations[0] != "2026-09-06.1" {
+		t.Fatalf("generation = %q", applier.generations[0])
 	}
 
 	// The host asks; nothing tells it. The only key it reads is the one it
