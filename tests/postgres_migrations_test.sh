@@ -120,6 +120,41 @@ required_tables=(
   connectivity_snapshot_proposal_classes
   hexroute_schema_migrations cutover_write_control
 )
+# Signed configuration delivery is the first writer these two tables have ever
+# had, and it needs three things that did not exist: a role that may publish a
+# version, a column saying why one was not proven, and a uniqueness rule that
+# keeps a prover running on a timer from recording the same deployment twice.
+#
+# The baseline verifier above describes the schema as it stood before the
+# migration ledger, so none of this belongs there. It is checked here, against
+# the database the migrations actually built.
+publisher_role="$(docker exec "$container" psql --username postgres --dbname postgres \
+  --tuples-only --no-align --command \
+  "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hexroute_publisher'
+                    AND NOT rolcanlogin AND NOT rolsuper);")"
+[[ "$publisher_role" == "t" ]] || {
+  printf 'hexroute_publisher is missing or privileged\n' >&2
+  exit 1
+}
+
+unproven_reason="$(docker exec "$container" psql --username postgres --dbname postgres \
+  --tuples-only --no-align --command \
+  "SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'config_versions'
+                     AND column_name = 'unproven_reason');")"
+[[ "$unproven_reason" == "t" ]] || {
+  printf 'config_versions.unproven_reason is missing\n' >&2
+  exit 1
+}
+
+deployment_uidx="$(docker exec "$container" psql --username postgres --dbname postgres \
+  --tuples-only --no-align --command \
+  "SELECT to_regclass('public.deployments_config_version_target_uidx') IS NOT NULL;")"
+[[ "$deployment_uidx" == "t" ]] || {
+  printf 'deployments_config_version_target_uidx is missing\n' >&2
+  exit 1
+}
+
 for table in "${required_tables[@]}"; do
   found="$(docker exec "$container" psql --username postgres --dbname postgres \
     --tuples-only --no-align --command \

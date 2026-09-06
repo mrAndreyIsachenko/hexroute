@@ -273,7 +273,6 @@ var baselineIndexes = []string{
 	"batches_retention_idx",
 	"incident_bundles_incident_content_uidx",
 	"incident_bundles_delete_due_idx",
-	"deployments_config_version_target_uidx",
 }
 
 var baselineColumns = []string{
@@ -295,7 +294,6 @@ var baselineColumns = []string{
 	"passkey_credentials.backup_state",
 	"passkey_credentials.clone_warning",
 	"passkey_credentials.authenticator_attachment",
-	"config_versions.unproven_reason",
 }
 
 func verifyLegacyBaseline(ctx context.Context, transaction pgx.Tx) (bool, error) {
@@ -329,8 +327,7 @@ func verifyBaseline(
 				('hexroute_ingest'),
 				('hexroute_dashboard'),
 				('hexroute_dashboard_auth'),
-				('hexroute_maintenance'),
-				('hexroute_publisher')
+				('hexroute_maintenance')
 		)
 		SELECT
 			NOT EXISTS (
@@ -357,7 +354,7 @@ func verifyBaseline(
 				)
 			)
 			AND (
-				SELECT count(*) = 6 FROM pg_roles r
+				SELECT count(*) = 5 FROM pg_roles r
 				JOIN expected_roles e ON e.name = r.rolname
 				WHERE NOT r.rolcanlogin AND NOT r.rolsuper AND NOT r.rolcreatedb
 				  AND NOT r.rolcreaterole AND NOT r.rolreplication
