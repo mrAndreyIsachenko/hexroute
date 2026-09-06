@@ -34,6 +34,7 @@ local_binaries=(
 # protects against.
 cloud_binaries=(
   ./cmd/hexroute-ingest
+  ./cmd/hexroute-config-publish
   ./cmd/hexroute-ingress-observer
   ./cmd/hexroute-ingress-probe
   ./cmd/hexroute-package-observer
