@@ -37,6 +37,20 @@ if grep -Eqi 'com\.twilight|/twilight/|pritunl-otp-watchdog|adguard' "$PLIST" "$
   exit 1
 fi
 
+# The root runtime performs exactly one production act: restarting the one
+# named service a Pritunl recovery asks for, after its own probes agree. It
+# adds no route, kills nothing, and loads or unloads nothing — those belong to
+# the tunnel cutover, which has not happened.
+root_sources="$(find "$ROOT/internal/rootdaemon" -name '*.go' -not -name '*_test.go')"
+if grep -Eqi 'route[[:space:]]+(add|change|delete)|kill(all)?|pkill' $root_sources; then
+  echo "the root runtime contains authority beyond the one named restart" >&2
+  exit 1
+fi
+if grep -Ehi 'launchctl' $root_sources | grep -Evqi 'kickstart'; then
+  echo "the root runtime manages launchd beyond the one named restart" >&2
+  exit 1
+fi
+
 if grep -Eqi 'route[[:space:]]+(add|change|delete)|kill(all)?|pkill|launchctl[[:space:]]+unload' "$PLIST"; then
   echo "observe-only plist contains mutation authority" >&2
   exit 1
