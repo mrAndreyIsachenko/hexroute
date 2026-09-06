@@ -19,14 +19,14 @@ const testVersionID = metadata.UUID("11111111-1111-4111-8111-111111111111")
 // itself observable.
 type recordingStorage struct {
 	calls *[]string
-	key   string
+	keys  []string
 	body  []byte
 	err   error
 }
 
 func (storage *recordingStorage) PutVersion(_ context.Context, key string, content []byte) error {
 	*storage.calls = append(*storage.calls, "store")
-	storage.key = key
+	storage.keys = append(storage.keys, key)
 	storage.body = append([]byte(nil), content...)
 	return storage.err
 }
@@ -101,15 +101,20 @@ func TestPublishRecordsThenStoresWhatTheOperatorSigned(t *testing.T) {
 	// The row decides whether the label may be used, so it is written first.
 	// Reversed, an overwritten object would already be in the store when the
 	// ledger refused the label.
-	if strings.Join(*storage.calls, ",") != "ledger,store" {
+	if strings.Join(*storage.calls, ",") != "ledger,store,store" {
 		t.Fatalf("call order: %v", *storage.calls)
 	}
 	if !bytes.Equal(storage.body, encoded) {
 		t.Fatal("the stored bytes are not the ones published")
 	}
-	if storage.key != "versions/node/ingress-provider-b/2026-09-06.1.json" ||
-		record.ObjectKey != storage.key {
-		t.Fatalf("object key: %s", storage.key)
+	// The labelled object is what the ledger names; the pointer is what a
+	// host reads. Both are the same bytes, so a host cannot be handed one
+	// version under the name of another.
+	if strings.Join(storage.keys, ",") !=
+		"versions/node/ingress-provider-b/2026-09-06.1.json,"+
+			"versions/node/ingress-provider-b/current.json" ||
+		record.ObjectKey != storage.keys[0] {
+		t.Fatalf("object keys: %v", storage.keys)
 	}
 	if ledger.record.TargetKind != "node" || ledger.record.TargetKey != "ingress-provider-b" ||
 		ledger.record.VersionLabel != "2026-09-06.1" ||
