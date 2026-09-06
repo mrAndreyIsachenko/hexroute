@@ -338,3 +338,57 @@ func substitute(t *testing.T, encoded []byte) []byte {
 	}
 	return substituted
 }
+
+// The delivery path has no opinion about what it delivers. This content is not
+// JSON, not a configuration, and not anything this repository knows: it is
+// signed, fetched, verified, applied, retained and returned from exactly as any
+// other version.
+//
+// That is what makes the path usable by a runtime it was not written for. A
+// version format that validated its content against one runtime's schema would
+// have to be changed for the next one.
+func TestAVersionCarryingSomethingUnrecognisedIsDeliveredJustTheSame(t *testing.T) {
+	private := operatorKey(7)
+	opaque := []byte{0x00, 0x01, 0x02, 0xff, 0xfe, '\n', 0x7f, 0x80}
+	alsoOpaque := append([]byte("not json either: "), 0xc3, 0x28)
+	at := time.Date(2026, 9, 6, 10, 0, 0, 0, time.UTC)
+	fetcher := &stubFetcher{objects: map[string][]byte{
+		currentKey(): version(t, private, "2026-09-06.1", at, opaque),
+	}}
+	applier := &stubApplier{}
+	agent, store := newAgent(t, fetcher, applier, private.Public().(ed25519.PublicKey))
+
+	if result, err := agent.Sync(context.Background()); err != nil ||
+		result.Outcome != OutcomeApplied {
+		t.Fatalf("first: %+v %v", result, err)
+	}
+	if !bytes.Equal(applier.applied[0], opaque) {
+		t.Fatal("the applied bytes are not the ones signed")
+	}
+
+	fetcher.objects[currentKey()] = version(t, private, "2026-09-07.1",
+		at.Add(time.Hour), alsoOpaque)
+	if result, err := agent.Sync(context.Background()); err != nil ||
+		result.Outcome != OutcomeApplied {
+		t.Fatalf("second: %+v %v", result, err)
+	}
+	if result, err := agent.Return(context.Background()); err != nil ||
+		result.Outcome != OutcomeReturned {
+		t.Fatalf("return: %+v %v", result, err)
+	}
+	if !bytes.Equal(applier.applied[len(applier.applied)-1], opaque) {
+		t.Fatal("the returned bytes are not the retained ones")
+	}
+
+	// And the same content, substituted after signing, is still refused: the
+	// digest binds bytes, not a document.
+	substituted, _, _, err := store.Applied()
+	if err != nil {
+		t.Fatal(err)
+	}
+	substituted.Content = base64.RawURLEncoding.EncodeToString(alsoOpaque)
+	if _, err := configversion.Verify(substituted,
+		private.Public().(ed25519.PublicKey), agentTarget()); err == nil {
+		t.Fatal("opaque content was accepted after substitution")
+	}
+}

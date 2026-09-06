@@ -82,6 +82,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		err = runSign(args[1:], stdout)
 	case "sign-config":
 		err = runSignConfig(args[1:], stdout)
+	case "read-config":
+		err = runReadConfig(args[1:], stdout)
 	case "provision-key":
 		err = runProvisionKey(args[1:], stdout)
 	case "export-public-key":
@@ -392,6 +394,103 @@ func runReplay(args []string, stdout io.Writer) error {
 		return err
 	}
 	return replay.RequirePolicyReplay(report)
+}
+
+// runReadConfig verifies a published configuration version and writes out the
+// exact bytes the host will run.
+//
+// It exists so that a client profile can be derived from the version that was
+// published rather than from the draft it was authored from. Those differ
+// whenever a draft was never published, a later version was published instead,
+// or a host failed to prove one and went back — and in each case a profile from
+// the draft describes a server that will not answer.
+//
+// It emits the content unparsed. Reading inside a runtime configuration needs
+// that runtime's schema, which belongs where its parameters belong, and that is
+// not this repository.
+func runReadConfig(args []string, stdout io.Writer) error {
+	flags := flag.NewFlagSet("read-config", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	versionPath := flags.String("version", "", "published configuration version file")
+	publicKeyPath := flags.String("public-key", "", "base64 Ed25519 operator public key")
+	targetKind := flags.String("target-kind", "", "node, group or global")
+	targetKey := flags.String("target-key", "", "target the version is addressed to")
+	outPath := flags.String("out", "", "new file to write the verified content to")
+	if flags.Parse(args) != nil || flags.NArg() != 0 || *versionPath == "" ||
+		*publicKeyPath == "" || *targetKind == "" || *targetKey == "" || *outPath == "" {
+		return errors.New("invalid read-config flags")
+	}
+	encoded, err := readRegular(*versionPath, configversion.MaxArtifactBytes)
+	if err != nil || len(encoded) == 0 || len(encoded) > configversion.MaxArtifactBytes {
+		return errors.New("invalid configuration version")
+	}
+	publicKey, err := readPublicKey(*publicKeyPath)
+	if err != nil {
+		return err
+	}
+	artifact, err := configversion.Decode(encoded)
+	if err != nil {
+		return fmt.Errorf("configuration version was not read: %s", configversion.Reason(err))
+	}
+	content, err := configversion.Verify(artifact, publicKey, configversion.Target{
+		Kind: configversion.TargetKind(*targetKind),
+		Key:  *targetKey,
+	})
+	if err != nil {
+		// The check that failed is named. "It did not verify" is not something
+		// an operator can act on, and the two likely causes — the wrong key
+		// and the wrong target — call for different next steps.
+		return fmt.Errorf("configuration version was not read: %s", configversion.Reason(err))
+	}
+	if err := writeRuntimeContent(*outPath, content); err != nil {
+		return err
+	}
+	return writeOutput(stdout, commandOutput{
+		Schema:         outputSchema,
+		Command:        "read-config",
+		ArtifactSHA256: policy.SHA256Hex(encoded),
+		ContentSHA256:  artifact.Statement.ContentSHA256,
+	})
+}
+
+// writeRuntimeContent writes a verified runtime configuration to a new private
+// file, and refuses to put one inside a Git working tree.
+//
+// The content is the host's runtime configuration: it carries the transport's
+// parameters, which is the material this repository's whole boundary exists to
+// keep out of version control. A destination inside any working tree is
+// refused rather than trusted to be gitignored.
+func writeRuntimeContent(path string, content []byte) error {
+	if path == "" || filepath.Clean(path) != path || len(content) == 0 {
+		return errors.New("invalid output")
+	}
+	directory := filepath.Dir(path)
+	absolute, err := filepath.Abs(directory)
+	if err != nil {
+		return errors.New("invalid output")
+	}
+	for current := absolute; ; current = filepath.Dir(current) {
+		if info, err := os.Stat(filepath.Join(current, ".git")); err == nil && info != nil {
+			return errors.New("refusing to write runtime content inside a repository")
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(content); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
 }
 
 // runSignConfig signs an ingress configuration with the operator key.
