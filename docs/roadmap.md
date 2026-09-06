@@ -77,7 +77,13 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`cut-pritunl-recovery-to-hexroute` is active. It moves the whole Pritunl
+recovery path — observation, decision, one-time code, reconnect and the request
+to restart a stale service — and grants the first production authority in this
+system: one named service restart, on a typed credential-free request that root
+revalidates itself. The authority arrives as a signed policy generation and is
+checked through the mutation gate that has never been consulted. It is item 7
+below.
 
 `admit-a-second-ingress-client` closed on 2026-09-06. This system now records
 who reaches an ingress and what for — which nothing had ever done — and an
