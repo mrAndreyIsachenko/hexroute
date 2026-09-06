@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mrAndreyIsachenko/hexroute/internal/configpublish"
 	"github.com/mrAndreyIsachenko/hexroute/internal/configversion"
 )
 
@@ -64,7 +63,7 @@ func agentTarget() configversion.Target {
 }
 
 func currentKey() string {
-	return configpublish.CurrentKey(string(agentTarget().Kind), agentTarget().Key)
+	return configversion.CurrentKey(string(agentTarget().Kind), agentTarget().Key)
 }
 
 func operatorKey(seed byte) ed25519.PrivateKey {

@@ -19,11 +19,6 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 )
 
-// KeyPrefix is where versions live in the bucket. A host fetches under this
-// prefix and nothing else, so a credential scoped to it can read versions and
-// nothing else either.
-const KeyPrefix = "versions"
-
 var (
 	// ErrPublish is any failure to publish.
 	ErrPublish = errors.New("configuration version was not published")
@@ -80,29 +75,6 @@ func New(storage Storage, ledger Ledger, pinned ed25519.PublicKey) (*Publisher, 
 	}, nil
 }
 
-// ObjectKey is where one version lives. It is derived from what the operator
-// signed, so a retry after a failure writes the same object rather than a
-// second one.
-func ObjectKey(statement configversion.Statement) string {
-	return prefixFor(statement.TargetKind, statement.TargetKey) +
-		statement.VersionLabel + ".json"
-}
-
-// CurrentKey is the one key a host reads. It is how a node learns a version
-// exists without the cloud telling it: the node asks, on its own schedule, and
-// what it finds there is either a version it can verify or nothing it will
-// act on.
-//
-// The pointer is not an instruction. It carries the same signed statement as
-// the labelled object, so a host that read it still decides for itself.
-func CurrentKey(kind string, key string) string {
-	return prefixFor(kind, key) + "current.json"
-}
-
-func prefixFor(kind string, key string) string {
-	return KeyPrefix + "/" + kind + "/" + key + "/"
-}
-
 // Publish verifies, records and stores one version.
 //
 // The row is written before the object, because the row is what decides
@@ -146,7 +118,7 @@ func (publisher *Publisher) Publish(
 		SchemaVersion:   int(statement.Version),
 		VersionLabel:    statement.VersionLabel,
 		SigningKeyID:    statement.SignerFingerprint,
-		ObjectKey:       ObjectKey(statement),
+		ObjectKey:       configversion.ObjectKey(statement),
 		CreatedAt:       now.UTC(),
 	}
 	copy(record.ContentSHA256[:], digest)
@@ -160,7 +132,7 @@ func (publisher *Publisher) Publish(
 	// The labelled object is written first, so the key a host reads never
 	// names bytes that are not already stored under their own name.
 	if err := publisher.storage.PutVersion(
-		ctx, CurrentKey(statement.TargetKind, statement.TargetKey), encoded,
+		ctx, configversion.CurrentKey(statement.TargetKind, statement.TargetKey), encoded,
 	); err != nil {
 		return Record{}, fmt.Errorf("%w: %w", ErrPublish, err)
 	}

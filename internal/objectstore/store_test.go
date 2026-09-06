@@ -12,8 +12,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mrAndreyIsachenko/hexroute/internal/incidentbundle"
 )
 
 var fixedTime = time.Date(2026, time.September, 4, 1, 2, 3, 0, time.UTC)
@@ -38,8 +36,8 @@ func testStore(t *testing.T) *Store {
 	return store
 }
 
-func object(content []byte) incidentbundle.PrivateObject {
-	return incidentbundle.PrivateObject{
+func object(content []byte) PrivateObject {
+	return PrivateObject{
 		Key:             "bundles/abc123",
 		Content:         content,
 		ContentSHA256:   sha256.Sum256(content),

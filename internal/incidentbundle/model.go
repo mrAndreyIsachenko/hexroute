@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
+	"github.com/mrAndreyIsachenko/hexroute/internal/objectstore"
 )
 
 const (
@@ -17,19 +18,10 @@ const (
 	objectMediaType = "application/json"
 )
 
-type PrivateObject struct {
-	Key             string
-	Content         []byte
-	ContentSHA256   [32]byte
-	ContentType     string
-	ContentEncoding string
-	ExpiresAt       time.Time
-}
-
 // Storage must keep objects private, apply ExpiresAt as a lifecycle ceiling,
 // and make repeated writes of identical content to the same key idempotent.
 type Storage interface {
-	PutPrivate(context.Context, PrivateObject) error
+	PutPrivate(context.Context, objectstore.PrivateObject) error
 	DeletePrivate(context.Context, string) error
 }
 
