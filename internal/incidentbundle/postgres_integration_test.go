@@ -14,6 +14,7 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
+	"github.com/mrAndreyIsachenko/hexroute/internal/objectstore"
 	"github.com/mrAndreyIsachenko/hexroute/internal/telemetry"
 )
 
@@ -188,13 +189,13 @@ func TestPostgresIncidentBundleIsPrivateBoundedAndExpires(t *testing.T) {
 }
 
 type recordingStorage struct {
-	puts    []PrivateObject
+	puts    []objectstore.PrivateObject
 	deletes []string
 }
 
 func (storage *recordingStorage) PutPrivate(
 	_ context.Context,
-	object PrivateObject,
+	object objectstore.PrivateObject,
 ) error {
 	object.Content = append([]byte(nil), object.Content...)
 	storage.puts = append(storage.puts, object)

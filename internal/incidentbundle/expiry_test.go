@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
+	"github.com/mrAndreyIsachenko/hexroute/internal/objectstore"
 )
 
 func TestExpiryWorkerDefersDeletionWithoutRecordingStorageDetails(t *testing.T) {
@@ -72,7 +73,7 @@ type storageFixture struct {
 	deleteErr error
 }
 
-func (*storageFixture) PutPrivate(context.Context, PrivateObject) error {
+func (*storageFixture) PutPrivate(context.Context, objectstore.PrivateObject) error {
 	return nil
 }
 

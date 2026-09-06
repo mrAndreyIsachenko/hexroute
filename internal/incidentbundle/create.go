@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
+	"github.com/mrAndreyIsachenko/hexroute/internal/objectstore"
 	"github.com/mrAndreyIsachenko/hexroute/internal/spool"
 	"github.com/mrAndreyIsachenko/hexroute/internal/telemetry"
 )
@@ -119,7 +120,7 @@ func (creator *Creator) Create(
 
 	objectKey := objectKey(digest)
 	expiresAt := at.Add(Retention)
-	if err := creator.storage.PutPrivate(ctx, PrivateObject{
+	if err := creator.storage.PutPrivate(ctx, objectstore.PrivateObject{
 		Key:             objectKey,
 		Content:         append([]byte(nil), content...),
 		ContentSHA256:   digest,

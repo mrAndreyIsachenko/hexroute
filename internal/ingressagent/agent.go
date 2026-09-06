@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mrAndreyIsachenko/hexroute/internal/configpublish"
 	"github.com/mrAndreyIsachenko/hexroute/internal/configversion"
 )
 
@@ -122,7 +121,7 @@ func (agent *Agent) Sync(ctx context.Context) (Result, error) {
 	if agent == nil || ctx == nil {
 		return Result{}, fmt.Errorf("%w: no agent", ErrAgent)
 	}
-	key := configpublish.CurrentKey(string(agent.target.Kind), agent.target.Key)
+	key := configversion.CurrentKey(string(agent.target.Kind), agent.target.Key)
 	encoded, err := agent.fetcher.GetVersion(ctx, key)
 	if err != nil {
 		return agent.record(Result{Outcome: OutcomeUnreachable, Reason: "store_unreachable"})

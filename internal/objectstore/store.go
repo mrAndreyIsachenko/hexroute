@@ -12,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/mrAndreyIsachenko/hexroute/internal/incidentbundle"
 )
 
 // ErrObjectStore is any failure to write or remove an object.
@@ -28,6 +26,21 @@ const (
 	// stops doing incident correlation and retention as well.
 	requestTimeout = 30 * time.Second
 )
+
+// PrivateObject is one object as its writer describes it.
+//
+// It lives here rather than beside the incident bundle that was its first
+// caller, because a store that imported a caller drags that caller's
+// dependencies into everything the store reaches — which is how the ingress
+// agent came to link a PostgreSQL driver to work out a filename.
+type PrivateObject struct {
+	Key             string
+	Content         []byte
+	ContentSHA256   [32]byte
+	ContentType     string
+	ContentEncoding string
+	ExpiresAt       time.Time
+}
 
 // Config is what one store needs. Every field is required: a store that
 // defaulted a bucket or a region would be a store that could write somewhere
@@ -81,7 +94,7 @@ func New(config Config) (*Store, error) {
 // and the same bytes produce the same object, which is what lets an
 // interrupted bundle creation simply be retried.
 func (store *Store) PutPrivate(
-	ctx context.Context, object incidentbundle.PrivateObject,
+	ctx context.Context, object PrivateObject,
 ) error {
 	if store == nil {
 		return fmt.Errorf("%w: no store", ErrObjectStore)
