@@ -237,6 +237,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return 1
 	}
+	// The policy handler outlives the operator socket: authority to act comes
+	// from the active generation whether or not anybody is connected.
+	var policyHandler *policycontrol.Handler
 	var requests <-chan operator.Envelope
 	var serverDone <-chan error
 	var server *ipc.Server
@@ -251,7 +254,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return 1
 		}
-		policyHandler, policyStore, err := openRootPolicyHandler(config.PolicyControl)
+		handler, policyStore, err := openRootPolicyHandler(config.PolicyControl)
+		policyHandler = handler
 		if err != nil {
 			return rejected(errorLog, logging.ReasonPolicyStoreUnavailable)
 		}
@@ -295,6 +299,25 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			<-done
 		}()
 	}
+	// Absent a named service or a policy handler there is no capability to
+	// exercise, and a rescue request is answered the way it always has been.
+	observations := &rootObservations{}
+	rescuer := newPritunlRescuer(
+		config.PritunlServiceLabel,
+		uint32(config.OperatorUID),
+		observations.currentGeneration,
+		observations.currentOuterReady,
+		func(generation uint64, digest string) policy.ActionAuthorizationDecision {
+			if policyHandler == nil {
+				return policy.ActionAuthorizationDecision{
+					Reason: policy.ActionInactivePolicy,
+				}
+			}
+			return policyHandler.AuthorizePritunlRecovery(
+				policy.DomainRoot, "pritunl", generation, digest,
+			)
+		},
+	)
 	if err := observeLoop(
 		runCtx,
 		config.Interval,
@@ -307,6 +330,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		serverDone,
 		infoLog,
 		reader,
+		rescuer,
+		observations,
 	); err != nil {
 		return 1
 	}
@@ -375,6 +400,8 @@ func observeLoop(
 	serverDone <-chan error,
 	logger *logging.Logger,
 	reader *connectivityhost.Reader,
+	rescuer *pritunlRescuer,
+	observations *rootObservations,
 ) error {
 	// The gate keeps the log a record of what happened rather than of how
 	// often it was checked. Liveness lives in the heartbeat file.
@@ -410,6 +437,9 @@ func observeLoop(
 			return err
 		}
 		operatorSnapshot = nextRootOperatorSnapshot(operatorSnapshot, summary, at)
+		// What this runtime last saw of itself, for the one request it answers
+		// by acting rather than by reporting.
+		observations.record(operatorSnapshot.Generation, summary.OuterReady)
 		if err := controller.Update(
 			operatorSnapshot,
 			rootOperatorReason(summary.State),
@@ -441,7 +471,7 @@ func observeLoop(
 				return ErrInvalidConfig
 			case envelope := <-requests:
 				if envelope.Active() {
-					envelope.Respond(controller.Handle(envelope.Request))
+					envelope.Respond(answer(ctx, controller, rescuer, envelope.Request))
 				}
 			case <-timer.C:
 				break wait

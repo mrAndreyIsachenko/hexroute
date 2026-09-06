@@ -82,7 +82,8 @@ recovery path — observation, decision, one-time code, reconnect and the reques
 to restart a stale service — and grants the first production authority in this
 system: one named service restart, on a typed credential-free request that root
 revalidates itself. The authority arrives as a signed policy generation and is
-checked through the mutation gate that has never been consulted. It is item 7
+checked through the mutation gate the operator dispatcher already consults on
+exactly this action. It is item 7
 below.
 
 `admit-a-second-ingress-client` closed on 2026-09-06. This system now records
@@ -271,9 +272,12 @@ Code that exists and no binary contains. Each entry is a claim this repository
 has made and not yet kept; the list is enforced by `make check`, so it cannot
 grow in silence.
 
-- `credentials`, `pritunlrescue` — held behind the user-domain cutover, item 7.
 - `resumeexecutor` — operator resume enforcement.
 - `policyadvisor` — redacted policy observability.
+
+`credentials` and `pritunlrescue` left this list on 2026-09-06, when the user
+cutover gave them the binaries they were held back from: the user daemon holds
+the credential and asks, and the root daemon verifies and restarts.
 
 `incidentbundle` and `objectstore` left this list on 2026-09-04, when the
 maintenance worker began calling bundle creation and expiry: the census fell

@@ -36,10 +36,14 @@ const (
 )
 
 type Config struct {
-	Schema                string                      `json:"schema"`
-	Mode                  string                      `json:"mode"`
-	ObservationIntervalS  uint32                      `json:"observation_interval_seconds"`
-	OperatorUID           int                         `json:"operator_uid,omitempty"`
+	Schema               string `json:"schema"`
+	Mode                 string `json:"mode"`
+	ObservationIntervalS uint32 `json:"observation_interval_seconds"`
+	OperatorUID          int    `json:"operator_uid,omitempty"`
+	// PritunlServiceLabel names the one system service this runtime may
+	// restart. Absent, it may restart nothing: the capability is the named
+	// service, not the act.
+	PritunlServiceLabel   string                      `json:"pritunl_service_label,omitempty"`
 	PhysicalInterface     string                      `json:"physical_interface"`
 	ManagedTUNAddress     string                      `json:"managed_tun_address"`
 	UpstreamProbeAddress  string                      `json:"upstream_probe_address,omitempty"`
@@ -70,6 +74,7 @@ type EndpointConfig struct {
 type RuntimeConfig struct {
 	Interval              time.Duration
 	OperatorUID           int
+	PritunlServiceLabel   string
 	PhysicalInterface     string
 	ManagedTUNAddress     netip.Addr
 	UpstreamProbeAddress  netip.Addr
@@ -149,6 +154,7 @@ func (config Config) runtime() (RuntimeConfig, error) {
 	runtime := RuntimeConfig{
 		Interval:              interval,
 		OperatorUID:           config.OperatorUID,
+		PritunlServiceLabel:   config.PritunlServiceLabel,
 		PhysicalInterface:     config.PhysicalInterface,
 		ManagedTUNAddress:     tunAddress,
 		UpstreamProbeAddress:  upstreamAddress,

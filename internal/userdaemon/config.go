@@ -33,6 +33,11 @@ type Config struct {
 	OuterEndpoint        EndpointConfig              `json:"outer_endpoint"`
 	Policy               PolicyConfig                `json:"policy"`
 	PolicyControl        *policycontrol.StaticConfig `json:"policy_control,omitempty"`
+	// Recovery is how this daemon would act if a generation authorized it. It
+	// is absent until the ownership cutover, and its absence is not an
+	// authority question: a daemon without it cannot perform a reconnect, and
+	// says so rather than pretending nothing asked.
+	Recovery *RecoveryConfig `json:"recovery,omitempty"`
 }
 
 type EndpointConfig struct {
@@ -64,6 +69,7 @@ type RuntimeConfig struct {
 	OuterEndpoint observe.Endpoint
 	Policy        pritunlplan.Policy
 	PolicyControl *policycontrol.RuntimeConfig
+	Recovery      *RecoveryConfig
 }
 
 var (
@@ -179,6 +185,9 @@ func (config Config) runtime() (RuntimeConfig, error) {
 		}
 		policyRuntime = &compiled
 	}
+	if config.Recovery != nil && config.Recovery.valid() != nil {
+		return RuntimeConfig{}, ErrInvalidConfig
+	}
 	return RuntimeConfig{
 		Interval:      interval,
 		ExpectedUID:   config.ExpectedUID,
@@ -187,5 +196,6 @@ func (config Config) runtime() (RuntimeConfig, error) {
 		OuterEndpoint: endpoint,
 		Policy:        policy,
 		PolicyControl: policyRuntime,
+		Recovery:      config.Recovery,
 	}, nil
 }

@@ -43,6 +43,10 @@ type Summary struct {
 	// service either way, and keeping what it saw is the only thing that was
 	// missing.
 	Observed Evidence
+	// Outcome is what became of the plan's action. It is empty when the plan
+	// asked for nothing, and "proposed" whenever nothing authorized the act —
+	// which is every cycle before the ownership cutover.
+	Outcome recoveryOutcome
 }
 
 // Evidence is one cycle's raw readings from the user domain.

@@ -78,15 +78,40 @@ if grep -Eqi 'com\.twilight|/twilight/|pritunl-otp-watchdog|adguard' "$PLIST" "$
   exit 1
 fi
 
-if grep -Eqi 'pritunl-client.*(start|stop|restart)|route[[:space:]]+(add|change|delete)|kill(all)?|pkill' \
+# The user runtime recovers Pritunl and does nothing else to the host. Routes,
+# process killing and any other client are outside what its cutover granted,
+# and staying outside is what keeps that grant the smallest one available.
+if grep -Eqi 'route[[:space:]]+(add|change|delete)|kill(all)?|pkill' \
   "$PLIST" "$INSTALLER" "$ROOT/internal/userdaemon/"*.go; then
-  echo "observe-only user package contains mutation authority" >&2
+  echo "user package contains authority beyond Pritunl recovery" >&2
   exit 1
 fi
 
-if grep -Eqi 'keychain|totp[_ -]?seed|pin[_ -]?service|otp[_ -]?service' \
-  "$PLIST" "$CONFIG" "$INSTALLER" "$ROOT/internal/userdaemon/"*.go; then
-  echo "observe-only user runtime contains a credential dependency" >&2
+# The installer manages this daemon's own label, which is how it installs and
+# removes itself. The daemon manages no label at all: restarting a service is
+# root's half of the recovery, asked for by a typed request and performed
+# there.
+if grep -Eqi 'launchctl' "$ROOT/internal/userdaemon/"*.go; then
+  echo "the user runtime manages a launchd service itself" >&2
+  exit 1
+fi
+
+# It holds a credential, and holds it in one place. The daemon reads no
+# Keychain itself: it configures the credential package by name and lets that
+# package do the reading, so there is one implementation to audit rather than
+# one per caller.
+if grep -Eqi 'security[[:space:]]+find-generic-password|find-generic-password' \
+  "$PLIST" "$INSTALLER" "$ROOT/internal/userdaemon/"*.go; then
+  echo "the user runtime reads the Keychain itself instead of through the credential package" >&2
+  exit 1
+fi
+
+# And the names of the items are configuration, never source. A daemon with a
+# service name compiled into it reads whatever that name happens to hold on
+# whichever machine it lands on.
+if grep -Eqi '"[a-z0-9-]*(pritunl|hexroute)[a-z0-9-]*-(pin|totp|otp)"' \
+  "$ROOT/internal/userdaemon/"*.go; then
+  echo "a Keychain item name is compiled into the user runtime" >&2
   exit 1
 fi
 
