@@ -27,6 +27,7 @@ func TestPostgreSQLMigrationManifest(t *testing.T) {
 		"schema_migration_ledger",
 		"cutover_write_freeze",
 		"connectivity_projection",
+		"config_version_delivery",
 	}
 	if len(migrations) != len(wantNames) {
 		t.Fatalf("migration count = %d, want %d", len(migrations), len(wantNames))
@@ -132,6 +133,7 @@ func TestPostgreSQLWriteGateCoversEveryRuntimeMutableTable(t *testing.T) {
 		"incident_alert_outbox", "slo_aggregates", "slo_incident_links",
 		"connectivity_snapshots", "connectivity_snapshot_components",
 		"connectivity_snapshot_proposal_classes",
+		"config_versions", "deployments",
 	}
 	for _, table := range protected {
 		if !strings.Contains(gate, "'"+table+"'") {

@@ -327,7 +327,8 @@ func verifyBaseline(
 				('hexroute_ingest'),
 				('hexroute_dashboard'),
 				('hexroute_dashboard_auth'),
-				('hexroute_maintenance')
+				('hexroute_maintenance'),
+				('hexroute_publisher')
 		)
 		SELECT
 			NOT EXISTS (
@@ -354,7 +355,7 @@ func verifyBaseline(
 				)
 			)
 			AND (
-				SELECT count(*) = 5 FROM pg_roles r
+				SELECT count(*) = 6 FROM pg_roles r
 				JOIN expected_roles e ON e.name = r.rolname
 				WHERE NOT r.rolcanlogin AND NOT r.rolsuper AND NOT r.rolcreatedb
 				  AND NOT r.rolcreaterole AND NOT r.rolreplication

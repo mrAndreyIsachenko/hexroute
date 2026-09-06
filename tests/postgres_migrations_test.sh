@@ -324,7 +324,9 @@ docker exec "$container" psql \
              CREATE ROLE hexroute_test_dashboard LOGIN;
              GRANT hexroute_dashboard TO hexroute_test_dashboard;
              CREATE ROLE hexroute_test_dashboard_auth LOGIN;
-             GRANT hexroute_dashboard_auth TO hexroute_test_dashboard_auth;" >/dev/null
+             GRANT hexroute_dashboard_auth TO hexroute_test_dashboard_auth;
+             CREATE ROLE hexroute_test_publisher LOGIN;
+             GRANT hexroute_publisher TO hexroute_test_publisher;" >/dev/null
 
 HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
 HEXROUTE_TEST_POSTGRES_INGEST_DSN="postgres://hexroute_test_ingest@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
@@ -379,6 +381,13 @@ HEXROUTE_TEST_POSTGRES_MAINTENANCE_DSN="postgres://hexroute_test_maintenance@127
 GOCACHE=/tmp/hexroute-postgres-go-cache \
   go test ./internal/alertdelivery \
     -run 'TestPostgres(AlertQueueLeasesRetriesAndKeepsLocalAckIsolated|IncidentOutboxQueuesSnapshotExactlyOnce)' \
+    -count=1
+
+HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+HEXROUTE_TEST_POSTGRES_PUBLISHER_DSN="postgres://hexroute_test_publisher@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
+GOCACHE=/tmp/hexroute-postgres-go-cache \
+  go test ./internal/configpublish \
+    -run TestPostgresConfigVersionLedgerRecordsOnceAndRefusesAReusedLabel \
     -count=1
 
 HEXROUTE_TEST_POSTGRES_ADMIN_DSN="postgres://postgres@127.0.0.1:${postgres_port}/postgres?sslmode=disable" \
