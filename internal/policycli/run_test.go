@@ -3,11 +3,13 @@ package policycli
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/configversion"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyapproval"
 	"go.yaml.in/yaml/v3"
@@ -15,7 +17,7 @@ import (
 
 func TestRunExposesOfflineSubcommands(t *testing.T) {
 	for _, command := range []string{
-		"compile", "diff", "replay", "sign", "rollback",
+		"compile", "diff", "replay", "sign", "sign-config", "rollback",
 		"provision-key", "export-public-key", "verify-key",
 	} {
 		var stdout, stderr bytes.Buffer
@@ -187,3 +189,17 @@ func TestWriteArtifactsCreatesPrivateParentHierarchy(t *testing.T) {
 type ioDiscard struct{}
 
 func (ioDiscard) Write(content []byte) (int, error) { return len(content), nil }
+
+// A configuration version that could not be signed must be reported as a
+// missing key, not as a generic failure, because the operator's next action
+// differs: unlock the key, rather than look for a bug.
+func TestUnsignedConfigVersionIsReportedAsAMissingKey(t *testing.T) {
+	err := fmt.Errorf("%w: %w",
+		configversion.ErrNotSigned, policyapproval.ErrKeychainInteractionDenied)
+	if failureCode(err) != "keychain_user_presence_denied" {
+		t.Fatalf("failureCode = %q", failureCode(err))
+	}
+	if configversion.Reason(err) != "not_signed" {
+		t.Fatalf("reason = %q", configversion.Reason(err))
+	}
+}
