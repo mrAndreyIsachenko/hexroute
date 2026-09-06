@@ -77,14 +77,17 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`admit-a-second-ingress-client` is active. It records who this system's clients
-are, which nothing has ever done, and adds the one operator step a second client
-needs: verifying a published configuration version and emitting the exact bytes
-the host will run, so that a client profile describes the server that will
-answer rather than the draft it was built from. It is the public remainder of
-item 6 after that item was taken apart.
+None.
 
-`deliver-signed-ingress-configuration` closed on 2026-09-06. An ingress now
+`admit-a-second-ingress-client` closed on 2026-09-06. This system now records
+who reaches an ingress and what for — which nothing had ever done — and an
+operator can verify a published configuration version and read back the exact
+bytes the host will run, so that a client profile describes the server that will
+answer rather than the draft it was built from. Delivery stays blind to what it
+delivers, and that is now a requirement rather than an accident of how it was
+written.
+
+`deliver-signed-ingress-configuration` closed the same day. An ingress now
 fetches a version by its own action, verifies the signature against the key
 placed on it when it was built and the digest against the bytes it received,
 and keeps serving what it has when either fails. It retains the version it was

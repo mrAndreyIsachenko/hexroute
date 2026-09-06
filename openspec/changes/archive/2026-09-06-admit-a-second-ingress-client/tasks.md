@@ -25,4 +25,4 @@
 
 - [x] 5.1 Run `make check` and resolve every failure.
 - [x] 5.2 Run `openspec validate admit-a-second-ingress-client --strict` and keep proposal, design, specs and tasks consistent with what was built.
-- [ ] 5.3 Sync the delta into the baseline specs and archive the change.
+- [x] 5.3 Sync the delta into the baseline specs and archive the change.
