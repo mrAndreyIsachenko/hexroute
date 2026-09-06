@@ -116,3 +116,27 @@ if grep -Eqi '"[a-z0-9-]*(pritunl|hexroute)[a-z0-9-]*-(pin|totp|otp)"' \
 fi
 
 "$ROOT/bin/hexroute-userd" --check --config "$CONFIG" >/dev/null
+
+# The cutover has a written transaction and a written rollback, and the
+# rollback is written before it is needed: one discovered during an incident is
+# not a rollback. It records no live identity, because it is public.
+CUTOVER="$ROOT/docs/macos/pritunl-recovery-cutover.md"
+[[ -s "$CUTOVER" ]] || {
+  echo "the Pritunl recovery cutover has no written procedure" >&2
+  exit 1
+}
+for phrase in \
+  'launchctl disable' \
+  'launchctl enable' \
+  'Roll the policy generation back' \
+  'neither touches the Keychain'
+do
+  grep -qF "$phrase" "$CUTOVER" || {
+    printf 'the cutover procedure does not record: %s\n' "$phrase" >&2
+    exit 1
+  }
+done
+if grep -EqiC0 '\b[0-9a-f]{16,}\b|com\.(pritunl|twilight)\.[a-z.-]+' "$CUTOVER"; then
+  echo "the cutover procedure names a live profile or service" >&2
+  exit 1
+fi

@@ -77,14 +77,21 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`cut-pritunl-recovery-to-hexroute` is active. It moves the whole Pritunl
+`cut-pritunl-recovery-to-hexroute` is active and built. It moves the whole Pritunl
 recovery path — observation, decision, one-time code, reconnect and the request
 to restart a stale service — and grants the first production authority in this
 system: one named service restart, on a typed credential-free request that root
 revalidates itself. The authority arrives as a signed policy generation and is
 checked through the mutation gate the operator dispatcher already consults on
-exactly this action. It is item 7
-below.
+exactly this action.
+
+What remains is the transaction itself and its evidence, which are an operator
+action rather than a commit: no generation grants the capability yet, so both
+daemons still propose and neither acts. The procedure and its rollback are
+written down in advance in
+[`docs/macos/pritunl-recovery-cutover.md`](macos/pritunl-recovery-cutover.md),
+because a rollback discovered during an incident is not a rollback. It is item
+7 below.
 
 `admit-a-second-ingress-client` closed on 2026-09-06. This system now records
 who reaches an ingress and what for — which nothing had ever done — and an
@@ -227,6 +234,12 @@ item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
    roadmap item moves it otherwise, and an escape hatch must not belong to the
    experiment it exists to escape.
 9. Complete public qualification, supply-chain evidence and legacy cleanup.
+   Two leftovers are named here rather than left to be found. Hexroute now
+   depends on Keychain items under legacy names, on a critical path: they were
+   read where they are because moving one means reading a one-time-code seed
+   out through a shell to change a string, which is a real exposure for a
+   cosmetic gain. And the ingress fleet's hosts are still provisioned outside
+   Terraform and adopted by nothing.
 
 Item 4 also ruled out two placements that were proposed and withdrawn during its
 grill session. Moving the named-country host nearer the operator was recommended
