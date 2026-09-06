@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
+	"github.com/mrAndreyIsachenko/hexroute/internal/configversion"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyapproval"
 	"github.com/mrAndreyIsachenko/hexroute/internal/replay"
@@ -32,6 +33,7 @@ type commandOutput struct {
 	Command        string `json:"command"`
 	ManifestSHA256 string `json:"manifest_sha256,omitempty"`
 	ArtifactSHA256 string `json:"artifact_sha256,omitempty"`
+	ContentSHA256  string `json:"content_sha256,omitempty"`
 }
 
 type compatibilityFile struct {
@@ -78,6 +80,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		err = runReplay(args[1:], stdout)
 	case "sign":
 		err = runSign(args[1:], stdout)
+	case "sign-config":
+		err = runSignConfig(args[1:], stdout)
 	case "provision-key":
 		err = runProvisionKey(args[1:], stdout)
 	case "export-public-key":
@@ -388,6 +392,73 @@ func runReplay(args []string, stdout io.Writer) error {
 		return err
 	}
 	return replay.RequirePolicyReplay(report)
+}
+
+// runSignConfig signs an ingress configuration with the operator key.
+//
+// It lives in this binary because this is the one that may ask for user
+// presence, and it does nothing else: it holds no store credential and writes
+// nothing to the ledger, so the command that can sign cannot also publish.
+func runSignConfig(args []string, stdout io.Writer) error {
+	flags := flag.NewFlagSet("sign-config", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	contentPath := flags.String("content", "", "configuration content file")
+	targetKind := flags.String("target-kind", "", "node, group or global")
+	targetKey := flags.String("target-key", "", "target the version is addressed to")
+	label := flags.String("label", "", "version label")
+	publicKeyPath := flags.String("public-key", "", "base64 Ed25519 public key")
+	service := flags.String("keychain-service", "", "user-presence Keychain service")
+	account := flags.String("keychain-account", "", "Keychain account")
+	outPath := flags.String("out", "", "new private output directory")
+	if flags.Parse(args) != nil || flags.NArg() != 0 || *contentPath == "" ||
+		*targetKind == "" || *targetKey == "" || *label == "" || *publicKeyPath == "" ||
+		*service == "" || *account == "" || *outPath == "" {
+		return errors.New("invalid sign-config flags")
+	}
+	content, err := readRegular(*contentPath, configversion.MaxContentBytes)
+	if err != nil || len(content) == 0 || len(content) > configversion.MaxContentBytes {
+		return errors.New("invalid configuration content")
+	}
+	publicKey, err := readPublicKey(*publicKeyPath)
+	if err != nil {
+		return err
+	}
+	signer, err := policyapproval.NewKeychainSigner(
+		policyapproval.UserPresenceKeychainStore{},
+		policyapproval.KeychainConfig{
+			Service: *service, Account: *account, PublicKey: publicKey,
+			RequireUserPresence: true, PromptTimeout: 2 * time.Minute,
+		},
+	)
+	if err != nil {
+		return err
+	}
+	artifact, err := configversion.Publish(
+		signer,
+		configversion.Target{
+			Kind: configversion.TargetKind(*targetKind),
+			Key:  *targetKey,
+		},
+		*label,
+		content,
+		time.Now().UTC(),
+	)
+	if err != nil {
+		return err
+	}
+	encoded, err := configversion.Encode(artifact)
+	if err != nil {
+		return err
+	}
+	if err := writeArtifacts(*outPath, map[string][]byte{"version.json": encoded}); err != nil {
+		return err
+	}
+	return writeOutput(stdout, commandOutput{
+		Schema:         outputSchema,
+		Command:        "sign-config",
+		ArtifactSHA256: policy.SHA256Hex(encoded),
+		ContentSHA256:  artifact.Statement.ContentSHA256,
+	})
 }
 
 func runSign(args []string, stdout io.Writer) error {
