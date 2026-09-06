@@ -31,6 +31,14 @@ no new mechanism, only a connection. That is why this change does not add a
 notion of success: it borrows the one that already exists and refuses to accept
 a weaker one.
 
+The connection turned out to need one thing the fleet did not have. The
+observer reported the generation it was built with, which is fixed for the life
+of the host, so every version would have proved the moment the host was
+reachable. The agent now records the version it applied and the observer
+reports that, and an observer that cannot read it answers nothing at all — a
+heartbeat naming the build-time generation would prove the wrong thing, and
+there is no safe fallback from not knowing what you are running.
+
 ## Why the node pulls
 
 The alternative was a cloud endpoint that serves versions to nodes. It was
