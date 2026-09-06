@@ -38,10 +38,22 @@ func (domain Domain) Valid() bool {
 
 type Capability string
 
-const CapabilityOperatorResume Capability = "operator_resume"
+const (
+	CapabilityOperatorResume Capability = "operator_resume"
+	// CapabilityPritunlRecovery authorizes the recovery of a Pritunl session:
+	// the user domain submits the credential, and the root domain restarts the
+	// one service when the user domain asks and root's own probes agree.
+	//
+	// It is the first capability in this system that changes production. It is
+	// deliberately not one capability per domain: the two halves are one act,
+	// and a generation that granted the restart without the reconnect would
+	// authorize root to act on a request nobody was allowed to make.
+	CapabilityPritunlRecovery Capability = "pritunl_recovery"
+)
 
 func (capability Capability) Valid() bool {
-	return capability == CapabilityOperatorResume
+	return capability == CapabilityOperatorResume ||
+		capability == CapabilityPritunlRecovery
 }
 
 type Effect string

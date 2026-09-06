@@ -1085,3 +1085,126 @@ func syntheticIPCIdentity() ipc.PolicyTransactionIdentity {
 		ApprovalSHA256:    strings.Repeat("d", 64),
 	}
 }
+
+// pritunlRecoveryPayload grants exactly one capability on one target.
+func pritunlRecoveryPayload(generation uint64, capability policy.Capability) policy.DomainPayload {
+	return policy.DomainPayload{
+		Schema: policy.DomainPayloadSchema, Domain: policy.DomainUser,
+		PolicyGeneration: generation,
+		Rules: []policy.Rule{{
+			ID: "user.recover-pritunl", Effect: policy.EffectAllow,
+			Selector: policy.Selector{
+				ID: "user.recover-pritunl-selector", Kind: policy.SelectorAction,
+				Action: &policy.ActionSelector{Capability: capability, Target: "pritunl"},
+			},
+		}},
+		Leases: []policy.AuthorizationLease{{
+			ID: "user.recover-pritunl-lease", Domain: policy.DomainUser,
+			Capability:  capability,
+			SelectorIDs: []string{"user.recover-pritunl-selector"},
+			IssuedAt:    "2030-01-01T00:00:00Z", ExpiresAt: "2030-01-01T01:00:00Z",
+		}},
+	}
+}
+
+func pritunlRecoveryHandler(t *testing.T, capability policy.Capability) *Handler {
+	handler, _ := pritunlRecoveryHandlerAndStore(t, capability)
+	return handler
+}
+
+func pritunlRecoveryHandlerAndStore(
+	t *testing.T,
+	capability policy.Capability,
+) (*Handler, *recordingCandidateStore) {
+	t.Helper()
+	publicKey := ed25519.NewKeyFromSeed(
+		bytes.Repeat([]byte{23}, ed25519.SeedSize),
+	).Public().(ed25519.PublicKey)
+	runtime, err := syntheticStaticConfig(policy.DomainUser, publicKey).Runtime(policy.DomainUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := syntheticIPCIdentity()
+	active := revalidatedActiveFixture(identity, policy.DomainUser, runtime, true)
+	active.Payload = pritunlRecoveryPayload(identity.UserPolicyGeneration, capability)
+	store := &recordingCandidateStore{
+		domain: policy.DomainUser, recoverResult: active,
+		pendingErr: policystore.ErrRecordNotFound,
+	}
+	now := time.Date(2030, time.January, 1, 0, 40, 0, 0, time.UTC)
+	handler, err := NewHandler(store, runtime, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handler, store
+}
+
+// The authority to recover Pritunl exists only while an active generation
+// grants it. This is the first production capability in this system, and it is
+// reachable through exactly one answer.
+func TestPritunlRecoveryIsAuthorizedOnlyByAnActiveGrantingGeneration(t *testing.T) {
+	planSHA256 := policy.SHA256Hex([]byte("synthetic-recovery-plan"))
+
+	granted := pritunlRecoveryHandler(t, policy.CapabilityPritunlRecovery)
+	decision := granted.AuthorizePritunlRecovery(policy.DomainUser, "pritunl", 7, planSHA256)
+	if !decision.Allowed || decision.Reason != policy.ActionAuthorized {
+		t.Fatalf("granted decision = %+v", decision)
+	}
+
+	// A generation that grants a different capability grants nothing here.
+	// Being active is not being authorized.
+	other := pritunlRecoveryHandler(t, policy.CapabilityOperatorResume)
+	if refused := other.AuthorizePritunlRecovery(
+		policy.DomainUser, "pritunl", 7, planSHA256,
+	); refused.Allowed || refused.Reason != policy.ActionSelectorMismatch {
+		t.Fatalf("other-capability decision = %+v", refused)
+	}
+
+	// The grant is to one domain. Root holding a user grant is not authority.
+	if refused := granted.AuthorizePritunlRecovery(
+		policy.DomainRoot, "pritunl", 7, planSHA256,
+	); refused.Allowed || refused.Reason != policy.ActionDomainMismatch {
+		t.Fatalf("wrong-domain decision = %+v", refused)
+	}
+
+	// And the target is named, so a grant for one service is not a grant for
+	// whatever else the caller asks about.
+	if refused := granted.AuthorizePritunlRecovery(
+		policy.DomainUser, "runtime", 7, planSHA256,
+	); refused.Allowed {
+		t.Fatalf("wrong-target decision = %+v", refused)
+	}
+}
+
+// The gate and the grant answer different questions, and both are asked. A
+// runtime whose standing is suspended does not act on a generation that would
+// otherwise authorize it.
+func TestPritunlRecoveryStopsAtTheMutationGate(t *testing.T) {
+	granted, store := pritunlRecoveryHandlerAndStore(t, policy.CapabilityPritunlRecovery)
+	if !granted.MutationAllowed() {
+		t.Fatal("the granted handler is not in a mutating state to begin with")
+	}
+
+	// The loaded generation is unchanged and still grants the act. What has
+	// narrowed is this runtime's standing: its active record can no longer be
+	// confirmed, so authority is suspended. That is precisely the question the
+	// gate answers and the evaluation does not, and an implementation that
+	// asked only the second would act here.
+	store.recoverErr = policystore.ErrRecordNotFound
+	if granted.MutationAllowed() {
+		t.Fatal("a runtime whose active record cannot be confirmed is still mutating")
+	}
+	decision := granted.AuthorizePritunlRecovery(
+		policy.DomainUser, "pritunl", 7,
+		policy.SHA256Hex([]byte("synthetic-recovery-plan")),
+	)
+	if decision.Allowed || decision.Reason != policy.ActionInactivePolicy {
+		t.Fatalf("suspended decision = %+v", decision)
+	}
+
+	if (*Handler)(nil).AuthorizePritunlRecovery(
+		policy.DomainUser, "pritunl", 7, "",
+	).Allowed {
+		t.Fatal("a nil handler authorized a production act")
+	}
+}
