@@ -77,7 +77,12 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`admit-a-second-ingress-client` is active. It records who this system's clients
+are, which nothing has ever done, and adds the one operator step a second client
+needs: verifying a published configuration version and emitting the exact bytes
+the host will run, so that a client profile describes the server that will
+answer rather than the draft it was built from. It is the public remainder of
+item 6 after that item was taken apart.
 
 `deliver-signed-ingress-configuration` closed on 2026-09-06. An ingress now
 fetches a version by its own action, verifies the signature against the key
@@ -87,7 +92,8 @@ running, so returning needs no network, and it returns when the applied version
 has not reported itself healthy through the signed heartbeat before its window
 passes. `config_versions` and `deployments` have their first producer, and the
 worker that records what became of a version still cannot bring one into
-existence. Item 5 below is now buildable.
+existence. It was expected to unblock item 6 below; the grill of that item
+found the item itself was wrong, and took it apart instead.
 
 Previously closed: `record-ingress-fleet-purpose` closed on 2026-09-05, recording what each
 ingress host is for, correcting the provider-B lifecycle state and rewriting
@@ -134,14 +140,28 @@ item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
    did not have, because the observer reported the generation it was built with
    and every version would have proved the moment the host was reachable. The
    host now records the version it applied and reports that instead.
-6. Deploy and qualify two-provider Telegram ingress using native MTG, SNI
-   pass-through and functional MTProto health evidence. Its grill established
-   that this is Hexroute's item and not Twilight's, that it splits in two —
-   MTProto on the existing ingress first, a second provider after — and that
-   the provider-B host cannot take a second port at all: its module specifies a
-   single public port and Terraform validation fails before apply if another is
-   requested. So SNI sharing of 443 is not one feature among three but the
-   precondition for the rest.
+6. ~~Deploy and qualify two-provider Telegram ingress using native MTG, SNI
+   pass-through and functional MTProto health evidence.~~ Taken apart rather
+   than done. Its grill repositioned the purpose: the proxy looked like the
+   thing keeping the alert channel alive, and is in fact about using Telegram
+   from a phone without installing a VPN client. Under that purpose a client
+   already on the phone carries everything rather than one application, over the
+   strongest protocol on the fleet, and costs the server nothing — while MTProto
+   would put a protocol that is fingerprinted and blocked at scale beside
+   Reality on one address, where a probe that flags the weaker one has found the
+   stronger one too. MTG, the Nginx split, the second provider and a client
+   application of our own are all ruled out with their reasons in
+   `admit-a-second-ingress-client`, which carries the public remainder: record
+   who the clients are, and derive a profile from the version that was
+   published rather than the draft it came from. The rest is private work.
+
+   Two things that grill established still stand. The provider-B host cannot
+   take a second public port — but not because its module specifies one. The
+   module accepts up to eight rules and allows only ports 22 and 443, requires
+   exactly one global 443 rule, and permits 22 only from `/32` networks, so any
+   other port fails validation before apply. And SNI is secret material by this
+   repository's own contract test, so a demultiplexer's configuration could
+   never have lived in Terraform.
 7. Cut root tunnel ownership from Twilight to Hexroute transactionally.
 8. Cut user Pritunl recovery ownership from the legacy OTP watchdog to
    `hexroute-userd` transactionally.
@@ -157,6 +177,33 @@ not be verified from any vantage point that exists.
 Each numbered item requires its own grill session and bounded OpenSpec change.
 No future item may be bundled into an earlier cutover merely because
 supporting code already exists.
+
+## Owed
+
+Findings from grills that no change has taken. They are not unwired code, so the
+census below does not see them, and they are recorded here rather than left to
+be found again.
+
+**The external monitor has one alert contact, and it is Telegram.** Every check
+in `terraform/modules/uptime-checks` delivers through a single integration.
+UptimeRobot supports mail, SMS and push; the module exposes none of them. All
+external monitoring therefore depends on one channel, and it is the channel
+whose reachability was the subject of the item-6 grill. Cheap to fix, and not
+fixed. Found 2026-09-06.
+
+**A version is called proven when two sockets accept a connection.** The signed
+heartbeat's transport health is two TCP dials in `internal/ingressobserver`,
+which is what the whole prove-or-return path rests on. The provider-B document
+calls that insufficient in its own words — "a reachable socket is not
+qualification" — and it is right. Found 2026-09-06.
+
+**The Telegram availability calculation has no producer, and now has no
+subject.** `CalculateTelegram` and `CalculateTelegramFailover` are called only
+by their own tests: nothing has ever produced the state they consume. That made
+it the fifth thing here found designed and never given a producer. After item 6
+was taken apart it is worse than unused — it computes an objective for a service
+that will not be built, and should be removed or redefined rather than left to
+look like a commitment. Found 2026-09-06.
 
 ## Debt
 
