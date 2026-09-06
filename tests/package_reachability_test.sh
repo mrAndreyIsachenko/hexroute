@@ -28,9 +28,6 @@ test_only=(
 unwired=(
   # connectivityhost is the seam; it is reachable. Nothing else here is.
 
-  # Local capabilities held behind their own cutover gates.
-  credentials     # opaque Keychain handles, for the user-domain cutover
-  pritunlrescue   # typed rescue contract, for the OTP-watchdog cutover
 
   # resumeexecutor is not merely unconnected: the seam is complete. It already
   # satisfies operator.ResumePolicyExecutor, and the only thing missing is the

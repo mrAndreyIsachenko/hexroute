@@ -110,6 +110,8 @@ func TestObserveLoopEmitsOnlyRedactedProposals(t *testing.T) {
 		nil,
 		logger,
 		nil,
+		nil,
+		&rootObservations{},
 	); err != nil {
 		t.Fatalf("observeLoop() error: %v", err)
 	}

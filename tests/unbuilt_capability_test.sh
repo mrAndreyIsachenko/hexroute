@@ -26,12 +26,6 @@ import sys
 # What is waiting, and for what. A reason that names a task or a cutover can be
 # checked against it later; "not yet" cannot.
 ACCEPTED = {
-    # Held behind their own cutovers, recorded in the unwired list.
-    "internal/credentials.NewKeychainSource":
-        "user-domain cutover; Twilight owns Keychain-backed Pritunl today",
-    "internal/pritunlrescue.NewRequest":
-        "OTP-watchdog cutover",
-
     # The host has never uploaded. add-local-event-archive covers durable local
     # retention instead; upload is a separate decision nobody has taken.
     "internal/telemetry.NewUploader":

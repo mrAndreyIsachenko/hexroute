@@ -30,18 +30,26 @@ its own probes before approving, and approves nothing else.
 What is missing is small and specific: the root verifier has no implementation,
 neither package is in a binary, and nothing performs a reconnect.
 
-## The gate that has never been asked
+## The half of the question nobody asked
 
 `MutationAllowed()` is written and thoroughly tested — suspension, domain
-mismatch, no active generation, a grandfathered non-compliant state — and it is
-called only by its own tests. It is the sixth thing found here designed and
-never given a producer.
+mismatch, no active generation, a grandfathered non-compliant state — and the
+operator dispatcher already consults it, on exactly the two actions that would
+change something, this rescue among them. The grill recorded it as never
+consulted; that was wrong, and the correction makes the design simpler rather
+than harder.
 
-That makes the authorization question answer itself. Building a flag, a build
-tag or a settings file beside a tested gate would leave two mechanisms where one
-is already correct, and the second would be the one nobody signed. So the
-capability is a policy capability, the authority arrives as a signed generation
-under user presence, and revoking it is the rollback that already exists.
+What nothing asked is the other half. The gate answers whether this runtime may
+act at all. It does not answer whether it may perform this particular act, and
+before this change there was no capability for the answer to be about: the
+policy model had one capability, and it was operator resume.
+
+So the authorization question answers itself. Building a flag, a build tag or a
+settings file beside a gate that is already the mechanism would leave two, and
+the second would be the one nobody signed. The capability is a policy
+capability, the authority arrives as a signed generation under user presence,
+both halves of the act ask the same two questions, and revoking it is the
+rollback that already exists.
 
 ## Why the gap and not the overlap
 

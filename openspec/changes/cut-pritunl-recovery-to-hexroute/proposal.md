@@ -20,8 +20,10 @@ can read them.
   probes. This is the first production authority in this system, and it is the
   smallest one available.
 - Authorize that capability with a signed policy generation, checked through the
-  mutation gate that already exists and has never been consulted. Rollback is a
-  policy rollback.
+  mutation gate the operator dispatcher already consults on exactly this action.
+  The gate answers whether this runtime may act at all; the capability answers
+  whether it may perform this act, and until now nothing asked the second
+  question. Rollback is a policy rollback.
 - Submit the secret through the client's password-read path rather than an
   argument, so it never appears in the process table.
 - Make inner health authoritative for the rescue request, and only for it. A

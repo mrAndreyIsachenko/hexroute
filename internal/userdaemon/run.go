@@ -218,6 +218,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	var requests <-chan operator.Envelope
 	var serverDone <-chan error
 	var server *ipc.Server
+	// The policy handler outlives the operator socket. Authority to act comes
+	// from the active generation whether or not anybody is connected to ask
+	// this daemon a question.
+	var policyHandler *policycontrol.Handler
 	if *socketPath != "" {
 		if err := validateUserSocketPath(*socketPath, *statePath, config.ExpectedUID); err != nil {
 			return rejected(errorLog, logging.ReasonInvalidConfiguration)
@@ -226,7 +230,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return 1
 		}
-		policyHandler, policyStore, err := openUserPolicyHandler(config.PolicyControl)
+		handler, policyStore, err := openUserPolicyHandler(config.PolicyControl)
+		policyHandler = handler
 		if err != nil {
 			return rejected(errorLog, logging.ReasonInvalidConfiguration)
 		}
@@ -280,6 +285,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return rejected(errorLog, logging.ReasonInvalidConfiguration)
 	}
+	// The authority to act comes from the active policy generation and from
+	// nothing else. Before the ownership cutover no generation grants it, so
+	// this executor answers "proposed" to everything and the daemon behaves
+	// exactly as it did before it existed.
+	executor := newRecovery(policyHandler, config.Recovery, *rootSocketPath)
 	if err := observeLoop(
 		ctx,
 		config.Interval,
@@ -293,6 +303,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		serverDone,
 		infoLog,
 		publisher,
+		executor,
 	); err != nil {
 		return 1
 	}
@@ -408,6 +419,7 @@ func observeLoop(
 	serverDone <-chan error,
 	logger *logging.Logger,
 	publisher *factPublisher,
+	executor *recovery,
 ) error {
 	// The log records what happened; the state file records that the loop ran.
 	gate := logging.NewChangeGate()
@@ -434,6 +446,11 @@ func observeLoop(
 		now := time.Now()
 		at := nowTick()
 		summary := cycler.Observe(ctx, at, now.Unix())
+		// What the planner decided is acted on only if something authorizes
+		// it. Before the ownership cutover nothing does, and every decision
+		// comes back proposed — which is the same loop this daemon has always
+		// run, with the answer written down instead of assumed.
+		summary.Outcome = executor.perform(ctx, summary.Plan)
 		// Publishing happens before the daemon acts on its own conclusions and
 		// cannot change them: a root that is unreachable, refusing or absent
 		// leaves this loop exactly as it was.
@@ -610,25 +627,44 @@ func emitSummary(
 			return err
 		}
 	}
-	if summary.Plan.Action == pritunlplan.ActionReconnect {
+	if summary.Plan.Action != pritunlplan.ActionNone {
 		// A standing proposal is one proposal. It is reported when it appears
 		// and again if it lapses and returns, not once a minute for as long as
-		// the condition holds.
-		if !gate.Changed(logging.EventPritunlReconnect, string(pritunlplan.ActionReconnect)) {
+		// the condition holds. An act, by contrast, is reported every time it
+		// happens: it is an event and not a state.
+		key := string(summary.Plan.Action) + ":" + string(summary.Outcome)
+		if summary.Outcome == recoveryProposed &&
+			!gate.Changed(logging.EventPritunlReconnect, key) {
 			return nil
 		}
+		gate.Changed(logging.EventPritunlReconnect, key)
 		return logger.Emit(
 			logging.LevelInfo,
 			logging.EventPritunlReconnect,
-			logging.ResultProposed,
+			outcomeResult(summary.Outcome),
 			"",
 		)
 	}
 	gate.Changed(logging.EventPritunlReconnect, "")
-	if summary.Plan.Action != pritunlplan.ActionNone {
-		return ErrInvalidConfig
-	}
 	return nil
+}
+
+// outcomeResult reports what became of a decision.
+//
+// An authorized act that could not be performed is degraded rather than
+// proposed: an authority that cannot be exercised is a fault in the deployment,
+// and reporting it as a proposal would hide it behind the pre-cutover state.
+func outcomeResult(outcome recoveryOutcome) logging.Result {
+	switch outcome {
+	case recoveryDone:
+		return logging.ResultOK
+	case recoveryRefused:
+		return logging.ResultRejected
+	case recoveryFailed, recoveryUnequipped:
+		return logging.ResultDegraded
+	default:
+		return logging.ResultProposed
+	}
 }
 
 func rejected(logger *logging.Logger, reason logging.Reason) int {
