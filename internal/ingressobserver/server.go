@@ -8,6 +8,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/ingressprobe"
@@ -88,6 +90,27 @@ func (service *Service) Run(ctx context.Context) error {
 	}
 }
 
+// generation is what this host reports itself to be running.
+//
+// When a configuration agent is delivering versions it records the applied one
+// in a file, and that file is the answer: the version a host says it runs has
+// to be the version it actually applied, or nothing downstream can tell a
+// version that works from one that never installed.
+func (service *Service) generation() (string, error) {
+	if service.config.GenerationFile == "" {
+		return service.config.Generation, nil
+	}
+	content, err := os.ReadFile(service.config.GenerationFile)
+	if err != nil || len(content) == 0 || len(content) > maxGenerationFileBytes {
+		return "", ErrInvalidConfig
+	}
+	generation := strings.TrimSpace(string(content))
+	if !referencePattern.MatchString(generation) {
+		return "", ErrInvalidConfig
+	}
+	return generation, nil
+}
+
 func (service *Service) serveHeartbeat(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "application/json")
 	response.Header().Set("Cache-Control", "no-store")
@@ -106,6 +129,14 @@ func (service *Service) serveHeartbeat(response http.ResponseWriter, request *ht
 		return
 	}
 
+	generation, err := service.generation()
+	if err != nil {
+		// Reporting the generation this host was built with, when the agent
+		// has recorded a different one, would prove the wrong version. There
+		// is no safe fallback, so the observer says nothing at all.
+		http.Error(response, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	observedAt := service.now().UTC()
 	healthy := service.endpointHealthy(request.Context(), service.config.XRayEndpoint) &&
 		service.endpointHealthy(request.Context(), service.config.OutboundEndpoint)
@@ -113,7 +144,7 @@ func (service *Service) serveHeartbeat(response http.ResponseWriter, request *ht
 		Schema:           ingressprobe.HeartbeatSchema,
 		Version:          ingressprobe.HeartbeatVersion,
 		NodeID:           service.key.NodeID,
-		Generation:       service.config.Generation,
+		Generation:       generation,
 		ObservedAt:       observedAt.Format(time.RFC3339Nano),
 		TransportHealthy: healthy,
 	})

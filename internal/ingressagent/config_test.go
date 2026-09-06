@@ -21,17 +21,21 @@ func testEnvironment(t *testing.T) map[string]string {
 		t.Fatal(err)
 	}
 	return map[string]string{
-		envStoreEndpoint: "https://store.invalid",
-		envStoreRegion:   "fra1",
-		envStoreBucket:   "hexroute-config-test",
-		envStoreKeyID:    "EXAMPLEKEYIDENTIFIER",
-		envStoreSecret:   "not-a-secret-only-a-test-fixture-value",
-		envPublicKeyFile: keyPath,
-		envTargetKind:    "node",
-		envTargetKey:     "ingress-provider-b",
-		envStateDir:      filepath.Join(directory, "state"),
-		envConfigPath:    filepath.Join(directory, "xray.json"),
-		envReloadCommand: "/bin/true",
+		envStoreEndpoint:  "https://store.invalid",
+		envStoreRegion:    "fra1",
+		envStoreBucket:    "hexroute-config-test",
+		envStoreKeyID:     "EXAMPLEKEYIDENTIFIER",
+		envStoreSecret:    "not-a-secret-only-a-test-fixture-value",
+		envPublicKeyFile:  keyPath,
+		envTargetKind:     "node",
+		envTargetKey:      "ingress-provider-b",
+		envStateDir:       filepath.Join(directory, "state"),
+		envConfigPath:     filepath.Join(directory, "xray.json"),
+		envGenerationPath: filepath.Join(directory, "generation"),
+		envReloadCommand:  "/bin/true",
+		envHeartbeatURL:   "http://127.0.0.1:9080/v1/heartbeat",
+		envIdentityFile:   filepath.Join(directory, "node-identity.json"),
+		envProveWindow:    "900",
 	}
 }
 
@@ -66,9 +70,14 @@ func TestTheAgentRefusesWhatItCannotTreatAsAPathOrATarget(t *testing.T) {
 	}{
 		{name: "relative state directory", key: envStateDir, value: "state"},
 		{name: "unclean config path", key: envConfigPath, value: "/etc/hexroute/../xray.json"},
+		{name: "relative generation path", key: envGenerationPath, value: "generation"},
 		{name: "relative reload command", key: envReloadCommand, value: "systemctl"},
 		{name: "unknown target kind", key: envTargetKind, value: "fleet"},
 		{name: "an argument that is not one", key: envReloadArgs, value: "restart; rm -rf /"},
+		{name: "a prove window of no seconds", key: envProveWindow, value: "0"},
+		{name: "a prove window of a week", key: envProveWindow, value: "604800"},
+		{name: "a prove window that is not a number", key: envProveWindow, value: "fifteen"},
+		{name: "a relative identity file", key: envIdentityFile, value: "node-identity.json"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			environment := testEnvironment(t)

@@ -6,15 +6,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/configversion"
 )
 
 const (
-	appliedName  = "applied.json"
-	retainedName = "retained.json"
-	resultName   = "last-result.json"
+	appliedName   = "applied.json"
+	retainedName  = "retained.json"
+	resultName    = "last-result.json"
+	appliedAtName = "applied-at.json"
 	// filePermissions keeps the state readable only by the agent's own user.
 	// None of it is secret, but a configuration a host runs is not something
 	// any local account should be able to rewrite.
@@ -55,9 +58,37 @@ func (store *Store) Retained() (configversion.Artifact, []byte, bool, error) {
 	return store.read(retainedName)
 }
 
-// SetApplied records a version as the one in service.
-func (store *Store) SetApplied(encoded []byte) error {
-	return store.write(appliedName, encoded)
+// SetApplied records a version as the one in service, and when it entered it.
+//
+// The time is kept because a window has to start somewhere, and the file's own
+// timestamp is not it: a state directory that was copied, restored or touched
+// would move the moment a version is judged by.
+func (store *Store) SetApplied(encoded []byte, at time.Time) error {
+	if at.IsZero() {
+		return fmt.Errorf("%w: no application time", ErrAgent)
+	}
+	if err := store.write(appliedName, encoded); err != nil {
+		return err
+	}
+	return store.writeFile(appliedAtName,
+		[]byte(strconv.Quote(at.UTC().Format(time.RFC3339Nano))))
+}
+
+// AppliedAt is when the applied version entered service.
+func (store *Store) AppliedAt() (time.Time, bool, error) {
+	content, ok, err := store.readFile(appliedAtName)
+	if err != nil || !ok {
+		return time.Time{}, ok, err
+	}
+	raw, err := strconv.Unquote(string(content))
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("%w: application time", ErrAgent)
+	}
+	at, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("%w: application time", ErrAgent)
+	}
+	return at.UTC(), true, nil
 }
 
 // Retain keeps a version so that returning to it needs no network.
@@ -68,7 +99,7 @@ func (store *Store) Retain(encoded []byte) error {
 // PromoteRetained makes the retained version the applied one and leaves
 // nothing retained. A return that kept the version it returned from would
 // allow a second return straight back into the fault.
-func (store *Store) PromoteRetained() error {
+func (store *Store) PromoteRetained(at time.Time) error {
 	_, encoded, ok, err := store.Retained()
 	if err != nil {
 		return err
@@ -76,7 +107,7 @@ func (store *Store) PromoteRetained() error {
 	if !ok {
 		return ErrNoRetainedVersion
 	}
-	if err := store.write(appliedName, encoded); err != nil {
+	if err := store.SetApplied(encoded, at); err != nil {
 		return err
 	}
 	if err := os.Remove(filepath.Join(store.directory, retainedName)); err != nil &&

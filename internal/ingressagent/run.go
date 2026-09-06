@@ -38,6 +38,8 @@ func Run(
 	version := flags.Bool("version", false, "print the build and exit")
 	returnRetained := flags.Bool("return", false,
 		"return to the retained version without reaching the network")
+	prove := flags.Bool("prove", false,
+		"decide whether the applied version has proved itself, and return if it has not")
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
 		writeError(stderr, "usage")
 		return 2
@@ -67,7 +69,8 @@ func Run(
 		writeError(stderr, "state")
 		return 1
 	}
-	applier, err := NewFileApplier(config.ConfigPath, config.ReloadCommand, config.ReloadArgs)
+	applier, err := NewFileApplier(config.ConfigPath, config.GenerationPath,
+		config.ReloadCommand, config.ReloadArgs)
 	if err != nil {
 		writeError(stderr, "applier")
 		return 1
@@ -85,7 +88,7 @@ func Run(
 
 	runContext, cancel := context.WithTimeout(ctx, runTimeout)
 	defer cancel()
-	result, err := run(runContext, agent, *returnRetained)
+	result, err := run(runContext, agent, config, *returnRetained, *prove)
 	if err != nil {
 		writeError(stderr, "failed")
 		return 1
@@ -105,11 +108,25 @@ func Run(
 	return 0
 }
 
-func run(ctx context.Context, agent *Agent, returnRetained bool) (Result, error) {
-	if returnRetained {
+func run(
+	ctx context.Context,
+	agent *Agent,
+	config Config,
+	returnRetained bool,
+	prove bool,
+) (Result, error) {
+	switch {
+	case returnRetained:
 		return agent.Return(ctx)
+	case prove:
+		observer, err := NewLoopbackObserver(config.HeartbeatURL, config.IdentityFile)
+		if err != nil {
+			return Result{}, err
+		}
+		return agent.ProveOrReturn(ctx, observer, config.ProveWindow)
+	default:
+		return agent.Sync(ctx)
 	}
-	return agent.Sync(ctx)
 }
 
 func writeError(stderr io.Writer, code string) {

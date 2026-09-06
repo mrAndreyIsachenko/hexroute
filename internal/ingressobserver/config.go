@@ -18,6 +18,11 @@ const (
 	envNodeID           = "HEXROUTE_OBSERVER_NODE_ID"
 	envGeneration       = "HEXROUTE_OBSERVER_GENERATION"
 	envKeyFile          = "HEXROUTE_OBSERVER_KEY_FILE"
+	envGenerationFile   = "HEXROUTE_OBSERVER_GENERATION_FILE"
+
+	// maxGenerationFileBytes bounds what is read from the generation file.
+	// It is a label, and anything larger is not one.
+	maxGenerationFileBytes = 256
 )
 
 var (
@@ -34,6 +39,11 @@ type Config struct {
 	NodeID           metadata.UUID
 	Generation       string
 	KeyFile          string
+	// GenerationFile is where the configuration agent records which version
+	// this host is running. It is optional: a host whose configuration is
+	// fixed at build time has nothing to write there, and reports the
+	// generation it was built with.
+	GenerationFile string
 }
 
 func LoadConfig(lookup LookupEnv) (Config, error) {
@@ -54,7 +64,15 @@ func LoadConfig(lookup LookupEnv) (Config, error) {
 		!referencePattern.MatchString(generation) || !validAbsolutePath(keyFile) {
 		return Config{}, ErrInvalidConfig
 	}
+	generationFile, generationFileSet := lookup(envGenerationFile)
+	if generationFileSet && !validAbsolutePath(generationFile) {
+		return Config{}, ErrInvalidConfig
+	}
+	if !generationFileSet {
+		generationFile = ""
+	}
 	return Config{
+		GenerationFile:   generationFile,
 		ListenAddr:       listenAddr,
 		XRayEndpoint:     xrayEndpoint,
 		OutboundEndpoint: outboundEndpoint,

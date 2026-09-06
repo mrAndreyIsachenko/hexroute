@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -114,4 +115,86 @@ func TestHeartbeatSignsUnhealthyStateWithoutRawError(t *testing.T) {
 	if strings.Contains(response.Body.String(), "sensitive") {
 		t.Fatal("response exposed dependency error")
 	}
+}
+
+// A host that is delivering versions reports the one it applied, not the one
+// it was built with. Otherwise every version would appear to prove the moment
+// the host was reachable.
+func TestTheHeartbeatReportsTheAppliedGenerationWhenThereIsOne(t *testing.T) {
+	directory := t.TempDir()
+	generationPath := filepath.Join(directory, "generation")
+	if err := os.WriteFile(generationPath, []byte("2026-09-06.1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service := testService(t)
+	service.config.GenerationFile = generationPath
+
+	heartbeat := decodeHeartbeat(t, serveHeartbeatFor(t, service, http.StatusOK))
+	if heartbeat.Generation != "2026-09-06.1" {
+		t.Fatalf("generation = %q", heartbeat.Generation)
+	}
+
+	// An unreadable or nonsensical generation is not answered with the
+	// build-time one: that would prove a version this host is not running.
+	for _, content := range []string{"", "a b", strings.Repeat("x", 300)} {
+		if err := os.WriteFile(generationPath, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		serveHeartbeatFor(t, service, http.StatusServiceUnavailable)
+	}
+	if err := os.Remove(generationPath); err != nil {
+		t.Fatal(err)
+	}
+	serveHeartbeatFor(t, service, http.StatusServiceUnavailable)
+}
+
+func testService(t *testing.T) *Service {
+	t.Helper()
+	nodeID := metadata.UUID("11111111-1111-4111-8111-111111111111")
+	keyPath := filepath.Join(t.TempDir(), "observer-key.json")
+	if _, err := signing.GenerateFile(keyPath, nodeID, rand.Reader); err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewService(Config{
+		ListenAddr:       "127.0.0.1:9080",
+		XRayEndpoint:     "127.0.0.1:443",
+		OutboundEndpoint: "1.1.1.1:443",
+		NodeID:           nodeID,
+		Generation:       "provider-b-generation-1",
+		KeyFile:          keyPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.now = func() time.Time { return time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC) }
+	service.dial = func(_ context.Context, _, endpoint string) (net.Conn, error) {
+		client, server := net.Pipe()
+		go server.Close()
+		return client, nil
+	}
+	return service
+}
+
+func serveHeartbeatFor(t *testing.T, service *Service, wantStatus int) []byte {
+	t.Helper()
+	response := httptest.NewRecorder()
+	service.Handler().ServeHTTP(response,
+		httptest.NewRequest(http.MethodGet, HeartbeatPath, nil))
+	if response.Code != wantStatus {
+		t.Fatalf("status = %d, want %d", response.Code, wantStatus)
+	}
+	return response.Body.Bytes()
+}
+
+func decodeHeartbeat(t *testing.T, body []byte) ingressprobe.Heartbeat {
+	t.Helper()
+	var signed ingressprobe.SignedHeartbeat
+	if err := json.Unmarshal(body, &signed); err != nil {
+		t.Fatal(err)
+	}
+	var heartbeat ingressprobe.Heartbeat
+	if err := json.Unmarshal(signed.Body, &heartbeat); err != nil {
+		t.Fatal(err)
+	}
+	return heartbeat
 }

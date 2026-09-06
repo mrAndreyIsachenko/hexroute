@@ -3,6 +3,8 @@ package signing
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -192,4 +194,51 @@ func testKey(t *testing.T) Key {
 		t.Fatalf("GenerateFile() error = %v", err)
 	}
 	return key
+}
+
+// The public identity verifies what the key signed and cannot sign anything.
+// That is what lets an agent on the same host check its own heartbeat without
+// holding the key that produces it.
+func TestPublicIdentityVerifiesWithoutBeingAbleToSign(t *testing.T) {
+	nodeID := metadata.UUID("11111111-1111-4111-8111-111111111111")
+	keyPath := filepath.Join(t.TempDir(), "node-key.json")
+	key, err := GenerateFile(keyPath, nodeID, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := key.Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encoded, []byte("private")) {
+		t.Fatal("the published identity names a private key")
+	}
+	identityPath := filepath.Join(filepath.Dir(keyPath), "node-identity.json")
+	if err := os.WriteFile(identityPath, encoded, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	registered, err := LoadPublicIdentityFile(identityPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"transport_healthy":true}`)
+	requestID := metadata.UUID("22222222-2222-4222-8222-222222222222")
+	at := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+	signed, err := Sign(key, requestID, at, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyAuthenticity(signed, body, at, time.Minute, registered); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	// A key file is not an identity file, so nothing can be persuaded to read
+	// one where the other is expected.
+	if _, err := LoadPublicIdentityFile(keyPath); err == nil {
+		t.Fatal("a private key file was accepted as a public identity")
+	}
 }
