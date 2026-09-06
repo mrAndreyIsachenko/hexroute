@@ -351,7 +351,11 @@ func TestOuterReadinessBlocksThresholdAndReconnect(t *testing.T) {
 	}
 }
 
-func TestActiveWithClientAddressIgnoresOptionalInnerFailure(t *testing.T) {
+// A session that reports itself connected, with a client address, while the
+// path carries nothing. Pritunl stays the authority on its own session, so
+// nothing is reconnected and the state machine does not move — but the service
+// beneath it may be stale, and root is asked to look.
+func TestActiveWithClientAddressAsksForARescueAndNeverReconnects(t *testing.T) {
 	policy := testPolicy()
 	policy.WakeSettle = 0
 	policy.Recovery.FailureThreshold = 1
@@ -359,17 +363,54 @@ func TestActiveWithClientAddressIgnoresOptionalInnerFailure(t *testing.T) {
 	observation := awake(0)
 	observation.OptionalInner = OptionalInnerFailed
 
-	for observation.At = 0; observation.At < 3; observation.At++ {
+	plan, err := planner.Plan(observation)
+	if err != nil {
+		t.Fatalf("Plan() error: %v", err)
+	}
+	if plan.Action != ActionRequestRescue || plan.Reason != ReasonInnerBlackholed {
+		t.Fatalf("Plan() = %+v", plan)
+	}
+	// The session was not reconnected and nothing was counted against it.
+	if plan.State != control.StateHealthy ||
+		plan.Snapshot.ConsecutiveFailures != 0 || plan.Snapshot.Attempts != 0 {
+		t.Fatalf("the state machine moved: %+v", plan)
+	}
+
+	// A path that stays dead does not ask every cycle: a restart that did not
+	// help the first time does not help a minute later.
+	for observation.At = 1; observation.At < policy.Recovery.Cooldown; observation.At++ {
 		plan, err := planner.Plan(observation)
 		if err != nil {
 			t.Fatalf("Plan() error: %v", err)
 		}
-		if plan.State != control.StateHealthy ||
-			plan.Action != ActionNone ||
-			plan.Reason != ReasonProfileConnected ||
-			plan.Snapshot.ConsecutiveFailures != 0 ||
-			plan.Snapshot.Attempts != 0 {
-			t.Fatalf("Plan() = %+v", plan)
+		if plan.Action != ActionNone || plan.Reason != ReasonProfileConnected {
+			t.Fatalf("at %d: Plan() = %+v", observation.At, plan)
+		}
+	}
+	observation.At = policy.Recovery.Cooldown
+	if plan, err := planner.Plan(observation); err != nil ||
+		plan.Action != ActionRequestRescue {
+		t.Fatalf("after the cooldown: %+v %v", plan, err)
+	}
+}
+
+// A path that is merely unmeasured is not a dead one. Only a measured failure
+// asks for anything.
+func TestAnUnmeasuredPathAsksForNothing(t *testing.T) {
+	policy := testPolicy()
+	policy.WakeSettle = 0
+	planner := newPlanner(t, policy)
+	for _, inner := range []OptionalInnerState{
+		OptionalInnerUnspecified, OptionalInnerUnknown, OptionalInnerReady,
+	} {
+		observation := awake(0)
+		observation.OptionalInner = inner
+		plan, err := planner.Plan(observation)
+		if err != nil {
+			t.Fatalf("Plan() error: %v", err)
+		}
+		if plan.Action != ActionNone || plan.Reason != ReasonProfileConnected {
+			t.Fatalf("inner %q: Plan() = %+v", inner, plan)
 		}
 	}
 }

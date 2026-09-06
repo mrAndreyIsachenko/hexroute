@@ -13,6 +13,10 @@ type Action string
 const (
 	ActionNone      Action = "none"
 	ActionReconnect Action = "reconnect"
+	// ActionRequestRescue asks the root runtime to restart the Pritunl
+	// service. It is not a reconnect and never becomes one: root revalidates
+	// the request against its own observations before acting.
+	ActionRequestRescue Action = "request_rescue"
 )
 
 type Reason string
@@ -33,6 +37,9 @@ const (
 	ReasonRecoveryBackoff     Reason = "recovery_backoff"
 	ReasonRecoveryBudget      Reason = "recovery_budget_exhausted"
 	ReasonReconnectAllowed    Reason = "reconnect_allowed"
+	// ReasonInnerBlackholed is a session that reports itself connected, with a
+	// client address, while the path it should be carrying carries nothing.
+	ReasonInnerBlackholed Reason = "inner_blackholed"
 )
 
 type OptionalInnerState string
@@ -58,8 +65,16 @@ type Observation struct {
 	Wake       userobserve.WakeObservation
 	OuterReady bool
 	Profile    userobserve.ProfileObservation
-	// OptionalInner is diagnostic-only. Pritunl's Active state plus a client
-	// address remains authoritative for reconnect decisions.
+	// OptionalInner is diagnostic-only for reconnecting: Pritunl's Active
+	// state plus a client address remains authoritative there, because a path
+	// measurement is affected by the outer tunnel and the routes as much as by
+	// Pritunl, and reconnecting on it would reconnect Pritunl for faults that
+	// are not its.
+	//
+	// It is not diagnostic-only for asking root to restart a stale service. A
+	// session reporting itself connected while carrying nothing is the one
+	// state in which everything looks healthy and nothing works, and it is the
+	// most recent real cause of a restart.
 	OptionalInner       OptionalInnerState
 	OTPSecondsRemaining uint32
 }
@@ -82,6 +97,8 @@ type Planner struct {
 	trackingConnecting bool
 	lastObservationAt  control.Tick
 	hasObservation     bool
+	lastRescueAt       control.Tick
+	hasRequestedRescue bool
 }
 
 var ErrInvalidInput = errors.New("invalid Pritunl planner input")
@@ -191,6 +208,15 @@ func (planner *Planner) Plan(observation Observation) (Plan, error) {
 		reason := ReasonProfileConnected
 		if decision.To == control.StateRecovering {
 			reason = ReasonRecoveryVerifying
+		}
+		// Connected and carrying nothing. The session is not reconnected on
+		// this ground — Pritunl is the authority on its own session — but the
+		// service beneath it may be stale, and root is asked to look.
+		if observation.OptionalInner == OptionalInnerFailed &&
+			planner.rescueRequestAllowed(observation.At) {
+			planner.lastRescueAt = observation.At
+			planner.hasRequestedRescue = true
+			return planner.result(ReasonInnerBlackholed, ActionRequestRescue, 0), nil
 		}
 		return planner.result(reason, ActionNone, 0), nil
 	}
@@ -356,6 +382,16 @@ func (planner *Planner) replaceSnapshot(
 	}
 	planner.machine = candidate
 	return snapshot, nil
+}
+
+// rescueRequestAllowed spaces requests out by the recovery cooldown. A path
+// that stays dead would otherwise ask for a restart every cycle, and a restart
+// that did not help the first time does not help sixty seconds later.
+func (planner *Planner) rescueRequestAllowed(at control.Tick) bool {
+	if !planner.hasRequestedRescue {
+		return true
+	}
+	return at >= planner.lastRescueAt+planner.policy.Recovery.Cooldown
 }
 
 func (state OptionalInnerState) valid() bool {
