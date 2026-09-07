@@ -78,6 +78,22 @@ func classifyConflict(leftDomain Domain, left Rule, rightDomain Domain, right Ru
 		return "", false
 	}
 	if leftDomain != rightDomain {
+		// What an overlap across the two domains means depends on what it
+		// contradicts. A credential reference, a route and an endpoint are each
+		// singular on this host — one key has one owner, one prefix one path,
+		// one host and port one listener — so two domains claiming one denies a
+		// fact, and no arrangement of policy makes both true.
+		//
+		// An action capability has no such owner. The compiled envelope assigns
+		// capability and target per domain and may assign the same pair to
+		// both, which is how a capability with halves on opposite sides of the
+		// privilege boundary is expressed at all; ValidateAgainstEnvelope has
+		// already agreed by the time conflicts are looked for. And there is no
+		// ambiguity to reject: an evaluation reads one domain's payload, so two
+		// domains' rules are never candidates for the same decision.
+		if left.Selector.Kind == SelectorAction {
+			return "", false
+		}
 		return ConflictCrossDomain, true
 	}
 	switch left.Selector.Kind {
