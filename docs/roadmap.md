@@ -93,6 +93,33 @@ written down in advance in
 because a rollback discovered during an incident is not a rollback. It is item
 7 below.
 
+`bound-spool-operation-cost` is active, and the change above waits on it. The
+root daemon burns most of a core and cannot answer its socket, so the activation
+that closes the expiry work cannot complete.
+
+`Spool.Append` calls `scanStable`, which reads and fully decodes every stable
+entry — on every append, and from all six operations that call it, so asking the
+spool its own size re-proves every record. A spindump of the live process puts
+the time in JSON decoding, canonical marshalling and the garbage they create;
+`sample` had shown every thread asleep and `fs_usage` returned nothing at all.
+The store behind it is 40,237 files in the user spool and 20,421 in the root
+one, both inside their hundred-megabyte bound. Nothing overflowed: the spool is
+doing exactly what is written down, and that is what makes the machine unusable.
+
+So the missing statement is about cost rather than size, and the principle is
+that a stored record is proved when it is read for use rather than when it is
+counted. Bounding the entry count was rejected for deciding something else in
+passing — the spool's only drain is the cloud uploader, which does not run here,
+so evicting by count would discard observations the design promises to keep
+until acknowledged.
+
+Two things travel with it. A damaged record will stop its own use and nothing
+else, because refusing to append means losing every future observation to
+recover a record already lost. And the user daemon's publish gains a deadline
+derived from its observation interval instead of inheriting a fifteen-second
+default against a fifteen-second cycle — the coupling that carried a fault in
+root into a symptom in user, and cost hours of misdirected diagnosis.
+
 `recover-policy-generations-after-expiry` is active, and item 7 waits on it. The
 active policy generation expired on 2026-08-22 and this machine has been locked
 out of its own policy control plane since: the installer refuses to place the
