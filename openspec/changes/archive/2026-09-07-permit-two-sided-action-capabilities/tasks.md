@@ -25,4 +25,4 @@
 - [x] 4.1 Run `make check` and resolve every failure.
 - [x] 4.2 For each new property, restore the defect it guards and confirm the named test fails. Reinstating the unconditional cross-domain rule must fail the two-sided test; removing the envelope-derived case must fail the property test.
 - [x] 4.3 Run `openspec validate permit-two-sided-action-capabilities --strict` and keep proposal, design, specs and tasks consistent with what was built.
-- [ ] 4.4 Sync the delta into the baseline specs and archive. This change closes on its tests: compiling, signing and activating generation 4 is the cutover's own evidence, in the change this unblocks.
+- [x] 4.4 Sync the delta into the baseline specs and archive. This change closes on its tests: compiling, signing and activating generation 4 is the cutover's own evidence, in the change this unblocks.
