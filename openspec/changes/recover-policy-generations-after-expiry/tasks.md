@@ -10,7 +10,7 @@
 - [x] 2.1 Add the lineage read. Assert it verifies the signature under the pinned key, every artifact digest, the immutable artifacts and the trusted compiler, and that it refuses when any of those fail. Assert it does not compare the predecessor's validity window or static digest against the present.
 - [x] 2.2 Give it a return type that cannot authorize: generation numbers, payload digest, schema, and the predecessor's own validity and static digest as facts. Assert by construction that no caller can evaluate policy from it — the record carries no manifest, payload or approval.
 - [x] 2.3 Use it in the installer and in both daemons at startup, so no current-generation value is ever taken from a configuration file while the store holds intact evidence. Assert an architectural boundary: the strict path is what governs, the lineage path is what chains, and neither substitutes for the other.
-- [ ] 2.4 Assert the relaxation does not leak to the candidate. A candidate is still refused for a wrong static digest, an untrusted compiler, a bad signature, or a window it is outside.
+- [x] 2.4 Assert the relaxation does not leak to the candidate. A candidate is still refused for a wrong static digest, an untrusted compiler, a bad signature, or a window it is outside.
 
 ## 3. Stop Calling Expiry A Fault
 
@@ -20,14 +20,14 @@
 
 ## 4. Announce The End Before It Arrives
 
-- [ ] 4.1 Surface `expires_at` in the status both daemons report.
-- [ ] 4.2 Raise a bounded non-critical `policy_expiry` incident at seven days remaining, at forty-eight hours, and once lapsed and unreplaced. Assert one announcement per threshold per generation, that the night window defers it rather than waking the operator, and that no policy content reaches the text.
-- [ ] 4.3 Assert the category is its own rather than borrowed, so the operator is never shown a security failure for a calendar event.
+- [x] 4.1 Surface `expires_at` in the status both daemons report.
+- [x] 4.2 Raise a bounded non-critical `policy_expiry` incident at seven days remaining, at forty-eight hours, and once lapsed and unreplaced. Assert one announcement per threshold per generation, that the night window defers it rather than waking the operator, and that no policy content reaches the text.
+- [x] 4.3 Assert the category is its own rather than borrowed, so the operator is never shown a security failure for a calendar event.
 
 ## 5. Make The Configuration Checkable
 
-- [ ] 5.1 Add an offline check for a prepared daemon policy configuration that calls the same validation the daemon applies. Assert it is the same function and not a second statement of the rules — a checker that drifts supplies confidence immediately before an irreversible step.
-- [ ] 5.2 Keep fail-closed startup. Assert an invalid policy control block still refuses to start rather than degrading, because a daemon that quietly runs without policy control is how this machine sat dormant for a month.
+- [x] 5.1 Add an offline check for a prepared daemon policy configuration that calls the same validation the daemon applies. Assert it is the same function and not a second statement of the rules — a checker that drifts supplies confidence immediately before an irreversible step.
+- [x] 5.2 Keep fail-closed startup. Assert an invalid policy control block still refuses to start rather than degrading, because a daemon that quietly runs without policy control is how this machine sat dormant for a month.
 
 ## 6. Arm The Control Plane On This Machine
 

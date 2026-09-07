@@ -133,6 +133,10 @@ const (
 	IncidentSpoolOverflow      IncidentCategory = "spool_overflow"
 	IncidentSecurityValidation IncidentCategory = "security_validation"
 	IncidentDeployment         IncidentCategory = "deployment"
+	// IncidentPolicyExpiry is a deadline, not a failure. It has its own
+	// category because the alternative was borrowing IncidentSecurityValidation,
+	// which would tell the operator a security check failed when nothing failed.
+	IncidentPolicyExpiry IncidentCategory = "policy_expiry"
 )
 
 type Incident struct {
@@ -594,7 +598,7 @@ func validSeverity(value IncidentSeverity) bool {
 func validCategory(value IncidentCategory) bool {
 	switch value {
 	case IncidentAvailability, IncidentRecoveryBudget, IncidentSpoolOverflow,
-		IncidentSecurityValidation, IncidentDeployment:
+		IncidentSecurityValidation, IncidentDeployment, IncidentPolicyExpiry:
 		return true
 	default:
 		return false

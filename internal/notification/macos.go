@@ -98,6 +98,14 @@ func content(template Template) (string, string, bool) {
 		return "Hexroute: external alert pending",
 			"A critical incident cannot reach an external alert path. Inspect local status.",
 			true
+	// One text for all three stages. The stage lives in the incident identity,
+	// which is what deduplicates delivery; putting it in the body would mean
+	// interpolating into the string handed to osascript, and this allowlist
+	// exists so that nothing is ever interpolated there.
+	case TemplatePolicyExpiry:
+		return "Hexroute: policy generation expiring",
+			"The active policy generation is near or past its validity. Sign and activate a successor.",
+			true
 	default:
 		return "", "", false
 	}
