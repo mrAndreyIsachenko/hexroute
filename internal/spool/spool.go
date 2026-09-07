@@ -23,6 +23,11 @@ const (
 	ownerSchema     = "hexroute.spool-owner.v1"
 	entrySchema     = "hexroute.spool-entry.v1"
 	ownerFilename   = ".owner.json"
+	// quarantinePrefix marks a record the spool could not prove. It stays in
+	// the directory under this name: it is the only evidence of whatever
+	// damaged it, and deleting evidence to tidy up is how a fault becomes a
+	// mystery.
+	quarantinePrefix = ".quarantine-"
 )
 
 type Owner string
@@ -66,11 +71,12 @@ type wireEntry struct {
 }
 
 type Spool struct {
-	mu       sync.Mutex
-	path     string
-	owner    Owner
-	maxBytes int64
-	metadata *metadata.Generator
+	mu          sync.Mutex
+	path        string
+	owner       Owner
+	maxBytes    int64
+	metadata    *metadata.Generator
+	quarantined []uint64
 }
 
 var (
@@ -111,13 +117,13 @@ func Open(path string, owner Owner, options Options) (*Spool, error) {
 	if err := spool.recover(); err != nil {
 		return nil, err
 	}
-	entries, err := spool.scanStable()
+	records, err := spool.scanIndex()
 	if err != nil {
 		return nil, err
 	}
 	generator, err := metadata.NewGenerator(
 		options.NodeID,
-		lastSequence(entries),
+		indexLastSequence(records),
 		options.Clock,
 		options.Random,
 	)
@@ -137,7 +143,7 @@ func (spool *Spool) Append(encodedEvent []byte) (uint64, error) {
 	spool.mu.Lock()
 	defer spool.mu.Unlock()
 
-	entries, err := spool.scanStable()
+	records, err := spool.scanIndex()
 	if err != nil {
 		return 0, err
 	}
@@ -146,7 +152,7 @@ func (spool *Spool) Append(encodedEvent []byte) (uint64, error) {
 		return 0, err
 	}
 	sequence := eventMetadata.Sequence
-	if sequence <= lastSequence(entries) {
+	if sequence <= indexLastSequence(records) {
 		return 0, ErrCorruptSpool
 	}
 	incoming, err := newEntry(eventMetadata, record.Priority, encodedEvent)
@@ -160,6 +166,21 @@ func (spool *Spool) Append(encodedEvent []byte) (uint64, error) {
 		return 0, err
 	}
 
+	stored := indexTotalSize(records)
+	// Below the bound there is nothing to evict, so there is nothing to learn
+	// about the stored records. This is the ordinary case and it reads none of
+	// them; the expensive scan is the price of being full, not of being used.
+	if excessBytes(stored+incoming.Size, spool.maxBytes) <= 0 {
+		if err := spool.commit([]Entry{incoming}, nil); err != nil {
+			return 0, err
+		}
+		return sequence, nil
+	}
+
+	entries, err := spool.scanStable()
+	if err != nil {
+		return 0, err
+	}
 	required := excessBytes(totalSize(entries)+incoming.Size, spool.maxBytes)
 	evictions, covered := chooseEvictions(entries, required, false)
 	if covered {
@@ -251,11 +272,13 @@ func (spool *Spool) EntriesBySequenceRanges(
 }
 
 func (spool *Spool) Size() (int64, error) {
-	entries, err := spool.Entries()
+	spool.mu.Lock()
+	defer spool.mu.Unlock()
+	records, err := spool.scanIndex()
 	if err != nil {
 		return 0, err
 	}
-	return totalSize(entries), nil
+	return indexTotalSize(records), nil
 }
 
 func (spool *Spool) Acknowledge(eventIDs []metadata.UUID) (int, error) {
@@ -366,11 +389,11 @@ func (spool *Spool) recover() error {
 		}
 	}
 
-	entries, err := spool.scanStable()
+	records, err := spool.scanIndex()
 	if err != nil {
 		return err
 	}
-	if totalSize(entries) > spool.maxBytes {
+	if indexTotalSize(records) > spool.maxBytes {
 		return ErrCorruptSpool
 	}
 	return nil
@@ -478,24 +501,30 @@ func (spool *Spool) scanStable() ([]Entry, error) {
 	seenEventIDs := make(map[metadata.UUID]struct{})
 	for _, directoryEntry := range directoryEntries {
 		name := directoryEntry.Name()
-		if name == ownerFilename ||
-			strings.HasPrefix(name, ".owner-") ||
-			strings.HasPrefix(name, ".pending-") {
+		if isReservedName(name) {
 			continue
 		}
 		sequence, ok := parseStableName(name)
 		if !ok || directoryEntry.Type()&os.ModeSymlink != 0 || directoryEntry.IsDir() {
 			return nil, ErrCorruptSpool
 		}
+		if _, duplicate := seen[sequence]; duplicate {
+			// Two files claiming one sequence makes the listing ambiguous, not
+			// one record damaged. Nothing here can be trusted.
+			return nil, ErrCorruptSpool
+		}
 		entry, err := readEntry(filepath.Join(spool.path, name))
 		if err != nil || entry.Sequence != sequence {
-			return nil, ErrCorruptSpool
-		}
-		if _, duplicate := seen[sequence]; duplicate {
-			return nil, ErrCorruptSpool
+			if err := spool.quarantineLocked(sequence); err != nil {
+				return nil, err
+			}
+			continue
 		}
 		if _, duplicate := seenEventIDs[entry.Metadata.EventID]; duplicate {
-			return nil, ErrCorruptSpool
+			if err := spool.quarantineLocked(sequence); err != nil {
+				return nil, err
+			}
+			continue
 		}
 		seen[sequence] = struct{}{}
 		seenEventIDs[entry.Metadata.EventID] = struct{}{}
@@ -647,6 +676,65 @@ func stableName(sequence uint64) string {
 
 func pendingName(sequence uint64) string {
 	return fmt.Sprintf(".pending-%020d.event", sequence)
+}
+
+// isReservedName names the files in a spool directory that are not records.
+// Both scans consult it, so neither can drift into treating the owner marker or
+// a staged record as stored data.
+func isReservedName(name string) bool {
+	return name == ownerFilename ||
+		strings.HasPrefix(name, ".owner-") ||
+		strings.HasPrefix(name, ".pending-") ||
+		strings.HasPrefix(name, quarantinePrefix)
+}
+
+func (spool *Spool) quarantinePath(sequence uint64) string {
+	return filepath.Join(spool.path, quarantinePrefix+stableName(sequence))
+}
+
+// quarantineLocked sets a record aside and remembers that it did.
+//
+// A record that cannot be proved is already lost, and refusing to accept new
+// records until someone repairs it trades every future observation for one that
+// is beyond saving. So it leaves the stable set and the spool carries on.
+//
+// It is renamed rather than removed. The operator finding out why needs the
+// bytes, and this repository has paid for that lesson: the stranded policy
+// stores were copied before they were repaired, because applying a fix destroys
+// the only naturally occurring instance of it.
+func (spool *Spool) quarantineLocked(sequence uint64) error {
+	if err := os.Rename(
+		spool.stablePath(sequence),
+		spool.quarantinePath(sequence),
+	); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("set aside unprovable spool record: %w", err)
+	}
+	if err := syncDirectory(spool.path); err != nil {
+		return err
+	}
+	for _, existing := range spool.quarantined {
+		if existing == sequence {
+			return nil
+		}
+	}
+	spool.quarantined = append(spool.quarantined, sequence)
+	return nil
+}
+
+// TakeQuarantined reports the records set aside since it was last called, and
+// forgets them.
+//
+// The spool cannot raise an incident itself — it has no notion of one — so it
+// says what happened and leaves the saying to whoever owns the incident path.
+func (spool *Spool) TakeQuarantined() []uint64 {
+	spool.mu.Lock()
+	defer spool.mu.Unlock()
+	if len(spool.quarantined) == 0 {
+		return nil
+	}
+	taken := spool.quarantined
+	spool.quarantined = nil
+	return taken
 }
 
 func parseStableName(name string) (uint64, bool) {

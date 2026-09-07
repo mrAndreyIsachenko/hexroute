@@ -282,7 +282,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// The stream memory sits beside the candidate state, in the directory
 	// this daemon already owns and already writes to.
 	publisher, err := newFactPublisher(bootIdentity(), *rootSocketPath,
-		filepath.Join(filepath.Dir(*statePath), "connectivity-stream.json"))
+		filepath.Join(filepath.Dir(*statePath), "connectivity-stream.json"),
+		config.Interval)
 	if err != nil {
 		return rejected(errorLog, logging.ReasonInvalidConfiguration)
 	}
