@@ -39,4 +39,4 @@
 - [x] 7.1 Run `make check` and resolve every failure.
 - [x] 7.2 For each new property, restore the defect it guards and confirm the named test fails. A test that still passes with the rescan put back is measuring something else.
 - [x] 7.3 Run `openspec validate bound-spool-operation-cost --strict` and keep proposal, design, specs and tasks consistent with what was built.
-- [ ] 7.4 Sync the delta into the baseline specs and archive.
+- [x] 7.4 Sync the delta into the baseline specs and archive.

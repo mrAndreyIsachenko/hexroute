@@ -93,36 +93,34 @@ written down in advance in
 because a rollback discovered during an incident is not a rollback. It is item
 7 below.
 
-`bound-spool-operation-cost` is active, and the change above waits on it. The
-root daemon burns most of a core and cannot answer its socket, so the activation
-that closes the expiry work cannot complete.
+`bound-spool-operation-cost` closed on 2026-09-07. `Spool.Append` called
+`scanStable`, which read and fully decoded every stored record — from all six
+operations that called it, so asking the spool its own size re-proved every
+record it held. Appending now takes the highest sequence from the filenames and
+the total size from file metadata, and opens a stored record only when it must
+evict, which below the bound it never must. Measured at the scale the machine
+reached: 191ms per append at 60,000 records against roughly 1.7s.
 
-`Spool.Append` calls `scanStable`, which reads and fully decodes every stable
-entry — on every append, and from all six operations that call it, so asking the
-spool its own size re-proves every record. A spindump of the live process puts
-the time in JSON decoding, canonical marshalling and the garbage they create;
-`sample` had shown every thread asleep and `fs_usage` returned nothing at all.
-The store behind it is 40,237 files in the user spool and 20,421 in the root
-one, both inside their hundred-megabyte bound. Nothing overflowed: the spool is
-doing exactly what is written down, and that is what makes the machine unusable.
+Nothing had overflowed — both spools sat inside their hundred-megabyte bound —
+so the missing statement was about cost rather than size, and the specification
+says what was measured rather than the stronger thing first written: the cost
+still grows with the record count, bounded by the byte bound. Two things
+travelled with it. A damaged record now stops its own use and nothing else,
+because refusing to append meant losing every future observation to recover one
+already beyond saving; it is set aside rather than deleted and reported by
+writing an incident into the spool, the way overflow already was. And the user
+daemon's publish gained a deadline derived from its observation interval instead
+of a fifteen-second default against a fifteen-second cycle — the coupling that
+carried a fault in root into a symptom in user.
 
-So the missing statement is about cost rather than size, and the principle is
-that a stored record is proved when it is read for use rather than when it is
-counted. Bounding the entry count was rejected for deciding something else in
-passing — the spool's only drain is the cloud uploader, which does not run here,
-so evicting by count would discard observations the design promises to keep
-until acknowledged.
+That unblocked the activation the change below was stuck on, and the root daemon
+answers `policy status` in 44ms where it had not answered at all.
 
-Two things travel with it. A damaged record will stop its own use and nothing
-else, because refusing to append means losing every future observation to
-recover a record already lost. And the user daemon's publish gains a deadline
-derived from its observation interval instead of inheriting a fifteen-second
-default against a fifteen-second cycle — the coupling that carried a fault in
-root into a symptom in user, and cost hours of misdirected diagnosis.
-
-`recover-policy-generations-after-expiry` is active, and item 7 waits on it. The
-active policy generation expired on 2026-08-22 and this machine has been locked
-out of its own policy control plane since: the installer refuses to place the
+`recover-policy-generations-after-expiry` is active, and item 7 waits on it.
+Generation 3 is active in both domains as of 2026-09-07, expiring 2026-09-16;
+what remains is observing the seven-day announcement arrive, which is why that
+window is nine days rather than thirty. The active policy generation had expired
+on 2026-08-22 and this machine was locked out of its own policy control plane: the installer refuses to place the
 successor generation because it cannot revalidate the expired predecessor, and
 the predecessor cannot be revalidated because time passed. Every other cause of
 that refusal has an operator action that clears it; expiry's only cure is the
