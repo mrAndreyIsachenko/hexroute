@@ -376,14 +376,18 @@ type ActionLeaseExecutionClaim struct {
 }
 
 type Status struct {
-	Schema           string       `json:"schema"`
-	Domain           Domain       `json:"domain"`
-	State            PolicyState  `json:"state"`
-	BundleGeneration uint64       `json:"bundle_generation"`
-	PolicyGeneration uint64       `json:"policy_generation"`
-	ManifestSHA256   string       `json:"manifest_sha256,omitempty"`
-	ActivatedAt      string       `json:"activated_at,omitempty"`
-	Reason           PolicyReason `json:"reason"`
+	Schema           string      `json:"schema"`
+	Domain           Domain      `json:"domain"`
+	State            PolicyState `json:"state"`
+	BundleGeneration uint64      `json:"bundle_generation"`
+	PolicyGeneration uint64      `json:"policy_generation"`
+	ManifestSHA256   string      `json:"manifest_sha256,omitempty"`
+	ActivatedAt      string      `json:"activated_at,omitempty"`
+	// ExpiresAt is when this generation stops being able to govern. It was
+	// surfaced nowhere before, which is why a machine could sit for a month
+	// past it without anyone having a reason to look.
+	ExpiresAt string       `json:"expires_at,omitempty"`
+	Reason    PolicyReason `json:"reason"`
 }
 
 // AuthorizationSuspension is a local, non-generational authority overlay.

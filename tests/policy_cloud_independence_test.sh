@@ -27,6 +27,7 @@ local_binaries=(
   ./cmd/hexroute-connectivity-qualify
   ./cmd/hexroute-policy-installer
   ./cmd/hexroute-policy-qualification
+  ./cmd/hexroute-policy-check
 )
 
 # Binaries that are the cloud, or that build and inspect releases rather than

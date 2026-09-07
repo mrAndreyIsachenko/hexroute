@@ -11,6 +11,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyapproval"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyclock"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policyexpiry"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
 )
 
@@ -186,7 +187,10 @@ func (handler *Handler) resolveExpiredActiveLocked(cause error, at time.Time) bo
 	handler.hasLapsed = true
 	handler.status = policy.Status{
 		Schema: policy.PolicyStatusSchema, Domain: handler.domain,
-		State: policy.PolicyNone, Reason: policy.ReasonExpired,
+		State: policy.PolicyNone, ExpiresAt: lineage.ExpiresAt,
+		BundleGeneration: lineage.Generation.Bundle,
+		PolicyGeneration: lineage.Generation.Policy,
+		Reason:           policy.ReasonExpired,
 	}
 	handler.authorizationSuspension = clearAuthorizationSuspension()
 	return true
@@ -470,6 +474,29 @@ func (handler *Handler) lifecycleFailure(cause error, response ipc.Response) ipc
 	return response
 }
 
+// ExpiryAnnouncement answers which announcement the active generation's
+// remaining validity calls for, and which generation it is about.
+//
+// It lives here because the handler is what knows the validity, and it returns
+// the generation because delivery deduplicates on it: crossing a threshold
+// announces once for that generation rather than once per cycle.
+func (handler *Handler) ExpiryAnnouncement(now time.Time) (policyexpiry.Stage, uint64, bool) {
+	if handler == nil {
+		return policyexpiry.StageNone, 0, false
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	handler.refreshAuthorizationLocked()
+	if handler.status.ExpiresAt == "" || handler.status.BundleGeneration == 0 {
+		return policyexpiry.StageNone, 0, false
+	}
+	stage, ok := policyexpiry.StageAt(handler.status.ExpiresAt, now)
+	if !ok {
+		return policyexpiry.StageNone, 0, false
+	}
+	return stage, handler.status.BundleGeneration, true
+}
+
 func (handler *Handler) MutationAllowed() bool {
 	if handler == nil {
 		return false
@@ -678,7 +705,9 @@ func (handler *Handler) restoreActive(
 		BundleGeneration: active.Generation.Bundle,
 		PolicyGeneration: active.Generation.Policy,
 		ManifestSHA256:   active.ManifestSHA256,
-		ActivatedAt:      active.ActivatedAt, Reason: reason,
+		ActivatedAt:      active.ActivatedAt,
+		ExpiresAt:        active.Manifest.ExpiresAt,
+		Reason:           reason,
 	}
 	if active.ConfirmedAt == "" {
 		handler.suspendAuthorizationLocked(policy.ReasonDomainMismatch, observedAt)

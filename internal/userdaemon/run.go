@@ -22,6 +22,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policycontrol"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policyexpiry"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlplan"
 	"github.com/mrAndreyIsachenko/hexroute/internal/userobserve"
@@ -304,6 +305,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		infoLog,
 		publisher,
 		executor,
+		policyHandler,
 	); err != nil {
 		return 1
 	}
@@ -420,6 +422,7 @@ func observeLoop(
 	logger *logging.Logger,
 	publisher *factPublisher,
 	executor *recovery,
+	policyExpiry ExpiryAnnouncer,
 ) error {
 	// The log records what happened; the state file records that the loop ran.
 	gate := logging.NewChangeGate()
@@ -474,6 +477,13 @@ func observeLoop(
 			now,
 			logger,
 		)
+		dispatchPolicyExpiryNotification(
+			ctx,
+			notifications,
+			policyExpiry,
+			now,
+			logger,
+		)
 		lastState = summary.Plan.Snapshot.State
 		if err := emitSummary(logger, gate, summary); err != nil {
 			return err
@@ -514,6 +524,78 @@ func observeLoop(
 				break wait
 			}
 		}
+	}
+}
+
+// ExpiryAnnouncer is the policy handler, narrowed to the one question this
+// loop asks it. The loop does not decide anything about policy; it carries an
+// answer to the notification path.
+type ExpiryAnnouncer interface {
+	ExpiryAnnouncement(time.Time) (policyexpiry.Stage, uint64, bool)
+}
+
+// dispatchPolicyExpiryNotification announces that the active generation is near
+// or past the end of its validity.
+//
+// It exists because nothing announced it. Expiry was surfaced in no status, no
+// tooling and no script, so the only way to know a generation had days left was
+// to read a private manifest by hand — and this system removed the one loud
+// signal there was when it stopped treating a lapse as a suspension. A passive
+// field would not close that: nobody was looking, because nothing suggested
+// looking.
+//
+// Delivery deduplicates on the incident identity and the generation, so a stage
+// announces once per generation however many cycles run through it.
+func dispatchPolicyExpiryNotification(
+	ctx context.Context,
+	notifications IncidentNotifier,
+	announcer ExpiryAnnouncer,
+	at time.Time,
+	logger *logging.Logger,
+) {
+	if ctx == nil || notifications == nil || announcer == nil || logger == nil {
+		return
+	}
+	stage, generation, ok := announcer.ExpiryAnnouncement(at)
+	if !ok || !stage.Announces() || generation == 0 {
+		return
+	}
+	notifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	outcome, err := notifications.Dispatch(
+		notifyCtx,
+		notification.Input{
+			Incident: event.Incident{
+				IncidentID: stage.IncidentID(),
+				Status:     event.IncidentOpened,
+				// Deliberately not critical: critical bypasses the night
+				// window, and a deadline two days out is not worth waking
+				// anyone for.
+				Severity:   event.SeverityWarning,
+				Category:   event.IncidentPolicyExpiry,
+				Component:  control.ComponentRuntime,
+				Generation: generation,
+			},
+			External: notification.ExternalNotRequired,
+		},
+		at,
+	)
+	if err != nil {
+		_ = logger.Emit(
+			logging.LevelWarn,
+			logging.EventLocalNotification,
+			logging.ResultDegraded,
+			"",
+		)
+		return
+	}
+	if outcome.LocalDelivery == notification.LocalDelivered {
+		_ = logger.Emit(
+			logging.LevelInfo,
+			logging.EventLocalNotification,
+			logging.ResultReported,
+			"",
+		)
 	}
 }
 

@@ -25,6 +25,7 @@ const (
 	TemplateSecurityFailure  Template = "security_failure"
 	TemplateRuntimeFailure   Template = "runtime_failure"
 	TemplateExternalPending  Template = "external_pending"
+	TemplatePolicyExpiry     Template = "policy_expiry"
 )
 
 type DecisionReason string
@@ -80,6 +81,16 @@ func (policy Policy) Decide(input Input, at time.Time) (Decision, error) {
 	if !actionable(input.Incident) {
 		return decision, nil
 	}
+	// A deadline is actionable without being urgent. It is raised at seven days
+	// and again at forty-eight hours, so there is no hour of the night at which
+	// waking someone buys anything, and an alert that wakes you for nothing
+	// teaches you to ignore the next one. Every other actionable incident is
+	// about something happening now and still delivers immediately.
+	if input.Incident.Category == event.IncidentPolicyExpiry && policy.isNight(at) {
+		decision.MorningDigest = true
+		decision.Reason = ReasonNightRecoveryDigest
+		return decision, nil
+	}
 
 	decision.LocalImmediate = true
 	decision.Template = templateFor(input)
@@ -120,7 +131,11 @@ func actionable(incident event.Incident) bool {
 	}
 	switch incident.Category {
 	case event.IncidentRecoveryBudget,
-		event.IncidentSecurityValidation:
+		event.IncidentSecurityValidation,
+		// A policy generation's validity ending is actionable and deliberately
+		// not critical: it defers to the morning digest inside the night
+		// window, because nobody should be woken for a deadline two days out.
+		event.IncidentPolicyExpiry:
 		return true
 	default:
 		return false
@@ -133,6 +148,8 @@ func templateFor(input Input) Template {
 		return TemplateExternalPending
 	}
 	switch {
+	case input.Incident.Category == event.IncidentPolicyExpiry:
+		return TemplatePolicyExpiry
 	case input.Incident.Category == event.IncidentRecoveryBudget &&
 		input.Incident.Component == control.ComponentPritunl:
 		return TemplatePritunlSafeMode
