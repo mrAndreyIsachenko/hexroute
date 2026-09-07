@@ -227,7 +227,11 @@ const (
 	ReasonDomainMismatch    PolicyReason = "domain_mismatch"
 	ReasonIPCOwnership      PolicyReason = "ipc_ownership"
 	ReasonNoValidGeneration PolicyReason = "no_valid_generation"
-	ReasonOperatorAborted   PolicyReason = "operator_aborted"
+	// ReasonExpired is a generation that ran its course, not a fault. It is
+	// distinct from ReasonNoValidGeneration because one of them means the store
+	// still holds a chain to build the successor on.
+	ReasonExpired         PolicyReason = "expired"
+	ReasonOperatorAborted PolicyReason = "operator_aborted"
 )
 
 func (reason PolicyReason) Valid() bool {
@@ -243,6 +247,7 @@ func (reason PolicyReason) Valid() bool {
 		ReasonDomainMismatch,
 		ReasonIPCOwnership,
 		ReasonNoValidGeneration,
+		ReasonExpired,
 		ReasonOperatorAborted:
 		return true
 	default:

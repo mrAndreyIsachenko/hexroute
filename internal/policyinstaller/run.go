@@ -68,11 +68,11 @@ type artifactStore interface {
 
 type installStore interface {
 	artifactStore
-	RecoverActive(
+	RecoverLineage(
 		policy.InstalledCompatibility,
 		ed25519.PublicKey,
 		time.Time,
-	) (policystore.RevalidatedActive, error)
+	) (policystore.Lineage, error)
 }
 
 func Run(args []string, stdout, stderr io.Writer) int {
@@ -179,6 +179,16 @@ func runInstall(args []string) (result, error) {
 	}, nil
 }
 
+// runtimeForInstall derives the current generation from the store rather than
+// from the configuration file, so that a caller cannot name the parent of the
+// bundle it is installing.
+//
+// It asks for lineage, not for an active generation. The two questions differ
+// exactly where it matters here: a generation whose validity has ended, or that
+// was compiled against a superseded safety envelope, may no longer govern and is
+// still the generation that came before. Asking the operational question would
+// refuse to install the successor of an expired generation — which is the only
+// thing that resolves the expiry.
 func runtimeForInstall(
 	store installStore,
 	runtime policyconfig.RuntimeConfig,
@@ -187,7 +197,7 @@ func runtimeForInstall(
 	if store == nil || runtime.Validate() != nil || store.Domain() != runtime.Installed.Domain || now.IsZero() {
 		return policyconfig.RuntimeConfig{}, errInvalidConfig
 	}
-	active, err := store.RecoverActive(runtime.Installed, runtime.PinnedPublicKey, now)
+	lineage, err := store.RecoverLineage(runtime.Installed, runtime.PinnedPublicKey, now)
 	if errors.Is(err, policystore.ErrRecordNotFound) {
 		if runtime.Installed.CurrentBundleGeneration != 0 ||
 			runtime.Installed.CurrentPolicyGeneration != 0 ||
@@ -196,17 +206,15 @@ func runtimeForInstall(
 		}
 		return runtime, nil
 	}
-	if err != nil || active.ConfirmedAt == "" || active.Domain != store.Domain() ||
-		active.Generation.Bundle == 0 || active.Generation.Policy == 0 ||
-		active.Manifest.BundleGeneration != active.Generation.Bundle ||
-		active.Payload.PolicyGeneration != active.Generation.Policy ||
-		active.PayloadSHA256 == "" {
+	if err != nil || lineage.ConfirmedAt == "" || lineage.Domain != store.Domain() ||
+		lineage.Generation.Bundle == 0 || lineage.Generation.Policy == 0 ||
+		lineage.PayloadSHA256 == "" {
 		return policyconfig.RuntimeConfig{}, errInvalidConfig
 	}
-	runtime.Installed.CurrentPolicySchema = active.Manifest.PolicySchema
-	runtime.Installed.CurrentBundleGeneration = active.Generation.Bundle
-	runtime.Installed.CurrentPolicyGeneration = active.Generation.Policy
-	runtime.Installed.CurrentPayloadSHA256 = active.PayloadSHA256
+	runtime.Installed.CurrentPolicySchema = lineage.PolicySchema
+	runtime.Installed.CurrentBundleGeneration = lineage.Generation.Bundle
+	runtime.Installed.CurrentPolicyGeneration = lineage.Generation.Policy
+	runtime.Installed.CurrentPayloadSHA256 = lineage.PayloadSHA256
 	if runtime.Validate() != nil {
 		return policyconfig.RuntimeConfig{}, errInvalidConfig
 	}

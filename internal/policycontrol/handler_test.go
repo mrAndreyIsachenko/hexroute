@@ -38,6 +38,9 @@ type recordingCandidateStore struct {
 	recoverResult policystore.RevalidatedActive
 	recoverErr    error
 	recoverCalls  int
+	lineage       policystore.Lineage
+	lineageErr    error
+	lineageCalls  int
 	pendingIntent policystore.CommitIntent
 	pendingErr    error
 	actionLease   policy.ActionLease
@@ -166,6 +169,21 @@ func (store *recordingCandidateStore) AbortCandidate(
 	store.input = input
 	store.preparedAt = abortedAt
 	return store.abortErr
+}
+
+func (store *recordingCandidateStore) RecoverLineage(
+	policy.InstalledCompatibility,
+	ed25519.PublicKey,
+	time.Time,
+) (policystore.Lineage, error) {
+	store.lineageCalls++
+	if store.lineageErr != nil {
+		return policystore.Lineage{}, store.lineageErr
+	}
+	if store.lineage.Generation.Bundle == 0 {
+		return policystore.Lineage{}, policystore.ErrRecordNotFound
+	}
+	return store.lineage, nil
 }
 
 func (store *recordingCandidateStore) RecoverActive(
