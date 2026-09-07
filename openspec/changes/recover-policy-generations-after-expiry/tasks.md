@@ -36,17 +36,23 @@
 
 ## 6. Arm The Control Plane On This Machine
 
-- [ ] 6.1 Prepare both daemon configurations privately as whole files, not edits, with the previous versions kept beside them. Include both compiler digests in the trusted list: the predecessor was compiled by the August compiler and its lineage read still checks that.
-- [ ] 6.2 Run the offline check against both prepared files before either goes near a live path.
-- [ ] 6.3 Install and restart under the guarded procedure. Assert afterwards that both domains answer, that neither reports a suspension, and that nothing is authorized — the only generation in either store is all-deny and expired.
+- [x] 6.1 Prepare both daemon configurations privately as whole files, not edits, with the previous versions kept beside them. Include both compiler digests in the trusted list: the predecessor was compiled by the August compiler and its lineage read still checks that.
+- [x] 6.2 Run the offline check against both prepared files before either goes near a live path.
+- [x] 6.3 Install and restart under the guarded procedure. Assert afterwards that both domains answer, that neither reports a suspension, and that nothing is authorized — the only generation in either store is all-deny and expired.
 
 ## 7. Prove It On The Real Thing
 
-- [ ] 7.1 Compile, sign and activate generation 3: the content of the expired generation 2, no new authority, and a nine-day window. Record the deviation from the thirty-day default and its reason.
+- [~] 7.1 (compiled, signed and installed in both stores; activation blocked — see below) Compile, sign and activate generation 3: the content of the expired generation 2, no new authority, and a nine-day window. Record the deviation from the thirty-day default and its reason.
 - [ ] 7.2 That activation is the live acceptance for section 2 — a real predecessor, expired, under a superseded static digest, with real signatures. Record what the install and activation reported.
 - [ ] 7.3 Observe the seven-day announcement arrive, roughly two days later. A test with an injected clock proves the code; this proves the incident reaches a person through the delivery path, which is the half that is new.
 - [ ] 7.4 Write the thirty-day default into the operations runbook, with deviation permitted and a recorded reason required. Fourteen days was inherited by copy last time, and that is how this started.
 - [ ] 7.5 Document recovery from a lapsed generation in the runbook, next to the states table, so the `expired` reason has a row that says what to do.
+
+## 7b. Blocked On The Root Daemon
+
+- [ ] 7b.1 The activation cannot complete: the root daemon is unreachable over its IPC socket while burning most of a core, so `policy prepare` reaches the user domain and times out against root. No pointer has moved and the machine is safe; generation 3 is signed and installed in both stores, and its window runs to 2026-09-16.
+- [ ] 7b.2 The cause is not established. Three explanations were offered and all three were wrong: a lifetime-average CPU figure read as instantaneous, saturation attributed to the user daemon's publishes while the measurement was confounded by the diagnostic probes themselves, and an idle-when-unqueried claim contradicted by the daemon being unreachable with the user daemon stopped. The spool defect is real and reproduced, but that it causes this is not shown.
+- [ ] 7b.3 Diagnose under controlled measurement in its own change rather than between activation attempts. Each attempt stops an observer on a live machine to test a guess.
 
 ## 8. Verify
 
