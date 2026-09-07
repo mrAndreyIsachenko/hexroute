@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
@@ -50,19 +51,33 @@ func TestAppendDoesNotReadTheStoredRecords(t *testing.T) {
 	if _, err := reopened.Append(costEvent(t, 1)); err != nil {
 		t.Fatalf("Append() over undecodable stored records = %v", err)
 	}
-	if quarantined := reopened.TakeQuarantined(); len(quarantined) != 0 {
-		t.Fatalf("appending set aside %d stored records; it read what it does not use",
-			len(quarantined))
-	}
-
 	// And the size it reports comes from the same place, so asking costs no
 	// reading either.
 	if _, err := reopened.Size(); err != nil {
 		t.Fatalf("Size() over undecodable stored records = %v", err)
 	}
-	if quarantined := reopened.TakeQuarantined(); len(quarantined) != 0 {
-		t.Fatalf("reporting size set aside %d stored records", len(quarantined))
+
+	// Reading one would have set it aside, and setting aside renames the file.
+	// So the directory itself says whether either operation looked.
+	if aside := countQuarantined(t, path); aside != 0 {
+		t.Fatalf("appending and reporting size set aside %d stored records; "+
+			"they read what they do not use", aside)
 	}
+}
+
+func countQuarantined(t *testing.T, path string) int {
+	t.Helper()
+	names, err := os.ReadDir(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, name := range names {
+		if strings.HasPrefix(name.Name(), quarantinePrefix) {
+			count++
+		}
+	}
+	return count
 }
 
 func costEvent(t *testing.T, index int) []byte {
