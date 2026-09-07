@@ -116,6 +116,35 @@ carried a fault in root into a symptom in user.
 That unblocked the activation the change below was stuck on, and the root daemon
 answers `policy status` in 44ms where it had not answered at all.
 
+`permit-two-sided-action-capabilities` is active, and item 7 waits on it too.
+The generation the Pritunl cutover runbook describes does not compile: granting
+`pritunl_recovery` on the `pritunl` target to both domains returns
+`cross_domain_ownership`, so the compiler refuses the candidate.
+
+Four places agree with each other and disagree with the detector — the runbook,
+both runtimes' calls with the target written as a constant in root's, and the
+safety envelope, which lists the capability under both domains and explains why
+root names `pritunl` rather than folding it into `runtime`. The detector's only
+test uses a credential selector, which is the case it was written for: one key
+has one owner. It was then applied to every selector kind alike.
+
+The line the change draws is what an overlap contradicts. A credential, a route
+and an endpoint are singular on the host, so two domains claiming one denies a
+fact. An action capability is not singular: the envelope assigns capability and
+target per domain, may assign the same pair to both, and has already agreed by
+the time conflicts are looked for. Differing effects across domains compile too,
+because root allowing while user denies is what a partial rollback leaves.
+
+Splitting the capability in two was rejected: it needs no rule change and gives
+each name one owner, but two capabilities can be revoked one at a time, leaving
+root able to restart the service after the user runtime has lost the right to
+reconnect — the drift a single grant exists to prevent.
+
+Nothing caught this because no test ever compiled a generation granting the
+capability. It appears in one test file, which evaluates authorization against a
+payload written by hand and never reaches the compiler. Every part was proven
+and the path between them was not.
+
 `recover-policy-generations-after-expiry` is active, and item 7 waits on it.
 Generation 3 is active in both domains as of 2026-09-07, expiring 2026-09-16;
 what remains is observing the seven-day announcement arrive, which is why that
