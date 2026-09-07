@@ -116,19 +116,30 @@ carried a fault in root into a symptom in user.
 That unblocked the activation the change below was stuck on, and the root daemon
 answers `policy status` in 44ms where it had not answered at all.
 
-`permit-two-sided-action-capabilities` is active, and item 7 waits on it too.
-The generation the Pritunl cutover runbook describes does not compile: granting
-`pritunl_recovery` on the `pritunl` target to both domains returns
-`cross_domain_ownership`, so the compiler refuses the candidate.
+`permit-two-sided-action-capabilities` closed on 2026-09-07, and item 7 now
+waits only on a date. Generation 4 — the first generation in this system's
+history to expand authorization rather than only withhold it — is compiled,
+diffed and replayed, and the signer application was rebuilt so the compiler
+carrying the repair is the one that produced it. Its diff carries exactly two
+entries, one newly allowed action per domain, and nothing else.
 
-Four places agree with each other and disagree with the detector — the runbook,
+The ceremony is held until 2026-09-09 on purpose. Generation 3 expires
+2026-09-16, so the seven-day announcement crosses on the ninth, and that
+crossing is the last open task of the expiry change: only a real one proves the
+incident reaches a person rather than merely being raised. Activating generation
+4 first would supersede generation 3 and move the crossing three weeks out.
+Waiting costs nothing operationally — the Pritunl transaction begins by
+disabling the legacy watchdog, so until it runs, nothing changes.
+
+
+Four places agreed with each other and disagreed with the detector — the runbook,
 both runtimes' calls with the target written as a constant in root's, and the
 safety envelope, which lists the capability under both domains and explains why
 root names `pritunl` rather than folding it into `runtime`. The detector's only
 test uses a credential selector, which is the case it was written for: one key
 has one owner. It was then applied to every selector kind alike.
 
-The line the change draws is what an overlap contradicts. A credential, a route
+The line it drew is what an overlap contradicts. A credential, a route
 and an endpoint are singular on the host, so two domains claiming one denies a
 fact. An action capability is not singular: the envelope assigns capability and
 target per domain, may assign the same pair to both, and has already agreed by
