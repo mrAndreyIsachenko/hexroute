@@ -2,13 +2,16 @@ package policycontrol
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyapproval"
+	"github.com/mrAndreyIsachenko/hexroute/internal/policyexpiry"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
 )
 
@@ -30,6 +33,8 @@ func lapsedLineage() policystore.Lineage {
 		PolicySchema:  1,
 		StaticSHA256:  strings.Repeat("a", 64),
 		ConfirmedAt:   "2026-08-08T21:51:48.843547Z",
+		ExpiresAt:     "2026-08-22T21:17:29Z",
+		NotBefore:     "2026-08-08T21:17:29Z",
 		Expired:       true,
 	}
 }
@@ -143,5 +148,57 @@ func TestLapsedHandlerKeepsRevalidating(t *testing.T) {
 	handler.MutationAllowed()
 	if store.recoverCalls <= before {
 		t.Fatal("a lapsed daemon stopped revalidating; its successor would never be seen")
+	}
+}
+
+// TestLapsedStatusSurvivesTheOutputBoundary is the test whose absence let a
+// broken status reach the machine.
+//
+// Every other test here reads the handler's fields directly, and they all
+// passed while `policy status` returned an internal error: the status was
+// assembled with a lapsed generation's numbers under state none, which
+// Status.Validate refuses, and the refusal only happens on the way out. A
+// property proven inside a type says nothing about what leaves it.
+func TestLapsedStatusSurvivesTheOutputBoundary(t *testing.T) {
+	runtime, _ := expiryRuntime(t)
+	store := &recordingCandidateStore{
+		domain:     policy.DomainUser,
+		recoverErr: policyapproval.ErrApprovalExpired,
+		lineage:    lapsedLineage(),
+	}
+	handler, err := NewHandler(store, runtime, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.status.Validate(); err != nil {
+		t.Fatalf("the lapsed status cannot leave the daemon: %v", err)
+	}
+
+	response := handler.HandleIPC(context.Background(), ipc.Request{
+		Version: ipc.ProtocolVersion,
+		Action:  ipc.ActionPolicyStatus,
+	})
+	if !response.OK || response.PolicyStatus == nil {
+		t.Fatalf("policy status was refused: %+v", response)
+	}
+	reported := response.PolicyStatus.Status
+	if reported.State != policy.PolicyNone || reported.Reason != policy.ReasonExpired {
+		t.Fatalf("reported = %+v, want state none with reason expired", reported)
+	}
+	if reported.BundleGeneration != 0 || reported.PolicyGeneration != 0 {
+		t.Fatalf("a status that governs nothing named a generation: %+v", reported)
+	}
+	if reported.ExpiresAt != lapsedLineage().ExpiresAt {
+		t.Fatalf("expires_at = %q, want the validity that ended", reported.ExpiresAt)
+	}
+	if response.PolicyStatus.AuthorizationSuspension.Suspended {
+		t.Fatal("expiry reached the operator as a suspension")
+	}
+
+	// The announcement still knows which generation it is about, so a threshold
+	// is crossed once rather than once per cycle.
+	stage, generation, ok := handler.ExpiryAnnouncement(time.Now())
+	if !ok || stage != policyexpiry.StageLapsed || generation != lapsedLineage().Generation.Bundle {
+		t.Fatalf("announcement = %q/%d/%v", stage, generation, ok)
 	}
 }

@@ -188,9 +188,7 @@ func (handler *Handler) resolveExpiredActiveLocked(cause error, at time.Time) bo
 	handler.status = policy.Status{
 		Schema: policy.PolicyStatusSchema, Domain: handler.domain,
 		State: policy.PolicyNone, ExpiresAt: lineage.ExpiresAt,
-		BundleGeneration: lineage.Generation.Bundle,
-		PolicyGeneration: lineage.Generation.Policy,
-		Reason:           policy.ReasonExpired,
+		Reason: policy.ReasonExpired,
 	}
 	handler.authorizationSuspension = clearAuthorizationSuspension()
 	return true
@@ -487,14 +485,19 @@ func (handler *Handler) ExpiryAnnouncement(now time.Time) (policyexpiry.Stage, u
 	handler.mu.Lock()
 	defer handler.mu.Unlock()
 	handler.refreshAuthorizationLocked()
-	if handler.status.ExpiresAt == "" || handler.status.BundleGeneration == 0 {
+	// The generation comes from the installed compatibility rather than from the
+	// status, because a lapsed status reports no generation — nothing governs,
+	// so naming one there would be a claim that something does. The installed
+	// value is the same number, derived from the store either way.
+	generation := handler.config.Installed.CurrentBundleGeneration
+	if handler.status.ExpiresAt == "" || generation == 0 {
 		return policyexpiry.StageNone, 0, false
 	}
 	stage, ok := policyexpiry.StageAt(handler.status.ExpiresAt, now)
 	if !ok {
 		return policyexpiry.StageNone, 0, false
 	}
-	return stage, handler.status.BundleGeneration, true
+	return stage, generation, true
 }
 
 func (handler *Handler) MutationAllowed() bool {

@@ -29,6 +29,11 @@
 - [x] 5.1 Add an offline check for a prepared daemon policy configuration that calls the same validation the daemon applies. Assert it is the same function and not a second statement of the rules — a checker that drifts supplies confidence immediately before an irreversible step.
 - [x] 5.2 Keep fail-closed startup. Assert an invalid policy control block still refuses to start rather than degrading, because a daemon that quietly runs without policy control is how this machine sat dormant for a month.
 
+## 5b. Run The Thing Before Believing It
+
+- [x] 5b.1 Add a smoke test that starts the real daemon, drives it over the real socket, and asserts every response it produces is one the daemon could have assembled. Nothing in this repository ran a daemon before it: thirty gates checked imports, plists, structure and documentation, and all of them passed while `policy status` returned an internal error on the machine.
+- [x] 5b.2 Record what it cannot reach and why, measured rather than assumed. The policy store path derives from the operator's real home directory — `user.Current()` ignores HOME on macOS — so a test must not give the daemon a policy control block. Reintroducing the defect that reached the machine leaves the smoke test green and fails the boundary test in `policycontrol`; assert at the boundary a value crosses, because running the daemon widens the net rather than replacing it.
+
 ## 6. Arm The Control Plane On This Machine
 
 - [ ] 6.1 Prepare both daemon configurations privately as whole files, not edits, with the previous versions kept beside them. Include both compiler digests in the trusted list: the predecessor was compiled by the August compiler and its lineage read still checks that.
