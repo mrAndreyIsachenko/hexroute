@@ -93,6 +93,32 @@ written down in advance in
 because a rollback discovered during an incident is not a rollback. It is item
 7 below.
 
+`recover-policy-generations-after-expiry` is active, and item 7 waits on it. The
+active policy generation expired on 2026-08-22 and this machine has been locked
+out of its own policy control plane since: the installer refuses to place the
+successor generation because it cannot revalidate the expired predecessor, and
+the predecessor cannot be revalidated because time passed. Every other cause of
+that refusal has an operator action that clears it; expiry's only cure is the
+next generation, which is the thing refused.
+
+Measured rather than reasoned: inside its window the expired pointer passes
+every check — signature, digests, immutable artifacts, trusted compiler. Two
+comparisons stand in the way, and both ask about the present rather than about
+the artifact. So the defect is that the installer asks a historical question
+through the function that answers an operational one, and lineage is separated
+from authority: what proves the chain keeps every cryptographic check, and drops
+the validity window and the installed static digest. The relaxation returns a
+record that carries no manifest, payload or approval, so authorizing from a
+lapsed generation is unwritable rather than merely discouraged.
+
+Expiry also stops being reported as a `clock_anomaly` on a machine whose clock is
+correct, and stops raising a suspension that contributed nothing — mutations were
+already refused for the absence of an active generation. Removing that overlay
+removes the only loud signal, so the announcement is in the same change rather
+than a later one: `expires_at` becomes visible, and a bounded incident arrives at
+seven days, at forty-eight hours, and once a generation has lapsed unreplaced.
+Nothing announced expiry before, which is why nobody saw this one.
+
 `admit-a-second-ingress-client` closed on 2026-09-06. This system now records
 who reaches an ingress and what for — which nothing had ever done — and an
 operator can verify a published configuration version and read back the exact
@@ -196,6 +222,14 @@ item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
    this the smallest possible first grant of production authority — one
    `launchctl kickstart` of one named service — rather than an argument against
    the order.
+
+   Blocked on `recover-policy-generations-after-expiry`. The transaction ends in
+   activating a signed generation, and no generation can currently be installed
+   on this machine. It waits for the whole of that change rather than its first
+   part: task 4.1 proves the user half by waiting, the soak and the validity
+   bound are the same order of magnitude, and starting a multi-week wait whose
+   sample can end silently — before the thing that makes it non-silent exists —
+   would set up the experiment that just failed.
 8. Cut root tunnel ownership from Twilight to Hexroute transactionally. Its
    grill was run before the reorder and settled its shape, recorded here so it
    is not derived again.
