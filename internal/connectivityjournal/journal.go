@@ -218,19 +218,6 @@ func (journal *Journal) Domain() policy.Domain { return journal.domain }
 // owed after one — so a journal holding only the accepted facts cannot
 // reproduce the conclusion, and the lineage reports the difference as the
 // conclusion contradicting its own evidence.
-// TakeQuarantined reports the records the spool set aside since it was last
-// asked, and forgets them.
-//
-// The journal does not decide what to do about them. It carries the fact to
-// whoever owns the incident path, because a record set aside silently is a
-// record lost silently.
-func (journal *Journal) TakeQuarantined() []uint64 {
-	if journal == nil || journal.spool == nil {
-		return nil
-	}
-	return journal.spool.TakeQuarantined()
-}
-
 func (journal *Journal) Append(
 	fact connectivity.Fact,
 	hostSequence uint64,

@@ -3,6 +3,7 @@ package connectivityjournal
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
@@ -83,8 +84,19 @@ func TestJournalAppendDoesNotReadTheStoredRecords(t *testing.T) {
 		t.Fatalf("Append() over %d damaged stored records = %v; "+
 			"recording stopped because of records already lost", damaged, err)
 	}
-	if quarantined := journal.TakeQuarantined(); len(quarantined) != 0 {
-		t.Fatalf("appending set aside %d stored records; the journal's append path reads them",
-			len(quarantined))
+	// Reading one would have set it aside, which renames the file, so the
+	// directory says whether the append looked.
+	after, err := os.ReadDir(spoolDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aside := 0
+	for _, name := range after {
+		if strings.HasPrefix(name.Name(), ".quarantine-") {
+			aside++
+		}
+	}
+	if aside != 0 {
+		t.Fatalf("appending set aside %d stored records; the journal's append path reads them", aside)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -290,13 +291,6 @@ func TestDamagedRecordStopsOnlyItsOwnUse(t *testing.T) {
 			t.Fatal("a record that cannot be proved was returned to a caller")
 		}
 	}
-	if quarantined := reopened.TakeQuarantined(); len(quarantined) != 1 || quarantined[0] != sound+1 {
-		t.Fatalf("TakeQuarantined() = %v, want the damaged sequence reported once", quarantined)
-	}
-	if reopened.TakeQuarantined() != nil {
-		t.Fatal("TakeQuarantined() reported the same record twice")
-	}
-
 	// Set aside, not deleted: it is the only evidence of what damaged it.
 	if _, err := os.Stat(reopened.quarantinePath(sound + 1)); err != nil {
 		t.Fatalf("the damaged record was not kept: %v", err)
@@ -305,6 +299,23 @@ func TestDamagedRecordStopsOnlyItsOwnUse(t *testing.T) {
 	// And the point of all of it: the spool still records.
 	if _, err := reopened.Append(mustIncident(t, "sound-after")); err != nil {
 		t.Fatalf("Append() after a damaged record = %v", err)
+	}
+
+	// Setting a record aside is reported the way overflow already is, by
+	// writing an incident into the spool, so it travels the path every other
+	// event travels instead of needing one of its own.
+	after, err := reopened.Entries()
+	if err != nil {
+		t.Fatalf("Entries() after the report: %v", err)
+	}
+	reported := false
+	for _, entry := range after {
+		if strings.Contains(string(entry.Event), "spool-quarantine-") {
+			reported = true
+		}
+	}
+	if !reported {
+		t.Fatal("a record was set aside and nothing said so")
 	}
 }
 

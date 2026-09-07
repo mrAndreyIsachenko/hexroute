@@ -143,6 +143,11 @@ func (spool *Spool) Append(encodedEvent []byte) (uint64, error) {
 	spool.mu.Lock()
 	defer spool.mu.Unlock()
 
+	// Anything set aside while reading is reported here, on a path that already
+	// writes, before the record being appended takes its sequence.
+	if err := spool.reportQuarantineLocked(); err != nil {
+		return 0, err
+	}
 	records, err := spool.scanIndex()
 	if err != nil {
 		return 0, err
@@ -417,6 +422,58 @@ func (spool *Spool) recordOverflow(entries []Entry) error {
 		return ErrRecordTooLarge
 	}
 	return spool.commit([]Entry{overflow}, evictions)
+}
+
+// quarantineEntry is how the spool says a record was set aside.
+//
+// It reports the way overflow already does — by writing an incident into
+// itself — so the fact travels the path every other event travels, to the
+// archive and to telemetry, instead of needing a channel of its own.
+func (spool *Spool) quarantineEntry(count int) (Entry, error) {
+	eventMetadata, err := spool.metadata.Next()
+	if err != nil {
+		return Entry{}, err
+	}
+	sequence := eventMetadata.Sequence
+	encoded, err := event.Encode(event.SchemaIncident, event.Incident{
+		IncidentID: "spool-quarantine-" + strconv.FormatUint(sequence, 10),
+		Status:     event.IncidentOpened,
+		Severity:   event.SeverityWarning,
+		Category:   event.IncidentSpoolOverflow,
+		Component:  control.ComponentRuntime,
+		Generation: uint64(count),
+	})
+	if err != nil {
+		return Entry{}, err
+	}
+	return newEntry(eventMetadata, event.PriorityCritical, encoded)
+}
+
+// reportQuarantineLocked writes the pending report on the next write.
+//
+// Records are set aside while reading, and writing during a read would be a
+// surprise in a type built so that disk is the truth. So the report waits for a
+// path that already stages and commits.
+func (spool *Spool) reportQuarantineLocked() error {
+	if len(spool.quarantined) == 0 {
+		return nil
+	}
+	entry, err := spool.quarantineEntry(len(spool.quarantined))
+	if err != nil {
+		return err
+	}
+	if entry.Size > spool.maxBytes {
+		return nil
+	}
+	if err := spool.stage(entry); err != nil {
+		return err
+	}
+	if err := spool.commit([]Entry{entry}, nil); err != nil {
+		_ = os.Remove(spool.pendingPath(entry.Sequence))
+		return err
+	}
+	spool.quarantined = nil
+	return nil
 }
 
 func (spool *Spool) overflowEntry() (Entry, error) {
@@ -719,22 +776,6 @@ func (spool *Spool) quarantineLocked(sequence uint64) error {
 	}
 	spool.quarantined = append(spool.quarantined, sequence)
 	return nil
-}
-
-// TakeQuarantined reports the records set aside since it was last called, and
-// forgets them.
-//
-// The spool cannot raise an incident itself — it has no notion of one — so it
-// says what happened and leaves the saying to whoever owns the incident path.
-func (spool *Spool) TakeQuarantined() []uint64 {
-	spool.mu.Lock()
-	defer spool.mu.Unlock()
-	if len(spool.quarantined) == 0 {
-		return nil
-	}
-	taken := spool.quarantined
-	spool.quarantined = nil
-	return taken
 }
 
 func parseStableName(name string) (uint64, bool) {
