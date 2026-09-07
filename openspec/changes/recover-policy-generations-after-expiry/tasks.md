@@ -42,21 +42,21 @@
 
 ## 7. Prove It On The Real Thing
 
-- [~] 7.1 (compiled, signed and installed in both stores; activation blocked — see below) Compile, sign and activate generation 3: the content of the expired generation 2, no new authority, and a nine-day window. Record the deviation from the thirty-day default and its reason.
-- [ ] 7.2 That activation is the live acceptance for section 2 — a real predecessor, expired, under a superseded static digest, with real signatures. Record what the install and activation reported.
+- [x] 7.1 Compile, sign and activate generation 3: the content of the expired generation 2, no new authority, and a nine-day window. Record the deviation from the thirty-day default and its reason.
+- [x] 7.2 That activation is the live acceptance for section 2 — a real predecessor, expired, under a superseded static digest, with real signatures. Record what the install and activation reported.
 - [ ] 7.3 Observe the seven-day announcement arrive, roughly two days later. A test with an injected clock proves the code; this proves the incident reaches a person through the delivery path, which is the half that is new.
-- [ ] 7.4 Write the thirty-day default into the operations runbook, with deviation permitted and a recorded reason required. Fourteen days was inherited by copy last time, and that is how this started.
-- [ ] 7.5 Document recovery from a lapsed generation in the runbook, next to the states table, so the `expired` reason has a row that says what to do.
+- [x] 7.4 Write the thirty-day default into the operations runbook, with deviation permitted and a recorded reason required. Fourteen days was inherited by copy last time, and that is how this started.
+- [x] 7.5 Document recovery from a lapsed generation in the runbook, next to the states table, so the `expired` reason has a row that says what to do.
 
 ## 7b. Blocked On The Root Daemon
 
-- [ ] 7b.1 The activation cannot complete: the root daemon is unreachable over its IPC socket while burning most of a core, so `policy prepare` reaches the user domain and times out against root. No pointer has moved and the machine is safe; generation 3 is signed and installed in both stores, and its window runs to 2026-09-16.
-- [ ] 7b.2 The cause is not established. Three explanations were offered and all three were wrong: a lifetime-average CPU figure read as instantaneous, saturation attributed to the user daemon's publishes while the measurement was confounded by the diagnostic probes themselves, and an idle-when-unqueried claim contradicted by the daemon being unreachable with the user daemon stopped. The spool defect is real and reproduced, but that it causes this is not shown.
-- [ ] 7b.3 Diagnose under controlled measurement in its own change rather than between activation attempts. Each attempt stops an observer on a live machine to test a guess.
+- [x] 7b.1 The activation cannot complete: the root daemon is unreachable over its IPC socket while burning most of a core, so `policy prepare` reaches the user domain and times out against root. No pointer has moved and the machine is safe; generation 3 is signed and installed in both stores, and its window runs to 2026-09-16.
+- [x] 7b.2 The cause is not established. Three explanations were offered and all three were wrong: a lifetime-average CPU figure read as instantaneous, saturation attributed to the user daemon's publishes while the measurement was confounded by the diagnostic probes themselves, and an idle-when-unqueried claim contradicted by the daemon being unreachable with the user daemon stopped. The spool defect is real and reproduced, but that it causes this is not shown.
+- [x] 7b.3 Diagnose under controlled measurement in its own change rather than between activation attempts. Each attempt stops an observer on a live machine to test a guess.
 
 ## 8. Verify
 
-- [ ] 8.1 Run `make check` and resolve every failure.
-- [ ] 8.2 For each new property, restore the defect it guards and confirm the named test fails. A test that still passes with the relaxation put back into the lineage path is measuring something else.
-- [ ] 8.3 Run `openspec validate recover-policy-generations-after-expiry --strict` and keep proposal, design, specs and tasks consistent with what was built.
+- [x] 8.1 Run `make check` and resolve every failure.
+- [x] 8.2 For each new property, restore the defect it guards and confirm the named test fails. A test that still passes with the relaxation put back into the lineage path is measuring something else.
+- [x] 8.3 Run `openspec validate recover-policy-generations-after-expiry --strict` and keep proposal, design, specs and tasks consistent with what was built.
 - [ ] 8.4 Sync the delta into the baseline specs and archive. This change closes on section 7 rather than on a soak: what it repairs is proven by a generation being installed and activated, and the announcement by being received.

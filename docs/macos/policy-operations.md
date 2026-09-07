@@ -209,12 +209,51 @@ time, bounded reason and the authorization/existing-state overlays.
 | `active` | Signed pointer confirmed for this domain | Require matching bundle generation in both domains |
 | `rejected` | Candidate failed a bounded validation gate | Correct the source and compile a newer candidate |
 | `restart_required` | Dynamic candidate disagrees with static authority | Use a separately reviewed static installation; never force activation |
-| `domain_mismatch` | Root and user are not confirmed on one bundle | Block new mutations and converge the lagging domain with the same transaction |
+| `domain_mismatch` | The active pointer is not confirmed. Despite the name this does **not** mean the domains disagree — an unconfirmed pointer reports it even when both domains hold the same bundle. Read both pointers before concluding anything | Repeat `policy commit` with the **same** transaction identity so the confirmation completes |
+| `expired` | A generation reached its own `expires_at`. Not a fault: the clock is correct and the chain is intact, so the successor can be installed on top of it | Compile, sign and activate the next generation |
 | `authorization_suspended` | Local corruption, signature/digest, clock or IPC ownership guard narrowed authority | Preserve connectivity, correct the local fault and revalidate |
 
 Status and telemetry never contain selectors, endpoints, source paths, leases,
 credential references or credential values. Cloud availability is irrelevant
 to compile, prepare, commit, suspension, safe mode and `operator_resume`.
+
+## Validity
+
+Sign for the full thirty days unless there is a reason not to, and write the
+reason down beside the source when there is. A shorter window buys nothing: it
+does not narrow the authority, which is what the rules and leases inside the
+generation are for, and it does not speed up revocation, which is a rollback
+rather than a wait. All it buys is a more frequent ceremony with user presence,
+and therefore more chances to miss one.
+
+The first generation signed here took fourteen days for no recorded reason, and
+the machine spent a month locked out of its own policy control plane afterwards.
+
+## When A Generation Has Lapsed
+
+An expired generation reports `state: none` with reason `expired`, raises no
+suspension, and leaves its chain intact. Install the successor on top of it in
+the ordinary way: the parent is derived from the store, and the derivation does
+not require the predecessor to still be in force.
+
+`no_valid_generation` is the different case — no generation was ever installed,
+so there is no chain to continue.
+
+## Do Not Improvise Around A Commit
+
+`policy commit` runs prepare, stage, activate and confirm itself. Running
+`policy prepare` separately first leaves a prepared identity in the daemon that
+a later commit with a different identity cannot match, and the refusal reads as
+`precondition_failed`, which says nothing about the cause.
+
+`policy abort` is for a transaction that has **not** activated. Issued after the
+activation phase it writes a rejected resolution for a transaction whose pointer
+says active, and startup validation requires those two to agree. The records are
+immutable, so the contradiction cannot be edited out afterwards — the store has
+to be restored from a copy taken beforehand.
+
+Read both active pointers before deciding anything. Every mistake in this
+paragraph was made in one afternoon by acting first.
 
 ## Monotonic Rollback
 
