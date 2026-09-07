@@ -2,21 +2,21 @@
 
 ## 1. Preserve The Evidence Before Destroying It
 
-- [ ] 1.1 Copy both stranded policy stores privately, before any code or configuration changes. The fix destroys the only naturally occurring instance of this defect, and it carries real signatures, a two-generation history and a genuinely superseded static digest at once. This is available exactly once.
-- [ ] 1.2 Record the measured starting state alongside it: what each domain reports, and which check refuses at which point in time. The claim afterwards is "this was stuck and now is not", and that needs a before.
+- [x] 1.1 Copy both stranded policy stores privately, before any code or configuration changes. The fix destroys the only naturally occurring instance of this defect, and it carries real signatures, a two-generation history and a genuinely superseded static digest at once. This is available exactly once.
+- [x] 1.2 Record the measured starting state alongside it: what each domain reports, and which check refuses at which point in time. The claim afterwards is "this was stuck and now is not", and that needs a before.
 
 ## 2. Separate Lineage From Authority
 
-- [ ] 2.1 Add the lineage read. Assert it verifies the signature under the pinned key, every artifact digest, the immutable artifacts and the trusted compiler, and that it refuses when any of those fail. Assert it does not compare the predecessor's validity window or static digest against the present.
-- [ ] 2.2 Give it a return type that cannot authorize: generation numbers, payload digest, schema, and the predecessor's own validity and static digest as facts. Assert by construction that no caller can evaluate policy from it — the record carries no manifest, payload or approval.
-- [ ] 2.3 Use it in the installer and in both daemons at startup, so no current-generation value is ever taken from a configuration file while the store holds intact evidence. Assert an architectural boundary: the strict path is what governs, the lineage path is what chains, and neither substitutes for the other.
+- [x] 2.1 Add the lineage read. Assert it verifies the signature under the pinned key, every artifact digest, the immutable artifacts and the trusted compiler, and that it refuses when any of those fail. Assert it does not compare the predecessor's validity window or static digest against the present.
+- [x] 2.2 Give it a return type that cannot authorize: generation numbers, payload digest, schema, and the predecessor's own validity and static digest as facts. Assert by construction that no caller can evaluate policy from it — the record carries no manifest, payload or approval.
+- [x] 2.3 Use it in the installer and in both daemons at startup, so no current-generation value is ever taken from a configuration file while the store holds intact evidence. Assert an architectural boundary: the strict path is what governs, the lineage path is what chains, and neither substitutes for the other.
 - [ ] 2.4 Assert the relaxation does not leak to the candidate. A candidate is still refused for a wrong static digest, an untrusted compiler, a bad signature, or a window it is outside.
 
 ## 3. Stop Calling Expiry A Fault
 
-- [ ] 3.1 Report an expired active generation as `state: none, reason: expired`, and raise no suspension. Assert mutations remain refused, and that they are refused for the absence of an active generation rather than for a suspension.
-- [ ] 3.2 Assert `expired` is distinguishable from `no_valid_generation`, because one of them means the store holds a chain to build on.
-- [ ] 3.3 Assert a successor generation restores the active state without a daemon restart.
+- [x] 3.1 Report an expired active generation as `state: none, reason: expired`, and raise no suspension. Assert mutations remain refused, and that they are refused for the absence of an active generation rather than for a suspension.
+- [x] 3.2 Assert `expired` is distinguishable from `no_valid_generation`, because one of them means the store holds a chain to build on.
+- [x] 3.3 Assert a successor generation restores the active state without a daemon restart.
 
 ## 4. Announce The End Before It Arrives
 

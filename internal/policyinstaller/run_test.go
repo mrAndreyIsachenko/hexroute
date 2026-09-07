@@ -63,16 +63,15 @@ func TestRuntimeForInstallBindsCompatibilityToConfirmedActivePolicy(t *testing.T
 	fixture := newInstallerFixture(t)
 	store := &recoveringMemoryStore{
 		memoryStore: &memoryStore{domain: policy.DomainRoot, artifacts: make(map[policystore.ArtifactKind][]byte)},
-		active: policystore.RevalidatedActive{
+		lineage: policystore.Lineage{
 			Domain: policy.DomainRoot,
 			Generation: policystore.Generation{
 				Bundle: fixture.bundle.Candidate.Manifest.BundleGeneration,
 				Policy: fixture.bundle.Candidate.Root.PolicyGeneration,
 			},
 			PayloadSHA256: fixture.bundle.Candidate.Manifest.Root.PayloadSHA256,
+			PolicySchema:  fixture.bundle.Candidate.Manifest.PolicySchema,
 			ConfirmedAt:   fixture.now.Format(time.RFC3339Nano),
-			Manifest:      fixture.bundle.Candidate.Manifest,
-			Payload:       fixture.bundle.Candidate.Root,
 		},
 	}
 	runtime, err := runtimeForInstall(store, fixture.rootRuntime, fixture.now)
@@ -88,20 +87,20 @@ func TestRuntimeForInstallBindsCompatibilityToConfirmedActivePolicy(t *testing.T
 
 func TestRuntimeForInstallRejectsUnconfirmedOrUnrecoverableActivePolicy(t *testing.T) {
 	fixture := newInstallerFixture(t)
-	active := policystore.RevalidatedActive{
+	// Unconfirmed: a pointer that never converged names no parent.
+	unconfirmed := policystore.Lineage{
 		Domain: policy.DomainRoot,
 		Generation: policystore.Generation{
 			Bundle: fixture.bundle.Candidate.Manifest.BundleGeneration,
 			Policy: fixture.bundle.Candidate.Root.PolicyGeneration,
 		},
 		PayloadSHA256: fixture.bundle.Candidate.Manifest.Root.PayloadSHA256,
-		Manifest:      fixture.bundle.Candidate.Manifest,
-		Payload:       fixture.bundle.Candidate.Root,
+		PolicySchema:  fixture.bundle.Candidate.Manifest.PolicySchema,
 	}
 	for _, store := range []*recoveringMemoryStore{
 		{
 			memoryStore: &memoryStore{domain: policy.DomainRoot, artifacts: make(map[policystore.ArtifactKind][]byte)},
-			active:      active,
+			lineage:     unconfirmed,
 		},
 		{
 			memoryStore: &memoryStore{domain: policy.DomainRoot, artifacts: make(map[policystore.ArtifactKind][]byte)},
@@ -366,16 +365,16 @@ type memoryStore struct {
 
 type recoveringMemoryStore struct {
 	*memoryStore
-	active     policystore.RevalidatedActive
+	lineage    policystore.Lineage
 	recoverErr error
 }
 
-func (store *recoveringMemoryStore) RecoverActive(
+func (store *recoveringMemoryStore) RecoverLineage(
 	_ policy.InstalledCompatibility,
 	_ ed25519.PublicKey,
 	_ time.Time,
-) (policystore.RevalidatedActive, error) {
-	return store.active, store.recoverErr
+) (policystore.Lineage, error) {
+	return store.lineage, store.recoverErr
 }
 
 func (store *memoryStore) Domain() policy.Domain { return store.domain }

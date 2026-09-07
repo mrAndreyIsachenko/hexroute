@@ -40,6 +40,11 @@ type CandidateStore interface {
 		ed25519.PublicKey,
 		time.Time,
 	) (policystore.RevalidatedActive, error)
+	RecoverLineage(
+		policy.InstalledCompatibility,
+		ed25519.PublicKey,
+		time.Time,
+	) (policystore.Lineage, error)
 	RecoverPendingCommit() (policystore.CommitIntent, error)
 }
 
@@ -63,6 +68,11 @@ type Handler struct {
 	activeReceipt      policystore.PrepareReceipt
 	activePayload      policy.DomainPayload
 	hasActive          bool
+	// hasLapsed marks a store whose chain is intact but whose generation is
+	// over. It is not an active generation and authorizes nothing; it exists so
+	// that the parent of the successor is known, and so that periodic
+	// revalidation keeps looking once the successor arrives.
+	hasLapsed bool
 }
 
 func NewHandler(
@@ -125,6 +135,9 @@ func newHandlerWithClock(
 		return handler, nil
 	}
 	if err != nil {
+		if handler.resolveExpiredActiveLocked(err, currentTime) {
+			return handler, nil
+		}
 		if reason, ok := classifyActiveFailure(err); ok {
 			handler.suspendAuthorizationLocked(reason, currentTime)
 			return handler, nil
@@ -133,6 +146,50 @@ func newHandlerWithClock(
 	}
 	handler.restoreActive(active, currentTime)
 	return handler, nil
+}
+
+// resolveExpiredActiveLocked handles the one cause of failed revalidation that
+// is not a fault: the generation reached its own expiry.
+//
+// The clock is correct and nothing is damaged, so no suspension is raised —
+// mutations stay refused because there is no active generation, which is the
+// same answer by a truthful route. What is adopted is the chain: the store still
+// proves which generation came before, and the successor needs that to name its
+// parent. Nothing adopted here can authorize, because lineage carries no
+// payload, manifest or approval.
+//
+// A generation that is over *and* whose chain cannot be proven is a different
+// thing: the damage is the fault, and it suspends under the damage's own reason
+// rather than under the expiry. Reporting nothing at all is not an option — that
+// would be a daemon refusing to start over the passage of time.
+func (handler *Handler) resolveExpiredActiveLocked(cause error, at time.Time) bool {
+	if !errors.Is(cause, policyapproval.ErrApprovalExpired) || handler.store == nil {
+		return false
+	}
+	lineage, err := handler.store.RecoverLineage(
+		handler.config.Installed, handler.config.PinnedPublicKey, at,
+	)
+	if err != nil || !lineage.Expired || lineage.ConfirmedAt == "" ||
+		lineage.Domain != handler.domain || lineage.Generation.Bundle == 0 ||
+		lineage.Generation.Policy == 0 || lineage.PayloadSHA256 == "" {
+		reason := policy.ReasonCorruption
+		if classified, ok := classifyActiveFailure(err); ok {
+			reason = classified
+		}
+		handler.suspendAuthorizationLocked(reason, at)
+		return true
+	}
+	handler.config.Installed.CurrentPolicySchema = lineage.PolicySchema
+	handler.config.Installed.CurrentBundleGeneration = lineage.Generation.Bundle
+	handler.config.Installed.CurrentPolicyGeneration = lineage.Generation.Policy
+	handler.config.Installed.CurrentPayloadSHA256 = lineage.PayloadSHA256
+	handler.hasLapsed = true
+	handler.status = policy.Status{
+		Schema: policy.PolicyStatusSchema, Domain: handler.domain,
+		State: policy.PolicyNone, Reason: policy.ReasonExpired,
+	}
+	handler.authorizationSuspension = clearAuthorizationSuspension()
+	return true
 }
 
 func NewUnavailableHandler(domain policy.Domain) (*Handler, error) {
@@ -608,6 +665,7 @@ func (handler *Handler) restoreActive(
 	}
 	handler.setInstalled(pointer, active.Manifest.PolicySchema)
 	handler.setActiveIdentity(identity, pointer)
+	handler.hasLapsed = false
 	handler.activePayload = cloneDomainPayload(active.Payload)
 	state := policy.PolicyDomainMismatch
 	reason := policy.ReasonDomainMismatch
@@ -655,7 +713,11 @@ func (handler *Handler) restorePending(
 }
 
 func (handler *Handler) refreshAuthorizationLocked() {
-	if handler.store == nil || (!handler.hasActive && !handler.authorizationSuspension.Suspended) {
+	// A lapsed chain is neither active nor suspended, and it is exactly the
+	// state a successor arrives into. Without it here, removing the suspension
+	// would have made the daemon stop looking.
+	if handler.store == nil ||
+		(!handler.hasActive && !handler.hasLapsed && !handler.authorizationSuspension.Suspended) {
 		return
 	}
 	now, err := handler.checkedNowLocked()
@@ -670,6 +732,9 @@ func (handler *Handler) refreshAuthorizationLocked() {
 	if err != nil {
 		if errors.Is(err, policystore.ErrRecordNotFound) && handler.hasActive {
 			handler.suspendAuthorizationLocked(policy.ReasonCorruption, now)
+			return
+		}
+		if handler.resolveExpiredActiveLocked(err, now) {
 			return
 		}
 		if reason, ok := classifyActiveFailure(err); ok {
@@ -761,8 +826,7 @@ func validSuspensionReason(reason policy.PolicyReason) bool {
 
 func classifyActiveFailure(cause error) (policy.PolicyReason, bool) {
 	switch {
-	case errors.Is(cause, policystore.ErrActiveClockAnomaly),
-		errors.Is(cause, policyapproval.ErrApprovalExpired):
+	case errors.Is(cause, policystore.ErrActiveClockAnomaly):
 		return policy.ReasonClockAnomaly, true
 	case errors.Is(cause, policyapproval.ErrApprovalSignature),
 		errors.Is(cause, policyapproval.ErrSignerMismatch),

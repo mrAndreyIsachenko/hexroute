@@ -214,17 +214,20 @@ func VerifyCandidate(
 	pinnedPublicKey ed25519.PublicKey,
 	now time.Time,
 ) error {
-	if candidate.Validate() != nil || review.Validate() != nil || len(pinnedPublicKey) != ed25519.PublicKeySize {
+	if candidate.Validate() != nil || review.Validate() != nil ||
+		len(pinnedPublicKey) != ed25519.PublicKeySize || now.IsZero() {
 		return ErrInvalidApproval
 	}
-	return verifyApprovalBinding(
+	if err := verifyApprovalBinding(
 		candidate.Manifest,
 		candidate.ManifestSHA256,
 		review,
 		approval,
 		pinnedPublicKey,
-		now,
-	)
+	); err != nil {
+		return err
+	}
+	return CheckApprovalWindow(approval, now)
 }
 
 func VerifyDomainCandidate(
@@ -236,8 +239,37 @@ func VerifyDomainCandidate(
 	pinnedPublicKey ed25519.PublicKey,
 	now time.Time,
 ) error {
+	if now.IsZero() {
+		return ErrInvalidApproval
+	}
+	if err := VerifyDomainBinding(
+		manifest, manifestSHA256, payload, review, approval, pinnedPublicKey,
+	); err != nil {
+		return err
+	}
+	return CheckApprovalWindow(approval, now)
+}
+
+// VerifyDomainBinding proves the artifact and nothing about the present. It
+// checks every digest, the cross-references between manifest, payload, review
+// and approval, and the signature under the pinned key — but not whether the
+// approval is currently in force.
+//
+// It exists because two different questions were being asked through one
+// function. "May this generation govern now?" needs the validity window; "which
+// generation preceded this one?" does not, and a lineage that expires is not a
+// lineage. Callers that mean the first must use VerifyDomainCandidate, which
+// asks both halves.
+func VerifyDomainBinding(
+	manifest policy.Manifest,
+	manifestSHA256 string,
+	payload policy.DomainPayload,
+	review ReviewReport,
+	approval SignedApproval,
+	pinnedPublicKey ed25519.PublicKey,
+) error {
 	if manifest.Validate() != nil || payload.Validate() != nil || review.Validate() != nil ||
-		len(pinnedPublicKey) != ed25519.PublicKeySize || now.IsZero() {
+		len(pinnedPublicKey) != ed25519.PublicKeySize {
 		return ErrInvalidApproval
 	}
 	digest, _, err := policy.CanonicalSHA256(manifest)
@@ -261,8 +293,25 @@ func VerifyDomainCandidate(
 		review,
 		approval,
 		pinnedPublicKey,
-		now,
 	)
+}
+
+// CheckApprovalWindow is the half of verification that is about the present.
+// It is separate so that a caller asking a historical question cannot ask it by
+// accident, and so that a caller asking an operational one cannot skip it.
+func CheckApprovalWindow(approval SignedApproval, now time.Time) error {
+	if approval.validateStructure() != nil || now.IsZero() {
+		return ErrInvalidApproval
+	}
+	notBefore, err := time.Parse(time.RFC3339Nano, approval.Statement.NotBefore)
+	if err != nil {
+		return ErrInvalidApproval
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, approval.Statement.ExpiresAt)
+	if err != nil || now.Before(notBefore) || !now.Before(expiresAt) {
+		return ErrApprovalExpired
+	}
+	return nil
 }
 
 func verifyApprovalBinding(
@@ -271,9 +320,8 @@ func verifyApprovalBinding(
 	review ReviewReport,
 	approval SignedApproval,
 	pinnedPublicKey ed25519.PublicKey,
-	now time.Time,
 ) error {
-	if approval.validateStructure() != nil || now.IsZero() {
+	if approval.validateStructure() != nil {
 		return ErrInvalidApproval
 	}
 	reviewDigest, err := ReviewSHA256(review)
@@ -290,14 +338,6 @@ func verifyApprovalBinding(
 		statement.NotBefore != manifest.NotBefore || statement.ExpiresAt != manifest.ExpiresAt ||
 		review.ManifestSHA256 != manifestSHA256 {
 		return ErrSignerMismatch
-	}
-	notBefore, err := time.Parse(time.RFC3339Nano, statement.NotBefore)
-	if err != nil {
-		return ErrInvalidApproval
-	}
-	expiresAt, err := time.Parse(time.RFC3339Nano, statement.ExpiresAt)
-	if err != nil || now.Before(notBefore) || !now.Before(expiresAt) {
-		return ErrApprovalExpired
 	}
 	canonical, err := canonicalStatement(statement)
 	if err != nil {

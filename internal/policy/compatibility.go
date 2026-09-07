@@ -148,3 +148,15 @@ func CheckCandidateCompatibility(
 	}
 	return nil
 }
+
+// CompilerIsTrusted answers whether an artifact's compiler is one this
+// installation accepts. It is separate from the compatibility checks because
+// deriving lineage needs this question and none of the others: where an
+// artifact came from is a fact about the artifact, while everything else those
+// checks ask compares it to the present.
+func CompilerIsTrusted(installed InstalledCompatibility, compilerSHA256 string) bool {
+	if installed.Validate() != nil || !validSHA256(compilerSHA256) {
+		return false
+	}
+	return containsString(installed.TrustedCompilerSHA256, compilerSHA256)
+}
