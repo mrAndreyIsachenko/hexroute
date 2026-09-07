@@ -263,18 +263,39 @@ func (claim ActionLeaseExecutionClaim) Validate() error {
 	return nil
 }
 
+func statusWithoutExpiry(status Status) error {
+	if status.ExpiresAt != "" {
+		return ErrInvalidStatus
+	}
+	return nil
+}
+
 func (status Status) Validate() error {
 	if status.Schema != PolicyStatusSchema || !status.Domain.Valid() ||
 		!status.State.Valid() || !status.Reason.Valid() {
 		return ErrInvalidStatus
 	}
 	if status.State == PolicyNone {
+		// Nothing governs, so nothing about a governing generation may be
+		// reported: no numbers, no digest, no activation. The one exception is
+		// the validity that ended, and only when the reason says it ended —
+		// that is a fact about the past, and without it nothing can say how
+		// long ago, or announce it.
 		if status.BundleGeneration != 0 || status.PolicyGeneration != 0 ||
-			status.ManifestSHA256 != "" || status.ActivatedAt != "" ||
-			status.Reason != ReasonNoValidGeneration {
+			status.ManifestSHA256 != "" || status.ActivatedAt != "" {
 			return ErrInvalidStatus
 		}
-		return nil
+		switch status.Reason {
+		case ReasonNoValidGeneration:
+			return statusWithoutExpiry(status)
+		case ReasonExpired:
+			if _, ok := parseCanonicalUTC(status.ExpiresAt); !ok {
+				return ErrInvalidStatus
+			}
+			return nil
+		default:
+			return ErrInvalidStatus
+		}
 	}
 	if status.BundleGeneration == 0 || status.PolicyGeneration == 0 ||
 		!validSHA256(status.ManifestSHA256) {
