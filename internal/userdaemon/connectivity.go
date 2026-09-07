@@ -32,6 +32,9 @@ type factPublisher struct {
 	socket    string
 	roundTrip func(context.Context, string, ipc.Request) (ipc.Response, error)
 	baseline  bool
+	// deadline bounds one publication so a slow peer costs a publication
+	// rather than the cycle that issued it.
+	deadline time.Duration
 
 	// streamPath is where this daemon remembers how far its own sources got.
 	//
@@ -93,11 +96,35 @@ func (publisherClock) Tick() control.Tick {
 }
 
 // newFactPublisher builds one collector per user-owned source.
-func newFactPublisher(bootID, socket, streamPath string) (*factPublisher, error) {
+// publishDeadline is how long a publication may wait for the peer.
+//
+// It is derived from the observation interval rather than fixed, because the
+// property worth keeping is the relationship: waiting must end well inside the
+// cycle that issued it, whatever the cycle is set to. A constant drifts out of
+// that relationship the moment the interval is reconfigured, and drifts
+// silently.
+//
+// The default that this replaces was fifteen seconds against a fifteen-second
+// cycle, so one slow peer consumed the whole of it. That is how a fault in the
+// root daemon presented as a user daemon that would not answer.
+func publishDeadline(interval time.Duration) time.Duration {
+	deadline := interval / 3
+	if deadline < time.Second {
+		return time.Second
+	}
+	return deadline
+}
+
+func newFactPublisher(
+	bootID, socket, streamPath string,
+	interval time.Duration,
+) (*factPublisher, error) {
 	if bootID == "" || socket == "" {
 		return nil, nil
 	}
+	deadline := publishDeadline(interval)
 	publisher := &factPublisher{
+		deadline:   deadline,
 		sources:    make(map[connectivity.Component]*connectivitycollect.Collector),
 		bootID:     bootID,
 		socket:     socket,
@@ -114,7 +141,10 @@ func newFactPublisher(bootID, socket, streamPath string) (*factPublisher, error)
 			return continuous, awake, nil
 		},
 		roundTrip: func(ctx context.Context, path string, request ipc.Request) (ipc.Response, error) {
-			return (ipc.Client{Path: path}).Do(ctx, request)
+			// The deadline goes on the client as well as the context: Do
+			// honours the context while connecting and its own timeout while
+			// waiting for the answer, so a context alone bounds the wrong half.
+			return (ipc.Client{Path: path, Timeout: deadline}).Do(ctx, request)
 		},
 	}
 	resumed := publisher.resumeStreams()
@@ -187,7 +217,7 @@ func (publisher *factPublisher) Publish(ctx context.Context, evidence Evidence) 
 	if err != nil {
 		return err
 	}
-	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	callCtx, cancel := context.WithTimeout(ctx, publisher.deadline)
 	defer cancel()
 	response, err := publisher.roundTrip(callCtx, publisher.socket, ipc.Request{
 		Version:   ipc.ProtocolVersion,

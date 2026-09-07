@@ -253,20 +253,74 @@ func TestCrashRecoveryPromotesCompletePendingAndRemovesPartial(t *testing.T) {
 	}
 }
 
-func TestCorruptStableRecordStopsRecovery(t *testing.T) {
+// TestDamagedRecordStopsOnlyItsOwnUse replaces a test that asserted the
+// opposite: that one unreadable file made Open fail.
+//
+// That behaviour traded every future observation for a record already beyond
+// saving. One file damaged three weeks ago stopped the machine recording what
+// was happening now, and the spool exists to record.
+func TestDamagedRecordStopsOnlyItsOwnUse(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "spool")
+	store, err := Open(path, OwnerRoot, testOptions(1<<20))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	sound := mustAppend(t, store, mustIncident(t, "sound-before"))
+	if err := os.WriteFile(
+		filepath.Join(path, stableName(sound+1)),
+		[]byte(`{"schema":"broken"}`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write damaged record: %v", err)
+	}
+
+	reopened, err := Open(path, OwnerRoot, testOptions(1<<20))
+	if err != nil {
+		t.Fatalf("Open() over a damaged record = %v; the spool refused to work", err)
+	}
+
+	// Reading for use is where a record is proved, so it is where the damaged
+	// one leaves the stable set.
+	entries, err := reopened.Entries()
+	if err != nil {
+		t.Fatalf("Entries() over a damaged record = %v", err)
+	}
+	for _, entry := range entries {
+		if entry.Sequence == sound+1 {
+			t.Fatal("a record that cannot be proved was returned to a caller")
+		}
+	}
+	if quarantined := reopened.TakeQuarantined(); len(quarantined) != 1 || quarantined[0] != sound+1 {
+		t.Fatalf("TakeQuarantined() = %v, want the damaged sequence reported once", quarantined)
+	}
+	if reopened.TakeQuarantined() != nil {
+		t.Fatal("TakeQuarantined() reported the same record twice")
+	}
+
+	// Set aside, not deleted: it is the only evidence of what damaged it.
+	if _, err := os.Stat(reopened.quarantinePath(sound + 1)); err != nil {
+		t.Fatalf("the damaged record was not kept: %v", err)
+	}
+
+	// And the point of all of it: the spool still records.
+	if _, err := reopened.Append(mustIncident(t, "sound-after")); err != nil {
+		t.Fatalf("Append() after a damaged record = %v", err)
+	}
+}
+
+// TestAnUnusableDirectoryStillRefuses keeps the other half. A damaged record is
+// one record; a directory whose shape cannot be read says nothing about the
+// spool can be trusted.
+func TestAnUnusableDirectoryStillRefuses(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spool")
 	if _, err := Open(path, OwnerRoot, testOptions(4096)); err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	if err := os.WriteFile(
-		filepath.Join(path, stableName(1)),
-		[]byte(`{"schema":"broken"}`),
-		0o600,
-	); err != nil {
-		t.Fatalf("write corrupt record: %v", err)
+	if err := os.MkdirAll(filepath.Join(path, stableName(1)), 0o700); err != nil {
+		t.Fatalf("create colliding directory: %v", err)
 	}
 	if _, err := Open(path, OwnerRoot, testOptions(4096)); !errors.Is(err, ErrCorruptSpool) {
-		t.Fatalf("Open(corrupt) error = %v, want %v", err, ErrCorruptSpool)
+		t.Fatalf("Open() over an unusable directory = %v, want %v", err, ErrCorruptSpool)
 	}
 }
 

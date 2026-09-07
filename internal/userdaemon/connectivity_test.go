@@ -27,7 +27,7 @@ func observedEvidence() Evidence {
 // The publisher sends facts for exactly the components the user domain owns,
 // in its own domain, and nothing else.
 func TestPublisherSendsOnlyItsOwnComponents(t *testing.T) {
-	publisher, err := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", filepath.Join(t.TempDir(), "connectivity-stream.json"))
+	publisher, err := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", filepath.Join(t.TempDir(), "connectivity-stream.json"), 15*time.Second)
 	if err != nil || publisher == nil {
 		t.Fatalf("newFactPublisher: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestPublisherSendsOnlyItsOwnComponents(t *testing.T) {
 // The first publication of a boot restates both components in full, because a
 // partial first answer would be mistaken for a whole one.
 func TestFirstPublicationIsABaseline(t *testing.T) {
-	publisher, _ := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", filepath.Join(t.TempDir(), "connectivity-stream.json"))
+	publisher, _ := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", filepath.Join(t.TempDir(), "connectivity-stream.json"), 15*time.Second)
 	var first []json.RawMessage
 	publisher.roundTrip = func(
 		_ context.Context, _ string, request ipc.Request,
@@ -105,7 +105,7 @@ func TestFirstPublicationIsABaseline(t *testing.T) {
 // next cycle republishes; a fact held back and sent later would describe a
 // moment that has passed.
 func TestUnreachableRootDoesNotStopTheDaemon(t *testing.T) {
-	publisher, _ := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", filepath.Join(t.TempDir(), "connectivity-stream.json"))
+	publisher, _ := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", filepath.Join(t.TempDir(), "connectivity-stream.json"), 15*time.Second)
 	publisher.roundTrip = func(
 		_ context.Context, _ string, request ipc.Request,
 	) (ipc.Response, error) {
@@ -125,7 +125,7 @@ func TestUnreachableRootDoesNotStopTheDaemon(t *testing.T) {
 // A cycle that observed nothing publishes nothing: root then lets the user
 // components go stale on their own evidence, which is true.
 func TestUnreachedCyclePublishesNothing(t *testing.T) {
-	publisher, _ := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", filepath.Join(t.TempDir(), "connectivity-stream.json"))
+	publisher, _ := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", filepath.Join(t.TempDir(), "connectivity-stream.json"), 15*time.Second)
 	called := false
 	publisher.roundTrip = func(
 		context.Context, string, ipc.Request,
@@ -143,7 +143,7 @@ func TestUnreachedCyclePublishesNothing(t *testing.T) {
 
 // Without a root socket the daemon runs the path it ran before this existed.
 func TestNoRootSocketDisablesPublication(t *testing.T) {
-	publisher, err := newFactPublisher("boot-0000000000000000", "", filepath.Join(t.TempDir(), "connectivity-stream.json"))
+	publisher, err := newFactPublisher("boot-0000000000000000", "", filepath.Join(t.TempDir(), "connectivity-stream.json"), 15*time.Second)
 	if err != nil {
 		t.Fatalf("newFactPublisher: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestNoRootSocketDisablesPublication(t *testing.T) {
 // happily into nothing.
 func TestARestartedPublisherContinuesItsOwnStream(t *testing.T) {
 	stream := filepath.Join(t.TempDir(), "connectivity-stream.json")
-	first, err := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", stream)
+	first, err := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", stream, 15*time.Second)
 	if err != nil || first == nil {
 		t.Fatalf("publisher: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestARestartedPublisherContinuesItsOwnStream(t *testing.T) {
 		t.Fatal("nothing was published, so this test proves nothing")
 	}
 
-	restarted, err := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", stream)
+	restarted, err := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock", stream, 15*time.Second)
 	if err != nil || restarted == nil {
 		t.Fatalf("restart: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestARestartedPublisherContinuesItsOwnStream(t *testing.T) {
 // owner never did — which is why a sleep could never be recorded as survived.
 func TestAPublisherRestatesInFullAfterASleep(t *testing.T) {
 	publisher, err := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock",
-		filepath.Join(t.TempDir(), "connectivity-stream.json"))
+		filepath.Join(t.TempDir(), "connectivity-stream.json"), 15*time.Second)
 	if err != nil || publisher == nil {
 		t.Fatalf("publisher: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestAPublisherRestatesInFullAfterASleep(t *testing.T) {
 // the wake they owed a restatement for could never be answered.
 func TestAPublisherAdoptsThePositionRootReports(t *testing.T) {
 	publisher, err := newFactPublisher("boot-0000000000000000", "/tmp/probe.sock",
-		filepath.Join(t.TempDir(), "connectivity-stream.json"))
+		filepath.Join(t.TempDir(), "connectivity-stream.json"), 15*time.Second)
 	if err != nil || publisher == nil {
 		t.Fatalf("publisher: %v", err)
 	}
