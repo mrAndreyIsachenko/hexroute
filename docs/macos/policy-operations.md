@@ -217,6 +217,21 @@ Status and telemetry never contain selectors, endpoints, source paths, leases,
 credential references or credential values. Cloud availability is irrelevant
 to compile, prepare, commit, suspension, safe mode and `operator_resume`.
 
+## Rebuilding The Signer Changes What Must Be Trusted
+
+The signed application carries the compiler, so a change to the compiler is not
+in effect until the application is rebuilt from it — a candidate the new rules
+would accept is still refused by the binary on disk.
+
+Rebuilding changes the application's digest, and a candidate is refused unless
+its `compiler_sha256` is in the installed `trusted_compiler_sha256`. So a
+compiler change means: rebuild, add the new digest to both daemon
+configurations, check them offline, install and restart — and only then compile.
+
+Keep the previous digests in the list. The lineage read still checks the
+compiler that produced the predecessor, and dropping its digest makes the
+generation already on disk unreadable.
+
 ## Validity
 
 Sign for the full thirty days unless there is a reason not to, and write the
