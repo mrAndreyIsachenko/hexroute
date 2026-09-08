@@ -125,17 +125,28 @@ const (
 type Reason string
 
 const (
-	ReasonInvalidFlags          Reason = "invalid_flags"
-	ReasonUnexpectedArguments   Reason = "unexpected_arguments"
-	ReasonUnauthorizedPeer      Reason = "unauthorized_peer"
-	ReasonMalformedRequest      Reason = "malformed_request"
-	ReasonOversizedRequest      Reason = "oversized_request"
-	ReasonUnsupportedAction     Reason = "unsupported_action"
-	ReasonUnsupportedVersion    Reason = "unsupported_version"
-	ReasonMissingGeneration     Reason = "missing_generation"
-	ReasonGenerationConflict    Reason = "generation_conflict"
-	ReasonSafetyPolicyViolation Reason = "safety_policy_violation"
-	ReasonInvalidConfiguration  Reason = "invalid_configuration"
+	ReasonInvalidFlags        Reason = "invalid_flags"
+	ReasonUnexpectedArguments Reason = "unexpected_arguments"
+	ReasonUnauthorizedPeer    Reason = "unauthorized_peer"
+	// ReasonMalformedRequest is the last resort, not the usual answer. A
+	// rejection that cannot say which check refused it sends the reader looking
+	// in the wrong place — this one cost an evening of wrong diagnoses on a
+	// machine where nothing was actually broken.
+	ReasonMalformedRequest       Reason = "malformed_request"
+	ReasonMalformedFrame         Reason = "malformed_frame"
+	ReasonInvalidRequestID       Reason = "invalid_request_id"
+	ReasonInvalidTarget          Reason = "invalid_target"
+	ReasonInvalidPolicyMessage   Reason = "invalid_policy_message"
+	ReasonInvalidReconcilerMsg   Reason = "invalid_reconciler_message"
+	ReasonInvalidConnectivityMsg Reason = "invalid_connectivity_message"
+	ReasonConnectivityDomain     Reason = "connectivity_domain_refused"
+	ReasonOversizedRequest       Reason = "oversized_request"
+	ReasonUnsupportedAction      Reason = "unsupported_action"
+	ReasonUnsupportedVersion     Reason = "unsupported_version"
+	ReasonMissingGeneration      Reason = "missing_generation"
+	ReasonGenerationConflict     Reason = "generation_conflict"
+	ReasonSafetyPolicyViolation  Reason = "safety_policy_violation"
+	ReasonInvalidConfiguration   Reason = "invalid_configuration"
 
 	// The reasons below name the subsystem a startup refused on. They exist
 	// because a daemon under KeepAlive that reports one reason for every
@@ -290,7 +301,9 @@ func validReason(value Reason) bool {
 		ReasonSafetyPolicyViolation, ReasonInvalidConfiguration,
 		ReasonHeartbeatUnavailable, ReasonReadModelUnavailable,
 		ReasonQualificationUnavailable, ReasonSocketUnavailable,
-		ReasonPolicyStoreUnavailable:
+		ReasonPolicyStoreUnavailable, ReasonMalformedFrame, ReasonInvalidRequestID,
+		ReasonInvalidTarget, ReasonInvalidPolicyMessage, ReasonInvalidReconcilerMsg,
+		ReasonInvalidConnectivityMsg, ReasonConnectivityDomain:
 		return true
 	default:
 		return false
