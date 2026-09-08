@@ -140,6 +140,7 @@ const (
 	ReasonInvalidReconcilerMsg   Reason = "invalid_reconciler_message"
 	ReasonInvalidConnectivityMsg Reason = "invalid_connectivity_message"
 	ReasonConnectivityDomain     Reason = "connectivity_domain_refused"
+	ReasonPeerSilent             Reason = "peer_did_not_answer"
 	ReasonOversizedRequest       Reason = "oversized_request"
 	ReasonUnsupportedAction      Reason = "unsupported_action"
 	ReasonUnsupportedVersion     Reason = "unsupported_version"
@@ -303,7 +304,8 @@ func validReason(value Reason) bool {
 		ReasonQualificationUnavailable, ReasonSocketUnavailable,
 		ReasonPolicyStoreUnavailable, ReasonMalformedFrame, ReasonInvalidRequestID,
 		ReasonInvalidTarget, ReasonInvalidPolicyMessage, ReasonInvalidReconcilerMsg,
-		ReasonInvalidConnectivityMsg, ReasonConnectivityDomain:
+		ReasonInvalidConnectivityMsg, ReasonConnectivityDomain,
+		ReasonPeerSilent:
 		return true
 	default:
 		return false

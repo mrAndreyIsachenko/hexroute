@@ -32,6 +32,8 @@ func (reporter *RejectionLogger) ReportIPCRejection(err error) {
 		reason = logging.ReasonUnauthorizedPeer
 	case errors.Is(err, ipc.ErrFrameTooLarge):
 		reason = logging.ReasonOversizedRequest
+	case errors.Is(err, ipc.ErrPeerSilent):
+		reason = logging.ReasonPeerSilent
 	case errors.Is(err, ipc.ErrMalformedFrame):
 		reason = logging.ReasonMalformedFrame
 	case errors.Is(err, ipc.ErrUnsupportedVersion):
