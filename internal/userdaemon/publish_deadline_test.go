@@ -69,7 +69,7 @@ func TestASlowPeerCostsOnePublicationNotTheCycle(t *testing.T) {
 	}
 
 	start := time.Now()
-	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+	if err := publisher.Publish(context.Background(), observedEvidence(), nil); err != nil {
 		t.Fatalf("Publish() over an unresponsive peer = %v; the cycle was failed rather than continued", err)
 	}
 	elapsed := time.Since(start)
@@ -124,7 +124,7 @@ func TestTheDeadlineBoundsWaitingAndNotOnlyConnecting(t *testing.T) {
 	}
 
 	start := time.Now()
-	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+	if err := publisher.Publish(context.Background(), observedEvidence(), nil); err != nil {
 		t.Fatalf("Publish() against a silent peer = %v", err)
 	}
 	elapsed := time.Since(start)

@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"time"
 
@@ -12,7 +14,9 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivitycollect"
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
+	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
+	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyclock"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
@@ -53,6 +57,14 @@ type factPublisher struct {
 	clocks     func() (time.Duration, time.Duration, error)
 	continuous time.Duration
 	awake      time.Duration
+
+	// refusals counts publications in a row that root did not take.
+	//
+	// A refusal costs the cycle nothing by design, and that is exactly why it
+	// has to be counted: without it the loop goes on reporting healthy while
+	// the two components this domain speaks for keep whatever they last said,
+	// for as long as it takes somebody to notice by hand.
+	refusals uint64
 }
 
 // sleepFloor is the smallest difference between the two clocks that is a sleep
@@ -182,7 +194,11 @@ func newFactPublisher(
 // A cycle that observed nothing sends nothing. Root then lets the user
 // components pass their freshness deadlines and go stale on their own
 // evidence, which is true — repeating the last answer would not be.
-func (publisher *factPublisher) Publish(ctx context.Context, evidence Evidence) error {
+func (publisher *factPublisher) Publish(
+	ctx context.Context,
+	evidence Evidence,
+	logger *logging.Logger,
+) error {
 	if publisher == nil || !evidence.Reached {
 		return nil
 	}
@@ -233,8 +249,16 @@ func (publisher *factPublisher) Publish(ctx context.Context, evidence Evidence) 
 		// Root unreachable or refusing. The next cycle republishes; nothing is
 		// retried out of order and nothing is buffered, because a fact held
 		// back and sent later would describe a moment that has passed.
+		//
+		// Dropped, but no longer in silence. Refusing to fail the cycle is the
+		// right answer and it is also what hid a day of refused publications:
+		// root answers most refusals with an error code, which is a well formed
+		// response it does not report, so neither side wrote anything down
+		// while the stream stood still.
+		publisher.reportRefusal(logger, publicationReason(err, response.Error))
 		return nil
 	}
+	publisher.reportAccepted(logger)
 	publisher.baseline = true
 	// Root holds the truth about where each stream stands. A publisher can
 	// remember its own position, but only across a restart it survived to
@@ -276,6 +300,77 @@ func (publisher *factPublisher) adoptStreams(result *ipc.PublishConnectivityFact
 				publisher.baseline = false
 			}
 		}
+	}
+}
+
+// refusalReportEvery restates a continuing refusal about once an hour at the
+// default cycle.
+//
+// A line every cycle would bury the log it exists to make readable, and a line
+// only at the transition would leave an outage that began before anyone looked
+// with nothing in the tail to find.
+const refusalReportEvery = 240
+
+// reportRefusal writes down a publication root did not take.
+func (publisher *factPublisher) reportRefusal(
+	logger *logging.Logger,
+	reason logging.Reason,
+) {
+	publisher.refusals++
+	if publisher.refusals == 1 || publisher.refusals%refusalReportEvery == 0 {
+		_ = logger.Emit(logging.LevelWarn, logging.EventConnectivityPublication,
+			logging.ResultRejected, reason)
+	}
+}
+
+// reportAccepted closes a run of refusals, so the log says when it ended and
+// not only that it began.
+func (publisher *factPublisher) reportAccepted(logger *logging.Logger) {
+	if publisher.refusals == 0 {
+		return
+	}
+	publisher.refusals = 0
+	_ = logger.Emit(logging.LevelInfo, logging.EventConnectivityPublication,
+		logging.ResultOK, "")
+}
+
+// publicationReason names what root said, or what stopped the round trip.
+//
+// The distinction worth keeping is between an answer and no answer: an error
+// code is root deciding, and a transport failure is root never getting to. A
+// reason that collapsed the two would say a refusal happened without saying
+// which side to go and look at.
+func publicationReason(err error, code ipc.ErrorCode) logging.Reason {
+	if err != nil {
+		// A round trip can fail without root ever hearing it. The client
+		// validates the request before it dials, so a publication this daemon
+		// built wrong never leaves the process — and reading that as an
+		// unreachable socket sends the next reader to the wrong machine.
+		if named, ok := operator.RejectionReason(err); ok {
+			return named
+		}
+		switch {
+		case errors.Is(err, os.ErrDeadlineExceeded),
+			errors.Is(err, context.DeadlineExceeded):
+			return logging.ReasonPublicationTimeout
+		case errors.Is(err, fs.ErrNotExist):
+			return logging.ReasonSocketAbsent
+		case errors.Is(err, fs.ErrPermission):
+			return logging.ReasonSocketDenied
+		}
+		return logging.ReasonSocketUnavailable
+	}
+	switch code {
+	case ipc.ErrorInvalidRequest:
+		return logging.ReasonMalformedRequest
+	case ipc.ErrorUnauthorized:
+		return logging.ReasonUnauthorizedPeer
+	case ipc.ErrorStaleGeneration:
+		return logging.ReasonGenerationConflict
+	case ipc.ErrorPrecondition:
+		return logging.ReasonReadModelUnavailable
+	default:
+		return logging.ReasonRootInternal
 	}
 }
 

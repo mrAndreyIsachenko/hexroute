@@ -22,11 +22,31 @@ func (reporter *RejectionLogger) ReportIPCRejection(err error) {
 	if reporter == nil || reporter.logger == nil {
 		return
 	}
-	// Every refusal the IPC layer can produce names the check that made it.
-	// Collapsing them into one reason is not a smaller log, it is a wrong one:
-	// a request refused for its target, its domain, its identifier and its
-	// payload all read identically, and the reader goes looking somewhere else.
 	reason := logging.ReasonMalformedRequest
+	if named, ok := RejectionReason(err); ok {
+		reason = named
+	}
+	_ = reporter.logger.Emit(
+		logging.LevelWarn,
+		logging.EventIPCRejected,
+		logging.ResultRejected,
+		reason,
+	)
+}
+
+// RejectionReason names the check an IPC error came from.
+//
+// Every refusal the IPC layer can produce names the check that made it.
+// Collapsing them into one reason is not a smaller log, it is a wrong one: a
+// request refused for its target, its domain, its identifier and its payload
+// all read identically, and the reader goes looking somewhere else.
+//
+// The second result says whether the error was named at all. A caller that can
+// also fail for reasons outside this layer — a publisher whose round trip may
+// never reach a peer — has to tell "the IPC layer refused this" from "the IPC
+// layer has nothing to say about it", and one reason cannot carry both.
+func RejectionReason(err error) (logging.Reason, bool) {
+	var reason logging.Reason
 	switch {
 	case errors.Is(err, ipc.ErrUnauthorizedPeer):
 		reason = logging.ReasonUnauthorizedPeer
@@ -52,11 +72,8 @@ func (reporter *RejectionLogger) ReportIPCRejection(err error) {
 		reason = logging.ReasonConnectivityDomain
 	case errors.Is(err, ipc.ErrInvalidConnectivityMessage):
 		reason = logging.ReasonInvalidConnectivityMsg
+	default:
+		return "", false
 	}
-	_ = reporter.logger.Emit(
-		logging.LevelWarn,
-		logging.EventIPCRejected,
-		logging.ResultRejected,
-		reason,
-	)
+	return reason, true
 }

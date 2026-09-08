@@ -458,7 +458,7 @@ func observeLoop(
 		// Publishing happens before the daemon acts on its own conclusions and
 		// cannot change them: a root that is unreachable, refusing or absent
 		// leaves this loop exactly as it was.
-		if err := publisher.Publish(ctx, summary.Observed); err != nil {
+		if err := publisher.Publish(ctx, summary.Observed, logger); err != nil {
 			return err
 		}
 		if err := store.Save(summary.Plan.Snapshot); err != nil {
