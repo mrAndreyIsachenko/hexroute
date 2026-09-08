@@ -63,6 +63,7 @@ func errorsByName() map[string]error {
 		"ErrUnauthorizedPeer":           ipc.ErrUnauthorizedPeer,
 		"ErrFrameTooLarge":              ipc.ErrFrameTooLarge,
 		"ErrMalformedFrame":             ipc.ErrMalformedFrame,
+		"ErrPeerSilent":                 ipc.ErrPeerSilent,
 		"ErrUnsupportedVersion":         ipc.ErrUnsupportedVersion,
 		"ErrInvalidRequestID":           ipc.ErrInvalidRequestID,
 		"ErrUnknownAction":              ipc.ErrUnknownAction,

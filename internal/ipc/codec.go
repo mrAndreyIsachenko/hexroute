@@ -2,16 +2,28 @@ package ipc
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"os"
+	"syscall"
 )
 
 var (
 	ErrFrameTooLarge  = errors.New("IPC frame exceeds maximum size")
 	ErrMalformedFrame = errors.New("malformed IPC frame")
+	// ErrPeerSilent is a peer that did not finish answering in time.
+	//
+	// It is not a malformed frame, though it arrives here as the same failed
+	// read. Calling it one is how a deadline the caller set itself came back
+	// as the other side's fault: a publisher that gives up after five seconds
+	// while the server is still allowed fifteen produces this every cycle, and
+	// both logs then name the other machine.
+	ErrPeerSilent = errors.New("IPC peer did not answer in time")
 )
 
 func WriteFrame(writer io.Writer, value any) error {
@@ -83,7 +95,7 @@ func ReadResponse(reader io.Reader) (Response, error) {
 func readFrame(reader io.Reader) ([]byte, error) {
 	var header [4]byte
 	if _, err := io.ReadFull(reader, header[:]); err != nil {
-		return nil, ErrMalformedFrame
+		return nil, frameReadError(err)
 	}
 
 	length := binary.BigEndian.Uint32(header[:])
@@ -96,7 +108,28 @@ func readFrame(reader io.Reader) ([]byte, error) {
 
 	payload := make([]byte, int(length))
 	if _, err := io.ReadFull(reader, payload); err != nil {
-		return nil, ErrMalformedFrame
+		return nil, frameReadError(err)
 	}
 	return payload, nil
+}
+
+// frameReadError separates a peer that answered badly from one that did not
+// answer at all.
+//
+// A frame is malformed when its bytes are wrong. A read that timed out, or a
+// connection that closed before the frame arrived, says nothing about the
+// bytes: it says the exchange did not finish, which is a different fault, on a
+// different side, with a different fix.
+func frameReadError(err error) error {
+	switch {
+	case errors.Is(err, os.ErrDeadlineExceeded),
+		errors.Is(err, context.DeadlineExceeded):
+		return ErrPeerSilent
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF),
+		errors.Is(err, net.ErrClosed), errors.Is(err, syscall.ECONNRESET),
+		errors.Is(err, syscall.EPIPE):
+		return ErrPeerSilent
+	default:
+		return ErrMalformedFrame
+	}
 }
