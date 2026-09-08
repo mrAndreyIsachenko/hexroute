@@ -22,16 +22,34 @@ func (reporter *RejectionLogger) ReportIPCRejection(err error) {
 	if reporter == nil || reporter.logger == nil {
 		return
 	}
+	// Every refusal the IPC layer can produce names the check that made it.
+	// Collapsing them into one reason is not a smaller log, it is a wrong one:
+	// a request refused for its target, its domain, its identifier and its
+	// payload all read identically, and the reader goes looking somewhere else.
 	reason := logging.ReasonMalformedRequest
 	switch {
 	case errors.Is(err, ipc.ErrUnauthorizedPeer):
 		reason = logging.ReasonUnauthorizedPeer
 	case errors.Is(err, ipc.ErrFrameTooLarge):
 		reason = logging.ReasonOversizedRequest
+	case errors.Is(err, ipc.ErrMalformedFrame):
+		reason = logging.ReasonMalformedFrame
 	case errors.Is(err, ipc.ErrUnsupportedVersion):
 		reason = logging.ReasonUnsupportedVersion
 	case errors.Is(err, ipc.ErrUnknownAction):
 		reason = logging.ReasonUnsupportedAction
+	case errors.Is(err, ipc.ErrInvalidRequestID):
+		reason = logging.ReasonInvalidRequestID
+	case errors.Is(err, ipc.ErrInvalidTarget):
+		reason = logging.ReasonInvalidTarget
+	case errors.Is(err, ipc.ErrInvalidPolicyMessage):
+		reason = logging.ReasonInvalidPolicyMessage
+	case errors.Is(err, ipc.ErrInvalidReconcilerMessage):
+		reason = logging.ReasonInvalidReconcilerMsg
+	case errors.Is(err, ipc.ErrConnectivityDomain):
+		reason = logging.ReasonConnectivityDomain
+	case errors.Is(err, ipc.ErrInvalidConnectivityMessage):
+		reason = logging.ReasonInvalidConnectivityMsg
 	}
 	_ = reporter.logger.Emit(
 		logging.LevelWarn,
