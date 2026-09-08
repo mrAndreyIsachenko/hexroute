@@ -41,7 +41,7 @@ func TestPublisherSendsOnlyItsOwnComponents(t *testing.T) {
 			PublishConnectivityFacts: &ipc.PublishConnectivityFactsResult{Accepted: 2},
 		}, nil
 	}
-	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+	if err := publisher.Publish(context.Background(), observedEvidence(), nil); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	if sent == nil {
@@ -87,7 +87,7 @@ func TestFirstPublicationIsABaseline(t *testing.T) {
 			PublishConnectivityFacts: &ipc.PublishConnectivityFactsResult{Accepted: 2},
 		}, nil
 	}
-	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+	if err := publisher.Publish(context.Background(), observedEvidence(), nil); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	for _, raw := range first {
@@ -114,7 +114,7 @@ func TestUnreachableRootDoesNotStopTheDaemon(t *testing.T) {
 			Error: ipc.ErrorPrecondition,
 		}, nil
 	}
-	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+	if err := publisher.Publish(context.Background(), observedEvidence(), nil); err != nil {
 		t.Fatalf("a refused publication stopped the loop: %v", err)
 	}
 	if publisher.baseline {
@@ -133,7 +133,7 @@ func TestUnreachedCyclePublishesNothing(t *testing.T) {
 		called = true
 		return ipc.Response{}, nil
 	}
-	if err := publisher.Publish(context.Background(), Evidence{}); err != nil {
+	if err := publisher.Publish(context.Background(), Evidence{}, nil); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	if called {
@@ -150,7 +150,7 @@ func TestNoRootSocketDisablesPublication(t *testing.T) {
 	if publisher != nil {
 		t.Fatal("a daemon without a root socket built a publisher")
 	}
-	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+	if err := publisher.Publish(context.Background(), observedEvidence(), nil); err != nil {
 		t.Fatalf("a disabled publisher returned an error: %v", err)
 	}
 }
@@ -175,7 +175,7 @@ func TestARestartedPublisherContinuesItsOwnStream(t *testing.T) {
 	}
 	first.roundTrip = accepted
 	for cycle := 0; cycle < 3; cycle++ {
-		if err := first.Publish(context.Background(), observedEvidence()); err != nil {
+		if err := first.Publish(context.Background(), observedEvidence(), nil); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
 	}
@@ -230,13 +230,13 @@ func TestAPublisherRestatesInFullAfterASleep(t *testing.T) {
 	}
 
 	// The opening publication restates everything, as any first one does.
-	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+	if err := publisher.Publish(context.Background(), observedEvidence(), nil); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	// An ordinary cycle does not.
 	continuous += time.Minute
 	awake += time.Minute
-	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+	if err := publisher.Publish(context.Background(), observedEvidence(), nil); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	for _, fact := range sent {
@@ -249,7 +249,7 @@ func TestAPublisherRestatesInFullAfterASleep(t *testing.T) {
 	// that stops for it does not.
 	continuous += 2 * time.Hour
 	awake += time.Second
-	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+	if err := publisher.Publish(context.Background(), observedEvidence(), nil); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	if len(sent) == 0 {
@@ -302,7 +302,7 @@ func TestAPublisherAdoptsThePositionRootReports(t *testing.T) {
 		}, nil
 	}
 
-	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+	if err := publisher.Publish(context.Background(), observedEvidence(), nil); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	for _, fact := range seen {
@@ -314,7 +314,7 @@ func TestAPublisherAdoptsThePositionRootReports(t *testing.T) {
 
 	// The same response that refused them says where the stream stands, so
 	// the next cycle lands rather than repeating the refusal for ever.
-	if err := publisher.Publish(context.Background(), observedEvidence()); err != nil {
+	if err := publisher.Publish(context.Background(), observedEvidence(), nil); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	if len(seen) == 0 {

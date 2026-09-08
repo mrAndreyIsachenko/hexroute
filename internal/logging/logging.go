@@ -41,6 +41,13 @@ const (
 	// aggregate. It carries no component detail: the operator surface shows
 	// that, and a log line is not a status API.
 	EventConnectivitySnapshot EventName = "connectivity_snapshot"
+
+	// EventConnectivityPublication reports whether root took this domain's
+	// facts. A publication root refuses costs nothing and must not fail the
+	// cycle, but a refusal nobody records is an outage that lasts as long as
+	// somebody's attention: the two components this domain speaks for keep
+	// whatever they last said while the daemon goes on reporting healthy.
+	EventConnectivityPublication EventName = "connectivity_publication"
 	// EventReconcilerShadowUnavailable reports that the shadow store could
 	// not be opened, so its status cannot be answered.
 	EventReconcilerShadowUnavailable EventName = "reconciler_shadow_unavailable"
@@ -140,6 +147,10 @@ const (
 	ReasonInvalidReconcilerMsg   Reason = "invalid_reconciler_message"
 	ReasonInvalidConnectivityMsg Reason = "invalid_connectivity_message"
 	ReasonConnectivityDomain     Reason = "connectivity_domain_refused"
+	ReasonRootInternal           Reason = "root_internal"
+	ReasonPublicationTimeout     Reason = "publication_timeout"
+	ReasonSocketAbsent           Reason = "socket_absent"
+	ReasonSocketDenied           Reason = "socket_denied"
 	ReasonPeerSilent             Reason = "peer_did_not_answer"
 	ReasonOversizedRequest       Reason = "oversized_request"
 	ReasonUnsupportedAction      Reason = "unsupported_action"
@@ -257,6 +268,7 @@ func validEvent(value EventName) bool {
 	switch value {
 	case EventCommandStatus, EventStartupCheck, EventVersionRequested, EventArgumentRejected, EventIPCRejected,
 		EventDaemonStarted, EventDaemonStopped, EventConnectivitySnapshot,
+		EventConnectivityPublication,
 		EventReconcilerShadowUnavailable, EventEventArchiveUnavailable,
 		EventSentinelRecoveryMonitoring, EventSentinelRecoveryWouldRestart,
 		EventSentinelRecoveryVerifying, EventSentinelRecoveryCooldown,
@@ -305,7 +317,8 @@ func validReason(value Reason) bool {
 		ReasonPolicyStoreUnavailable, ReasonMalformedFrame, ReasonInvalidRequestID,
 		ReasonInvalidTarget, ReasonInvalidPolicyMessage, ReasonInvalidReconcilerMsg,
 		ReasonInvalidConnectivityMsg, ReasonConnectivityDomain,
-		ReasonPeerSilent:
+		ReasonRootInternal, ReasonPublicationTimeout,
+		ReasonSocketAbsent, ReasonSocketDenied, ReasonPeerSilent:
 		return true
 	default:
 		return false
