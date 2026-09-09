@@ -44,9 +44,48 @@
 
 - [x] 7.1 Compile, sign and activate generation 3: the content of the expired generation 2, no new authority, and a nine-day window. Record the deviation from the thirty-day default and its reason.
 - [x] 7.2 That activation is the live acceptance for section 2 — a real predecessor, expired, under a superseded static digest, with real signatures. Record what the install and activation reported.
-- [ ] 7.3 Observe the seven-day announcement arrive, roughly two days later. A test with an injected clock proves the code; this proves the incident reaches a person through the delivery path, which is the half that is new.
+- [x] 7.3 Observe the seven-day announcement arrive, roughly two days later. A test with an injected clock proves the code; this proves the incident reaches a person through the delivery path, which is the half that is new.
+
+      Generation 3 expires 2026-09-16T07:56:38Z, so the seven-day threshold fell
+      at 2026-09-09T07:56:38Z. The user daemon emitted `local_notification` with
+      result `reported` at 2026-09-09T07:56:55Z — seventeen seconds later, inside
+      one fifteen-second observation cycle. `reported` is emitted only when the
+      dispatch returned `LocalDelivered`, so the incident went out through
+      osascript rather than being computed and dropped.
+
+      It was dispatched at severity `warning` on purpose: critical bypasses the
+      night window, and a deadline seven days out is not worth waking anyone for.
+      The crossing happened at 10:56 local, outside the night window, so nothing
+      was deferred.
+
+      It was retrieved from Notification Center and read. It arrives quietly on
+      this machine — no banner, straight to the list — which is why it was not
+      noticed at the time. For a deadline seven days out that is the right
+      loudness; whether the lapsed stage deserves more is a separate question.
+
+      The observation also surfaced a defect this task exists to catch, and a
+      test with an injected clock could not have. Notification Center held five
+      identical announcements for the same generation from 2026-09-07, and each
+      one lands within a second of a `daemon_started` in the user daemon's log:
+      07:53:57, 08:24:37, 08:38:50, 10:46:28 and 11:08:15, against twelve
+      restarts that day. See 7.6.
 - [x] 7.4 Write the thirty-day default into the operations runbook, with deviation permitted and a recorded reason required. Fourteen days was inherited by copy last time, and that is how this started.
 - [x] 7.5 Document recovery from a lapsed generation in the runbook, next to the states table, so the `expired` reason has a row that says what to do.
+
+- [x] 7.6 The announcement repeats on every restart, and this change's own
+      specification forbids it: "crossing the same threshold is not announced
+      again for the same generation". `notification.Service` keeps its delivery
+      record in `entries map[deliveryKey]deliveryEntry`, built empty by
+      `NewService`, so suppression lasts for the life of the process rather than
+      the life of the generation. Twelve restarts on 2026-09-07 produced five
+      identical announcements.
+
+      This is not cosmetic. The announcement is worth having only if it is worth
+      reading, and five copies of one message is how a person learns to skip it —
+      which is what happened here.
+
+      The delivery record has to survive a restart. The user daemon already owns
+      a state directory it writes to every cycle.
 
 ## 7b. Blocked On The Root Daemon
 

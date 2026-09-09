@@ -73,11 +73,41 @@ The incident SHALL NOT be critical, so that it defers to the morning digest
 inside the configured night window, and its text SHALL come from the closed
 template allowlist and SHALL carry no policy content.
 
+A crossing already announced SHALL stay announced across a restart. The record
+of what was delivered SHALL outlive the process, because a suppression that
+lasts only as long as the process announces the same crossing again on every
+start, and an announcement repeated is an announcement stopped being read.
+
+Only a delivery whose identity outlives the process SHALL be remembered. A
+policy generation is such an identity; a runtime's state generation is not,
+because it counts from zero when the daemon starts and a delivery remembered
+against it would silence a different incident that reached the same number.
+
+A record that cannot be read SHALL NOT prevent an announcement. Losing it costs
+one repeated announcement; refusing to announce because a bookkeeping file is
+damaged would lose the thing the announcement exists for.
+
 #### Scenario: A generation approaches its expiry
 
 - **WHEN** remaining validity first falls below seven days
 - **THEN** one actionable non-critical incident is raised
 - **AND** crossing the same threshold is not announced again for the same generation
+
+#### Scenario: The daemon restarts after announcing
+
+- **WHEN** the runtime restarts after a threshold was announced for a generation
+- **THEN** that threshold is not announced again for that generation
+- **AND** the next generation's crossing is still announced
+
+#### Scenario: An incident is identified by something that restarts with the process
+
+- **WHEN** an incident's generation counts from zero at start rather than naming a policy generation
+- **THEN** the delivery is not remembered across a restart, so a later incident reaching the same number is still announced
+
+#### Scenario: The record of what was delivered cannot be read
+
+- **WHEN** the durable delivery record is missing or damaged
+- **THEN** the announcement is made rather than withheld
 
 #### Scenario: A generation lapses unreplaced
 

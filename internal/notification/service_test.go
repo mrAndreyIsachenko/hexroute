@@ -151,6 +151,8 @@ func mustService(t *testing.T, notifier Notifier) *Service {
 	service, err := NewService(
 		Policy{NightStartHour: 23, NightEndHour: 8},
 		notifier,
+		// These cases are about one process; nothing here outlives it.
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("NewService() error: %v", err)

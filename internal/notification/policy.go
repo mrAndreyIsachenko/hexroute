@@ -40,6 +40,17 @@ const (
 type Input struct {
 	Incident event.Incident
 	External ExternalState
+	// DurableGeneration says the incident's generation identifies it beyond
+	// this process.
+	//
+	// A policy generation does: generation 3 is generation 3 tomorrow and in
+	// the next process, so a crossing already announced for it must not be
+	// announced again. A daemon's state generation does not — it counts from
+	// zero at start, and a delivery remembered against it would let a restart
+	// reach the same number and suppress a different incident entirely.
+	//
+	// The caller sets it because the caller is what put the number there.
+	DurableGeneration bool
 }
 
 type Decision struct {
