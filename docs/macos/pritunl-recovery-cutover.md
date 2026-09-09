@@ -90,16 +90,25 @@ up in it on their own.
 largest run in the measured period was one incident over two days — so waiting
 for it means holding an untested grant of root authority until an outage.
 
-Induce the **precondition**, not the request:
+Induce the **precondition**, not the request. A request file written by hand
+would prove the handler and skip the detection, and detection is the half this
+moved.
 
-```bash
-sudo launchctl bootout "system/<pritunl service label>"
-```
+**Booting the service out is the wrong precondition, and this was written before
+that was known.** It unloads the job entirely, `launchctl print` then exits
+non-zero, and the root verifier answers "not stale" deliberately — a service
+that is not loaded is not something this runtime restarts. Stale means the job
+is still loaded and reports `state = not running`.
 
-Then watch the whole chain run by itself: the user runtime notices, asks, the
-root runtime looks at the service and agrees, and the service comes back. A
-request file written by hand would prove the handler and skip the detection, and
-detection is the half this moved.
+Run on 2026-09-09, that induction produced a correct refusal and proved
+everything up to it: the user runtime noticed the missing service within one
+cycle, degraded across the whole outage, requested the restart, and root looked
+and disagreed. It cannot prove the link after that.
+
+The service carries `KeepAlive`, so killing its process has launchd restart it
+at once and the loaded-but-not-running window barely exists. Until an induction
+is found that holds that state open, the root half is provable only by a real
+fault, and saying so is better than repeating a procedure that cannot reach it.
 
 ## What closes it
 

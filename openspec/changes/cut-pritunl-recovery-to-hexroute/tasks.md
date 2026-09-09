@@ -45,6 +45,32 @@
       still reach the planner, and must not leave the previous state reported as
       current. Confirm it fails against the unchanged cycle before fixing it.
 
+- [ ] 4.6 The induction the runbook documents creates a condition root refuses by
+      design, so it cannot prove the root half. `bootout` unloads the job
+      entirely; `launchctl print` then exits non-zero and the verifier answers
+      "not stale" on purpose — its comment says a service that is not loaded is
+      not this runtime's problem to solve. Stale means `state = not running`
+      with the job still loaded.
+
+      The service also carries `KeepAlive`, so killing the process has launchd
+      restart it at once and the window the verifier looks for barely exists.
+      Either the runbook documents an induction that produces a loaded,
+      not-running service, or it records that this half is provable only by a
+      real fault — and says so rather than describing a procedure that cannot
+      work.
+
+      Everything before that link was proven on 2026-09-09. With the service
+      gone the user runtime noticed within one cycle, degraded honestly across
+      the whole ten-minute outage, requested the restart, and root answered. The
+      refusal was correct and is the second opinion doing its job.
+
+- [ ] 4.7 Root collapses every refusal into `precondition_failed`: no handler, a
+      failed evaluation, a stale generation, an outer path not ready, a service
+      not stale, and no authority all arrive as one code. The user runtime can
+      therefore only record `recovery_refused`, and today's diagnosis needed the
+      source rather than the log. This is the defect `name-what-the-ipc-refused`
+      fixed for the IPC layer, on the authority path.
+
 - [x] 4.3 Keep the evidence privately. The logs carry a live profile identity and a service label; neither enters this repository.
 
 ## 5. Keep Everything Else Untouched
