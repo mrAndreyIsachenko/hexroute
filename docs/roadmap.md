@@ -336,9 +336,14 @@ item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
    `launchctl kickstart` of one named service — rather than an argument against
    the order.
 
-   No longer blocked. `recover-policy-generations-after-expiry` closed on
-   2026-09-09 and generation 3 is active in both domains, so a signed generation
-   can be installed on this machine again. What remains is the ceremony itself. It waits for the whole of that change rather than its first
+   The ceremony ran on 2026-09-09. Generation 4 is active in both domains, and
+   both `newly_allowed` entries of the signed diff are live — one root, one user.
+   That is the first grant of production authority in this system, and it is the
+   two-sided capability the compiler had to be rebuilt for.
+
+   What remains are the two proofs that wait for something real rather than for
+   a command: the user half by a reconnect actually occurring, the root half by
+   inducing a stale service rather than by writing the request by hand. It waits for the whole of that change rather than its first
    part: task 4.1 proves the user half by waiting, the soak and the validity
    bound are the same order of magnitude, and starting a multi-week wait whose
    sample can end silently — before the thing that makes it non-silent exists —
