@@ -171,6 +171,12 @@ independent monotonic `root_policy_generation` and `user_policy_generation`
 values. A domain action SHALL bind the bundle and its owning domain generation,
 and a cross-domain action SHALL require both daemons to report the same bundle.
 
+Monotonicity SHALL NOT be broken by the passage of time or by a change of static
+authority. A generation whose validity has ended, or which was compiled against
+a superseded safety envelope, SHALL still establish the parent of its successor
+for as long as its stored evidence verifies. Resetting the chain SHALL NOT be
+the recovery path for either event.
+
 #### Scenario: Only user policy changes
 
 - **WHEN** a semantic policy change affects only the user payload
@@ -182,6 +188,12 @@ and a cross-domain action SHALL require both daemons to report the same bundle.
 - **WHEN** root and user daemons report different active bundle generations
 - **THEN** new local mutations are blocked
 - **AND** the existing data plane remains running
+
+#### Scenario: The safety envelope gains a capability
+
+- **WHEN** a new capability changes the compiled static digest
+- **THEN** the next generation continues the existing chain rather than starting a new one
+- **AND** the daemons still require a reviewed static installation and restart before that generation can govern
 
 ### Requirement: Mandatory semantic diff and replay
 
@@ -333,6 +345,11 @@ Its bounded reason SHALL be one of `corruption`, `invalid_signature`,
 `digest_mismatch`, `domain_mismatch`, `clock_anomaly` or `ipc_ownership`, and
 the overlay SHALL NOT replace the active lifecycle state or generation identity.
 
+Every cause of suspension SHALL be a local fault that an operator action can
+clear. An active generation reaching its own `expires_at` SHALL NOT suspend
+authorization and SHALL NOT be reported as a clock anomaly: the clock is
+correct, the generation is over, and no local correction exists.
+
 #### Scenario: Active payload is corrupted on disk
 
 - **WHEN** periodic or startup validation detects an active payload digest mismatch
@@ -344,6 +361,12 @@ the overlay SHALL NOT replace the active lifecycle state or generation identity.
 - **WHEN** an emergency policy is needed to revoke authorization
 - **THEN** the operator compiles and signs a normal deny generation
 - **AND** load failure or suspension is not treated as a substitute policy
+
+#### Scenario: The active generation expires
+
+- **WHEN** the active generation's validity window ends while the clock is sound
+- **THEN** no suspension is raised and no clock anomaly is reported
+- **AND** new mutations remain refused because no generation is active
 
 ### Requirement: Monotonic policy rollback
 
