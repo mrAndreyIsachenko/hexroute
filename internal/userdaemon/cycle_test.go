@@ -170,6 +170,14 @@ func TestCycleProposesReconnectForDisconnectedProfile(t *testing.T) {
 	}
 }
 
+// A stale service is now asked about rather than reconnected around.
+//
+// This expectation changed deliberately. It read ActionReconnect, which was a
+// reconnect through the very service that is not running — the client the
+// reconnect goes through talks to it. The service being absent is grounds to
+// ask root, and root reaches its own conclusion before restarting anything.
+//
+// Nothing is applied here either way: the plan stays observe-only.
 func TestCycleReportsStaleServiceWithoutApplyingRecovery(t *testing.T) {
 	config := userRuntimeFixture(t)
 	pritunl := disconnectedPritunl()
@@ -185,7 +193,7 @@ func TestCycleReportsStaleServiceWithoutApplyingRecovery(t *testing.T) {
 	summary := cycle.Observe(context.Background(), 0, 20)
 	if summary.Failures != 1 ||
 		summary.ServiceRunning ||
-		summary.Plan.Action != pritunlplan.ActionReconnect ||
+		summary.Plan.Action != pritunlplan.ActionRequestRescue ||
 		!summary.Plan.ObserveOnly {
 		t.Fatalf("Observe() = %+v", summary)
 	}

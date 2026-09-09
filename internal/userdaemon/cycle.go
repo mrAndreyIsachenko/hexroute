@@ -129,7 +129,7 @@ func (cycle *Cycle) Observe(
 	// A failed profile probe does not end the cycle.
 	//
 	// Reading the profile goes through the Pritunl service; reading the service
-	// goes through launchd and answers whether or not the service is there.
+	// is asked of the system service manager and answers whether or not the service is there.
 	// Returning here put the only observation that can see a missing service
 	// behind one that requires it, so the single condition meaning "the thing I
 	// supervise is gone" was the condition under which nothing was decided and
@@ -142,11 +142,17 @@ func (cycle *Cycle) Observe(
 	}
 	service, err := cycle.pritunl.Service(ctx)
 	summary.Observed.Service, summary.Observed.ServiceError = service, err
+	// A service that could not be observed is reported as stopped, because the
+	// question this answers is whether the thing that would carry out a
+	// reconnect is there, and one that cannot be found is not.
+	serviceState := pritunlplan.ServiceStopped
 	if err != nil {
 		summary.Failures++
 	} else {
 		summary.ServiceRunning = service.Running
-		if !service.Running {
+		if service.Running {
+			serviceState = pritunlplan.ServiceRunning
+		} else {
 			summary.Failures++
 		}
 	}
@@ -183,6 +189,7 @@ func (cycle *Cycle) Observe(
 		OuterReady:          summary.OuterReady,
 		Profile:             profile,
 		ProfileUnreadable:   profileUnreadable,
+		Service:             serviceState,
 		OptionalInner:       optionalInner,
 		OTPSecondsRemaining: otpRemaining,
 	})
