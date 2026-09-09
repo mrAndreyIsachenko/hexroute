@@ -113,10 +113,36 @@ is starting says so, and restarting one mid-start interrupts the recovery
 already under way — so for a service launchd keeps alive, launchd's own restart
 is the recovery and this runtime declines to interfere with it.
 
-The root half's real trigger is the one this document should describe instead: a
-session reporting itself connected while carrying no traffic. That is the
-condition the capability exists for, and inducing it is a different problem than
-stopping a service.
+The real trigger is a session reporting itself connected while carrying no
+traffic. Both runtimes now ask the same question about it — is the address the
+session claims on any tunnel interface — so the condition to induce is that
+address being gone while the session still claims it:
+
+```bash
+sudo ifconfig <the session's tunnel interface> -alias <the session's client address>
+```
+
+Read both from the client's own listing rather than typing them. The session
+goes on reporting itself connected; the address is on nothing; the user runtime
+asks; the root runtime looks for the address itself and, finding it as absent as
+the asking side did, restarts the service.
+
+Undo it by reconnecting the session, which the client does on its own within
+seconds.
+
+**Stopping the session proves nothing.** Measured 2026-09-09: stopped three
+times, with autostart enabled and disabled, it returned in 8, 16 and 24 seconds.
+The Pritunl service restores an active profile whatever the autostart flag says
+— that flag governs login, not supervision. On the third attempt this runtime
+did notice within one cycle and the session was back before any action of its
+own was due.
+
+**Stopping the service proves nothing either**, for the reason above.
+
+What that leaves is the blackhole above, and waiting. Waiting is not hopeless:
+the user runtime's log holds 349 reconnect proposals across 27 days, which are
+the occasions Pritunl's own supervision did not repair quickly. Those cannot be
+summoned, and they are the only evidence for the reconnect half.
 
 ## What closes it
 
