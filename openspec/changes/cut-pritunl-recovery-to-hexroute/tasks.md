@@ -22,6 +22,29 @@
 
 - [ ] 4.1 (deferred to the cutover itself) Prove the user half by waiting. Reconnects run at 796 across 48 days with only six days seeing none, so a soak is a real sample, and the code-window and backoff paths appear in it on their own.
 - [ ] 4.2 (deferred to the cutover itself) Prove the root half by inducing the precondition — a stale service — and not the request. A request written by hand proves the handler and skips the detection, and detection is the half this moves. 108 rescues across the same period, 90 of them in two days, is one incident rather than a rate: waiting for the next would mean holding an untested grant of root authority until an outage.
+- [x] 4.4 Inducing the precondition on 2026-09-09 showed the detection half does
+      not work, which is what 4.2 exists to find. `sudo launchctl bootout` of the
+      Pritunl service removed the service, the tunnel and the client socket; for
+      nine minutes the user daemon logged nothing and its planner reported
+      HEALTHY with zero consecutive failures.
+
+      The cause is an ordering in `internal/userdaemon/cycle.go`. `Profile` runs
+      the Pritunl CLI, which needs the service's socket; `Service` runs
+      `launchctl print`, which answers whether or not the service is there. The
+      profile probe is called first and its failure returns from the cycle before
+      `cycle.plan` — so the probe that can see a missing service sits behind one
+      that requires it. The service probe's own error does not return early, so
+      the fix is to make the profile's error behave the same way.
+
+      Nothing caught it because nothing turned the knob: `profileErr` exists in
+      the cycle test's fake observer and no test sets it.
+      `TestCycleReportsStaleServiceWithoutApplyingRecovery` covers the adjacent
+      case — loaded but not running, with the profile readable.
+
+- [x] 4.5 Write the regression first: a cycle whose profile probe fails must
+      still reach the planner, and must not leave the previous state reported as
+      current. Confirm it fails against the unchanged cycle before fixing it.
+
 - [x] 4.3 Keep the evidence privately. The logs carry a live profile identity and a service label; neither enters this repository.
 
 ## 5. Keep Everything Else Untouched
