@@ -3,6 +3,7 @@ package pritunlrescue
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
@@ -27,7 +28,21 @@ type Handler struct {
 
 var (
 	ErrInvalidRequest = errors.New("invalid Pritunl rescue request")
-	ErrPrecondition   = errors.New("pritunl rescue precondition failed")
+	// ErrPrecondition is what the named preconditions have in common.
+	//
+	// A caller that only needs to know the situation was refused matches on
+	// this; one that needs to know which check refused it matches on the named
+	// error. Collapsing them into this one alone is how a refusal arrived with
+	// nothing to say for itself.
+	ErrPrecondition = errors.New("pritunl rescue precondition failed")
+	// ErrOuterNotReady is this runtime's own view of the path the service
+	// needs. Restarting into a path that is not there repairs nothing.
+	ErrOuterNotReady = fmt.Errorf("%w: the outer path is not ready", ErrPrecondition)
+	// ErrServiceNotStale is the service not being in the state this act exists
+	// to repair. It covers a service that is running and one that is not loaded
+	// at all: neither is a loaded service that has stopped, and restarting on
+	// either would act on something this runtime was not asked about.
+	ErrServiceNotStale = fmt.Errorf("%w: the service is not stale", ErrPrecondition)
 )
 
 func NewRequest(requestID string, expectedGeneration uint64) (ipc.Request, error) {
@@ -80,14 +95,14 @@ func (handler *Handler) Evaluate(
 		return Decision{}, err
 	}
 	if !outerReady {
-		return Decision{}, ErrPrecondition
+		return Decision{}, ErrOuterNotReady
 	}
 	stale, err := handler.verifier.PritunlServiceStale(ctx)
 	if err != nil {
 		return Decision{}, err
 	}
 	if !stale {
-		return Decision{}, ErrPrecondition
+		return Decision{}, ErrServiceNotStale
 	}
 
 	action := control.Action{

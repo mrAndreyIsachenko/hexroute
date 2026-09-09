@@ -64,7 +64,7 @@
       the whole ten-minute outage, requested the restart, and root answered. The
       refusal was correct and is the second opinion doing its job.
 
-- [ ] 4.7 Root collapses every refusal into `precondition_failed`: no handler, a
+- [x] 4.7 Root collapses every refusal into `precondition_failed`: no handler, a
       failed evaluation, a stale generation, an outer path not ready, a service
       not stale, and no authority all arrive as one code. The user runtime can
       therefore only record `recovery_refused`, and today's diagnosis needed the

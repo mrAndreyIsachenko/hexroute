@@ -32,8 +32,18 @@ const (
 	// exercised is a fault in the deployment and not a decision.
 	recoveryUnequipped recoveryOutcome = "unequipped"
 	recoveryDone       recoveryOutcome = "done"
-	recoveryRefused    recoveryOutcome = "refused"
-	recoveryFailed     recoveryOutcome = "failed"
+	// recoveryRefused is a refusal whose ground the other side did not give.
+	recoveryRefused recoveryOutcome = "refused"
+	// The refusals root does name. They are separate values because they send
+	// the reader somewhere different: to what signed for the act, to the
+	// generation in force, to root's own view of the path and the service, and
+	// to the request itself. Collapsing them is what left an operator reading
+	// the source to find out why a rescue had been refused.
+	recoveryRefusedAuthority    recoveryOutcome = "refused_authority"
+	recoveryRefusedStale        recoveryOutcome = "refused_stale_generation"
+	recoveryRefusedPrecondition recoveryOutcome = "refused_precondition"
+	recoveryRefusedRequest      recoveryOutcome = "refused_request"
+	recoveryFailed              recoveryOutcome = "failed"
 )
 
 // recovery performs what the planner decided, if anything authorizes it.
@@ -125,13 +135,33 @@ func (executor *recovery) requestRescue(
 		return recoveryFailed
 	}
 	if !response.OK {
-		return recoveryRefused
+		return refusalOutcome(response.Error)
 	}
 	return recoveryDone
 }
 
 // planDigest binds the authorization to what was decided, so that a lease
 // issued for one plan cannot be spent on another.
+// refusalOutcome carries the ground root gave for its refusal.
+//
+// The code is all that crosses the boundary, and it is enough to send the
+// reader to the right place. What it cannot separate — which of root's own
+// preconditions failed — stays in root's log beside the same refusal.
+func refusalOutcome(code ipc.ErrorCode) recoveryOutcome {
+	switch code {
+	case ipc.ErrorUnauthorized:
+		return recoveryRefusedAuthority
+	case ipc.ErrorStaleGeneration:
+		return recoveryRefusedStale
+	case ipc.ErrorPrecondition:
+		return recoveryRefusedPrecondition
+	case ipc.ErrorInvalidRequest:
+		return recoveryRefusedRequest
+	default:
+		return recoveryRefused
+	}
+}
+
 func planDigest(plan pritunlplan.Plan) (string, error) {
 	digest, _, err := policy.CanonicalSHA256(struct {
 		Action     string `json:"action"`
