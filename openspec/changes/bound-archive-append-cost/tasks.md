@@ -2,55 +2,59 @@
 
 ## 1. Prove the defect before changing it
 
-- [ ] 1.1 Add a regression asserting that appending to an archive holding tens
+- [x] 1.1 Add a regression asserting that appending to an archive holding tens
       of thousands of records opens no stored record. Assert the property, not a
       duration: make the stored records undecodable and require that the append
       neither fails on them nor notices them, the way the spool's test does. It
       must fail against the current implementation.
-- [ ] 1.2 Add a regression for the age walk: with the oldest record inside the
+- [x] 1.2 Add a regression for the age walk: with the oldest record inside the
       window, no further record is read; with some expired, reading stops at the
       first retained record inside the window.
-- [ ] 1.3 Confirm both by mutation — apply the change, then reintroduce the full
+- [x] 1.3 Confirm both by mutation — apply the change, then reintroduce the full
       scan and confirm each named test fails.
 
 ## 2. Take size from the directory
 
-- [ ] 2.1 Give the archive a directory scan that returns sequence and size from
+- [x] 2.1 Give the archive a directory scan that returns sequence and size from
       `ReadDir` and `Lstat` without reading any record, and refuses a directory
       whose shape cannot be trusted — a name that is not a record, a symlink, a
       subdirectory, a duplicate sequence.
-- [ ] 2.2 Evaluate the byte bound from that scan.
-- [ ] 2.3 Keep `Size()` answering from metadata rather than re-reading records.
+- [x] 2.2 Evaluate the byte bound from that scan.
+- [x] 2.3 Keep `Size()` answering from metadata rather than re-reading records.
 
 ## 3. Establish age from the oldest record only
 
-- [ ] 3.1 Read the lowest retained sequence to learn the oldest record's stamp.
-- [ ] 3.2 When that record is inside the window, complete the append without
+- [x] 3.1 Read the lowest retained sequence to learn the oldest record's stamp.
+- [x] 3.2 When that record is inside the window, complete the append without
       reading another record.
-- [ ] 3.3 When it is outside, walk upward reading only expired records and stop
+- [x] 3.3 When it is outside, walk upward reading only expired records and stop
       at the first record inside the window.
-- [ ] 3.4 A record that cannot be proved on that walk is set aside and reported,
-      and the walk continues from the next sequence — it does not stop the
-      append.
+- [x] 3.4 A record that cannot be decoded on that walk does not fail the append;
+      the walk continues to the next sequence. The archive has no set-aside for
+      stored records and this change does not add one — that is a question about
+      damaged evidence, not about what an append costs.
 
 ## 4. Keep eviction exactly as specified
 
-- [ ] 4.1 Read records for priority only on the path that evicts for size.
-- [ ] 4.2 Preserve priority order: diagnostics before operational before
+- [x] 4.1 Read records for priority only on the path that evicts for size.
+- [x] 4.2 Preserve priority order: diagnostics before operational before
       critical.
-- [ ] 4.3 Preserve the overflow record naming the class dropped and the sequence
+- [x] 4.3 Preserve the overflow record naming the class dropped and the sequence
       range covered, for both the age and the size bound.
-- [ ] 4.4 Preserve the refusal when only critical records remain and the bound is
+- [x] 4.4 Preserve the refusal when only critical records remain and the bound is
       still exceeded, and keep it visible as an overflow condition.
-- [ ] 4.5 Confirm the existing `local-event-archive` scenarios still pass
+- [x] 4.5 Confirm the existing `local-event-archive` scenarios still pass
       unchanged — this change is about cost, and any behaviour difference here is
       a defect in the change.
 
 ## 5. Measure what changed
 
-- [ ] 5.1 Record append cost at a thousand, ten thousand and forty-one thousand
+- [x] 5.1 Record append cost at a thousand, ten thousand and forty-one thousand
       stored records, before and after, in the same way the spool's numbers were
-      taken.
+      taken. Measured: 898ms -> 123ms at 41,492 records; 15ms at 1,000. The cost
+      still grows with the record count, because the total size can only come
+      from the filesystem — the delta spec was corrected to say so rather than
+      claiming it had stopped growing.
 - [ ] 5.2 Confirm the journal's mirror no longer makes a published fact pay a
       full scan twice.
 

@@ -260,11 +260,16 @@ func (archive *Archive) Append(encoded []byte) (uint64, error) {
 	archive.mu.Lock()
 	defer archive.mu.Unlock()
 
-	held, err := archive.scan()
+	// The directory answers everything the common append needs. Only the age
+	// walk reads a record, and only from the oldest upward.
+	kept, err := archive.index()
 	if err != nil {
 		return 0, err
 	}
-	expired, kept := archive.partitionByAge(held)
+	expired, err := archive.expiredByAge(kept)
+	if err != nil {
+		return 0, err
+	}
 	if len(expired) > 0 {
 		if err := archive.evict(expired); err != nil {
 			return 0, err
@@ -273,7 +278,7 @@ func (archive *Archive) Append(encoded []byte) (uint64, error) {
 			event.ArchiveOverflowAge, expired); err != nil {
 			return 0, err
 		}
-		kept, err = archive.scan()
+		kept, err = archive.index()
 		if err != nil {
 			return 0, err
 		}
@@ -291,9 +296,16 @@ func (archive *Archive) Append(encoded []byte) (uint64, error) {
 		return 0, ErrRecordTooLarge
 	}
 
-	excess := totalSize(kept) + incoming.Size - archive.maxBytes
+	excess := indexTotalSize(kept) + incoming.Size - archive.maxBytes
 	if excess > 0 {
-		evictions, covered := chooseEvictions(kept, excess)
+		// Only here. Eviction chooses by priority, and priority is a property
+		// of the record rather than of the directory, so this is the one path
+		// that has to read — and it is about to rewrite the directory anyway.
+		stored, err := archive.scan()
+		if err != nil {
+			return 0, err
+		}
+		evictions, covered := chooseEvictions(stored, excess)
 		if !covered {
 			// Refusing is the answer the bound demands. Dropping a critical
 			// record to make room would trade the evidence for the sample.
@@ -335,19 +347,30 @@ func (archive *Archive) Records() ([]Record, error) {
 func (archive *Archive) Window() (Window, error) {
 	archive.mu.Lock()
 	defer archive.mu.Unlock()
-	records, err := archive.scan()
+	// The window is a statement about the ends of the archive and how many
+	// records lie between them. The directory gives the count and both
+	// sequences; only the two records whose stamps are reported are read.
+	entries, err := archive.index()
 	if err != nil {
 		return Window{}, err
 	}
-	if len(records) == 0 {
+	if len(entries) == 0 {
 		return Window{Empty: true}, nil
 	}
+	oldest, err := archive.readRecord(entries[0].Sequence)
+	if err != nil {
+		return Window{}, err
+	}
+	newest, err := archive.readRecord(entries[len(entries)-1].Sequence)
+	if err != nil {
+		return Window{}, err
+	}
 	window := Window{
-		Records: uint32(len(records)),
-		First:   records[0].Sequence,
-		Last:    records[len(records)-1].Sequence,
-		Oldest:  records[0].Metadata.WallClock.UTC(),
-		Newest:  records[len(records)-1].Metadata.WallClock.UTC(),
+		Records: uint32(len(entries)),
+		First:   entries[0].Sequence,
+		Last:    entries[len(entries)-1].Sequence,
+		Oldest:  oldest.Metadata.WallClock.UTC(),
+		Newest:  newest.Metadata.WallClock.UTC(),
 	}
 	return window, nil
 }
@@ -356,26 +379,70 @@ func (archive *Archive) Window() (Window, error) {
 func (archive *Archive) Size() (int64, error) {
 	archive.mu.Lock()
 	defer archive.mu.Unlock()
-	records, err := archive.scan()
+	entries, err := archive.index()
 	if err != nil {
 		return 0, err
 	}
-	return totalSize(records), nil
+	return indexTotalSize(entries), nil
 }
 
-func (archive *Archive) partitionByAge(records []Record) (expired, kept []Record) {
+// expiredByAge returns the records outside the age window, reading only those
+// and the first record that is inside it.
+//
+// Sequences are handed out monotonically and records are appended in order, so
+// the oldest retained record is the lowest retained sequence. That is what makes
+// the question answerable from one read: if the oldest record is inside the
+// window, nothing has expired and nothing else is worth opening.
+//
+// The walk assumes sequence order implies stamp order, which a backwards clock
+// step breaks. The consequence is bounded and one-directional — the walk stops
+// early and the archive retains a record it could have evicted, never drops one
+// it should have kept — and the next append re-evaluates from the new oldest.
+func (archive *Archive) expiredByAge(entries []stableEntry) ([]Record, error) {
 	if archive.maxAge == 0 {
-		return nil, records
+		return nil, nil
 	}
 	boundary := archive.clock.WallNow().UTC().Add(-archive.maxAge)
-	for _, record := range records {
+	expired := []Record{}
+	for _, entry := range entries {
+		record, err := archive.readRecord(entry.Sequence)
+		if err != nil {
+			// Its age cannot be established, so nothing is concluded from it.
+			// It is not treated as expired on the strength of a timestamp it
+			// does not have, and it does not stop the walk: the observation
+			// being recorded is the larger loss, and a record already beyond
+			// proving is beyond saving.
+			continue
+		}
 		if record.Metadata.WallClock.UTC().Before(boundary) {
 			expired = append(expired, record)
 			continue
 		}
-		kept = append(kept, record)
+		// The first record inside the window ends the walk. Everything above it
+		// is newer, so nothing above it can have expired.
+		return expired, nil
 	}
-	return expired, kept
+	return expired, nil
+}
+
+// readRecord opens and proves one stored record.
+func (archive *Archive) readRecord(sequence uint64) (Record, error) {
+	path := archive.stablePath(sequence)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return Record{}, fmt.Errorf("%w: read record: %v", ErrArchive, err)
+	}
+	var wire wireRecord
+	if err := json.Unmarshal(raw, &wire); err != nil ||
+		wire.Schema != RecordSchema {
+		return Record{}, fmt.Errorf("%w: %s is not an archive record",
+			ErrArchive, name(sequence)+stableSuffix)
+	}
+	return Record{
+		Sequence: wire.Sequence, Priority: wire.Priority,
+		Metadata: wire.Metadata, Event: wire.Event,
+		Size: int64(len(raw)),
+	}, nil
 }
 
 // chooseEvictions removes the cheapest evidence first and never offers a
@@ -674,8 +741,13 @@ func (archive *Archive) pendingPath(sequence uint64) string {
 	return filepath.Join(archive.path, name(sequence)+pendingSuffix)
 }
 
+// nameWidth is how many digits a record's filename carries. It is what makes
+// lexical order equal sequence order, which is what lets the age walk start at
+// the oldest record without reading any other.
+const nameWidth = 20
+
 func name(sequence uint64) string {
-	return fmt.Sprintf("%020s", strconv.FormatUint(sequence, 10))
+	return fmt.Sprintf("%0*s", nameWidth, strconv.FormatUint(sequence, 10))
 }
 
 func highest(records []Record) uint64 {
@@ -686,14 +758,6 @@ func highest(records []Record) uint64 {
 		}
 	}
 	return top
-}
-
-func totalSize(records []Record) int64 {
-	var total int64
-	for _, record := range records {
-		total += record.Size
-	}
-	return total
 }
 
 func syncDirectory(path string) error {
