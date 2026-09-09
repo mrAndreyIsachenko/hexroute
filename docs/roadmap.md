@@ -193,10 +193,21 @@ capability. It appears in one test file, which evaluates authorization against a
 payload written by hand and never reaches the compiler. Every part was proven
 and the path between them was not.
 
-`recover-policy-generations-after-expiry` is active, and item 7 waits on it.
-Generation 3 is active in both domains as of 2026-09-07, expiring 2026-09-16;
-what remains is observing the seven-day announcement arrive, which is why that
-window is nine days rather than thirty. The active policy generation had expired
+`recover-policy-generations-after-expiry` closed on 2026-09-09, and item 7 is no
+longer blocked by it. Generation 3 went active in both domains on 2026-09-07
+expiring 2026-09-16, and that window was nine days rather than thirty so the
+seven-day announcement could be observed on the real thing rather than only
+under an injected clock.
+
+Observing it is what closed the change, and it earned its place. The crossing at
+2026-09-09T07:56:38Z was announced seventeen seconds later and went unread —
+because Notification Center already held five identical announcements for the
+same generation from 2026-09-07, one for each of that day's restarts. The
+suppression the specification requires lived in a map built empty at start, so
+it lasted the life of the process rather than the life of the generation. The
+delivery record now outlives the process, and only for identities that do: a
+policy generation is the same number in the next process, a runtime's state
+generation is not. The active policy generation had expired
 on 2026-08-22 and this machine was locked out of its own policy control plane: the installer refuses to place the
 successor generation because it cannot revalidate the expired predecessor, and
 the predecessor cannot be revalidated because time passed. Every other cause of
@@ -325,9 +336,9 @@ item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
    `launchctl kickstart` of one named service — rather than an argument against
    the order.
 
-   Blocked on `recover-policy-generations-after-expiry`. The transaction ends in
-   activating a signed generation, and no generation can currently be installed
-   on this machine. It waits for the whole of that change rather than its first
+   No longer blocked. `recover-policy-generations-after-expiry` closed on
+   2026-09-09 and generation 3 is active in both domains, so a signed generation
+   can be installed on this machine again. What remains is the ceremony itself. It waits for the whole of that change rather than its first
    part: task 4.1 proves the user half by waiting, the soak and the validity
    bound are the same order of magnitude, and starting a multi-week wait whose
    sample can end silently — before the thing that makes it non-silent exists —

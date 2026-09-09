@@ -84,8 +84,17 @@
       reading, and five copies of one message is how a person learns to skip it —
       which is what happened here.
 
-      The delivery record has to survive a restart. The user daemon already owns
-      a state directory it writes to every cycle.
+      The delivery record now survives a restart, beside the other state the
+      user daemon writes every cycle. Only deliveries whose identity outlives
+      the process are kept, and the caller declares that, because the caller is
+      what put the number in `Generation`: the Pritunl safe-mode notification is
+      keyed by a state generation that counts from zero at start, and
+      remembering against it would let a restart reach the same number and
+      silence a genuine safe-mode entry.
+
+      Confirmed on the host rather than only in tests. The first start after the
+      fix announced once and wrote the record — 08:31:10Z started, 08:31:14Z
+      delivered — and the next restart at 08:31:45Z announced nothing.
 
 ## 7b. Blocked On The Root Daemon
 
@@ -98,4 +107,4 @@
 - [x] 8.1 Run `make check` and resolve every failure.
 - [x] 8.2 For each new property, restore the defect it guards and confirm the named test fails. A test that still passes with the relaxation put back into the lineage path is measuring something else.
 - [x] 8.3 Run `openspec validate recover-policy-generations-after-expiry --strict` and keep proposal, design, specs and tasks consistent with what was built.
-- [ ] 8.4 Sync the delta into the baseline specs and archive. This change closes on section 7 rather than on a soak: what it repairs is proven by a generation being installed and activated, and the announcement by being received.
+- [x] 8.4 Sync the delta into the baseline specs and archive. This change closes on section 7 rather than on a soak: what it repairs is proven by a generation being installed and activated, and the announcement by being received.
