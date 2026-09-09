@@ -2,9 +2,12 @@ package rootdaemon
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
+	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlrescue"
@@ -23,6 +26,9 @@ type pritunlRescuer struct {
 	authorize func(uint64, string) policy.ActionAuthorizationDecision
 	restart   func(context.Context) error
 	peerUID   uint32
+	// refusal records this runtime's own ground for saying no. The caller gets
+	// a code; the ground the code cannot carry stays here.
+	refusal func(logging.Reason)
 }
 
 // newPritunlRescuer builds the rescuer, or nothing.
@@ -36,9 +42,10 @@ func newPritunlRescuer(
 	generation func() uint64,
 	outerReady func(context.Context) (bool, error),
 	authorize func(uint64, string) policy.ActionAuthorizationDecision,
+	refusal func(logging.Reason),
 ) *pritunlRescuer {
 	if label == "" || operatorUID == 0 || generation == nil ||
-		outerReady == nil || authorize == nil {
+		outerReady == nil || authorize == nil || refusal == nil {
 		return nil
 	}
 	runner := observe.ExecRunner{}
@@ -56,6 +63,7 @@ func newPritunlRescuer(
 		handler:   handler,
 		authorize: authorize,
 		peerUID:   operatorUID,
+		refusal:   refusal,
 		restart: func(ctx context.Context) error {
 			_, err := runner.Output(
 				ctx, "/bin/launchctl", "kickstart", "-k", "system/"+label,
@@ -72,6 +80,57 @@ func newPritunlRescuer(
 // request that survives that is put to the authorization. Asking for authority
 // to do something the situation does not call for would put a decision in the
 // record that nothing needed.
+// rescueEvaluationError names which of this runtime's own checks refused.
+//
+// Six outcomes used to arrive as one precondition failure, so a caller learned
+// that it had been refused and nothing else. Most of them already have a code;
+// using it puts the answer in a log the operator can read without a password.
+//
+// The two genuine preconditions share a code because the protocol has one for
+// them. Telling those apart is what the reason written down here is for.
+func rescueEvaluationError(evaluated error) ipc.ErrorCode {
+	switch {
+	case errors.Is(evaluated, ipc.ErrUnauthorizedPeer):
+		return ipc.ErrorUnauthorized
+	case errors.Is(evaluated, control.ErrStaleGeneration):
+		return ipc.ErrorStaleGeneration
+	case errors.Is(evaluated, pritunlrescue.ErrInvalidRequest):
+		return ipc.ErrorInvalidRequest
+	default:
+		return ipc.ErrorPrecondition
+	}
+}
+
+// rescueEvaluationReason is what this runtime writes down about its refusal.
+//
+// The code travels to the caller; this stays here, and it keeps apart the one
+// thing the code cannot: which of the two preconditions failed.
+func rescueEvaluationReason(evaluated error) logging.Reason {
+	switch {
+	case errors.Is(evaluated, ipc.ErrUnauthorizedPeer):
+		return logging.ReasonUnauthorizedPeer
+	case errors.Is(evaluated, control.ErrStaleGeneration):
+		return logging.ReasonGenerationConflict
+	case errors.Is(evaluated, pritunlrescue.ErrInvalidRequest):
+		return logging.ReasonMalformedRequest
+	case errors.Is(evaluated, pritunlrescue.ErrOuterNotReady):
+		return logging.ReasonOuterPathNotReady
+	case errors.Is(evaluated, pritunlrescue.ErrServiceNotStale):
+		return logging.ReasonServiceNotStale
+	default:
+		return logging.ReasonRecoveryRefused
+	}
+}
+
+// report writes down this runtime's own refusal, or does nothing when it was
+// built without somewhere to write.
+func (rescuer *pritunlRescuer) report(reason logging.Reason) {
+	if rescuer == nil || rescuer.refusal == nil {
+		return
+	}
+	rescuer.refusal(reason)
+}
+
 func (rescuer *pritunlRescuer) handle(
 	ctx context.Context,
 	request ipc.Request,
@@ -86,15 +145,18 @@ func (rescuer *pritunlRescuer) handle(
 	}
 	decision, err := rescuer.handler.Evaluate(ctx, rescuer.peerUID, request)
 	if err != nil || !decision.Approved {
-		response.Error = ipc.ErrorPrecondition
+		rescuer.report(rescueEvaluationReason(err))
+		response.Error = rescueEvaluationError(err)
 		return response
 	}
 	if authorized := rescuer.authorize(
 		request.ExpectedGeneration, rescuePlanDigest(request),
 	); !authorized.Allowed {
 		// The situation calls for it and nothing signed for it. That is a
-		// refusal on authority, not on the service's state.
-		response.Error = ipc.ErrorPrecondition
+		// refusal on authority, not on the service's state — the same code as
+		// an unwelcome peer, and a different reason written down beside it.
+		rescuer.report(logging.ReasonUnsignedAuthority)
+		response.Error = ipc.ErrorUnauthorized
 		return response
 	}
 	if err := rescuer.restart(ctx); err != nil {

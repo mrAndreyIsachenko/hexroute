@@ -320,6 +320,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 				policy.DomainRoot, "pritunl", generation, digest,
 			)
 		},
+		// This runtime's own ground for saying no. The caller gets a code, and
+		// the code cannot separate the two preconditions; this can.
+		func(reason logging.Reason) {
+			_ = errorLog.Emit(
+				logging.LevelWarn,
+				logging.EventPritunlRescueRefused,
+				logging.ResultRejected,
+				reason,
+			)
+		},
 	)
 	if err := observeLoop(
 		runCtx,

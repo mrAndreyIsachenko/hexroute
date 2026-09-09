@@ -103,6 +103,38 @@ minutes while its supervisor reported HEALTHY with zero consecutive failures.
 - **WHEN** an observation cannot be made and nothing about the subject is established
 - **THEN** the planner decides on what is known rather than on an assumption about what is not
 
+### Requirement: A refusal names the check that made it
+
+A refusal SHALL carry the ground it was refused on, as far as the protocol can
+express it, and the runtime that refused SHALL write down what the protocol
+cannot. A caller SHALL NOT have to read source to learn why a request for the
+one production act was declined.
+
+The refusals are separate because they send the reader to different places: to
+who asked, to what signed for it, to the generation in force, to the runtime's
+own view of the outer path, and to the service itself. Collapsing them costs an
+outage's worth of diagnosis, which is what it cost on 2026-09-09.
+
+#### Scenario: The peer or the authority is refused
+
+- **WHEN** the caller is not the operator, or nothing signed for the act
+- **THEN** the refusal is reported as one of authority, and which of the two is recorded by the runtime that refused
+
+#### Scenario: The generation is not the one in force
+
+- **WHEN** the request names a generation other than the one authorizing the act
+- **THEN** the refusal says so, rather than reporting a failed precondition
+
+#### Scenario: One of the runtime's own checks is not satisfied
+
+- **WHEN** the outer path is not ready, or the service is not in the state the act repairs
+- **THEN** the refusal reports a precondition, and the runtime records which of them refused
+
+#### Scenario: The caller records what it was told
+
+- **WHEN** a request is refused
+- **THEN** the caller's own record names the ground, so it is legible without reading the other runtime's log
+
 ### Requirement: A service that is not running is asked about
 
 The service beneath the session SHALL reach the decision that can ask root to

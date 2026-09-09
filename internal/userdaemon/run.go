@@ -729,16 +729,15 @@ func emitSummary(
 			return nil
 		}
 		gate.Changed(logging.EventPritunlReconnect, key)
-		result := outcomeResult(summary.Outcome)
 		return logger.Emit(
 			logging.LevelInfo,
 			logging.EventPritunlReconnect,
-			result,
+			outcomeResult(summary.Outcome),
 			// A rejected event carries a reason or the logger refuses it, and
 			// an error here ends the observe loop. The one outcome this daemon
 			// exists to record — the other side looked and disagreed — must not
 			// be the one it cannot write down.
-			outcomeReason(result),
+			outcomeReason(summary.Outcome),
 		)
 	}
 	gate.Changed(logging.EventPritunlReconnect, "")
@@ -754,18 +753,29 @@ func emitSummary(
 //
 // The logger pairs them strictly: a rejected result without a reason is refused,
 // and so is any other result carrying one.
-func outcomeReason(result logging.Result) logging.Reason {
-	if result == logging.ResultRejected {
+func outcomeReason(outcome recoveryOutcome) logging.Reason {
+	switch outcome {
+	case recoveryRefusedAuthority:
+		return logging.ReasonUnsignedAuthority
+	case recoveryRefusedStale:
+		return logging.ReasonGenerationConflict
+	case recoveryRefusedRequest:
+		return logging.ReasonMalformedRequest
+	case recoveryRefused, recoveryRefusedPrecondition:
+		// Root's own checks were not satisfied and the code cannot say which.
+		// Its log names the one that refused, beside the same refusal.
 		return logging.ReasonRecoveryRefused
+	default:
+		return ""
 	}
-	return ""
 }
 
 func outcomeResult(outcome recoveryOutcome) logging.Result {
 	switch outcome {
 	case recoveryDone:
 		return logging.ResultOK
-	case recoveryRefused:
+	case recoveryRefused, recoveryRefusedAuthority, recoveryRefusedStale,
+		recoveryRefusedPrecondition, recoveryRefusedRequest:
 		return logging.ResultRejected
 	case recoveryFailed, recoveryUnequipped:
 		return logging.ResultDegraded

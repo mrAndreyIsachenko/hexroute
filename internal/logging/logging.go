@@ -86,6 +86,7 @@ const (
 	EventGitLabHTTPSRoute           EventName = "gitlab_https_route_proposed"
 	EventCodexRoute                 EventName = "codex_fallback_route_proposed"
 	EventPritunlReconnect           EventName = "pritunl_reconnect_proposed"
+	EventPritunlRescueRefused       EventName = "pritunl_rescue_refused"
 	EventSentinelEvidence           EventName = "sentinel_restart_evidence"
 	EventLocalNotification          EventName = "local_notification"
 	EventCloudAPIStarted            EventName = "cloud_api_started"
@@ -157,7 +158,13 @@ const (
 	// A refusal is not a failure — it is what the second opinion is for — but a
 	// rejected event needs a reason, and without one the attempt to write this
 	// down returned an error that ended the observe loop.
-	ReasonRecoveryRefused       Reason = "recovery_refused"
+	ReasonRecoveryRefused Reason = "recovery_refused"
+	// The reasons a request for the one production act can be refused. They are
+	// separate because they send the reader to different places: the peer, the
+	// signed policy, this runtime's view of the path, and the service itself.
+	ReasonUnsignedAuthority     Reason = "unsigned_authority"
+	ReasonOuterPathNotReady     Reason = "outer_path_not_ready"
+	ReasonServiceNotStale       Reason = "service_not_stale"
 	ReasonOversizedRequest      Reason = "oversized_request"
 	ReasonUnsupportedAction     Reason = "unsupported_action"
 	ReasonUnsupportedVersion    Reason = "unsupported_version"
@@ -282,6 +289,7 @@ func validEvent(value EventName) bool {
 		EventSentinelPlannerUnavailable,
 		EventObservationCycle, EventIngressRoute,
 		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect,
+		EventPritunlRescueRefused,
 		EventSentinelEvidence, EventLocalNotification, EventCloudAPIStarted,
 		EventCloudAPIStopped, EventCloudWorkerStarted, EventCloudWorkerStopped,
 		EventCloudMigration,
@@ -325,7 +333,8 @@ func validReason(value Reason) bool {
 		ReasonInvalidConnectivityMsg, ReasonConnectivityDomain,
 		ReasonRootInternal, ReasonPublicationTimeout,
 		ReasonSocketAbsent, ReasonSocketDenied, ReasonPeerSilent,
-		ReasonRecoveryRefused:
+		ReasonRecoveryRefused, ReasonUnsignedAuthority,
+		ReasonOuterPathNotReady, ReasonServiceNotStale:
 		return true
 	default:
 		return false
