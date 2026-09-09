@@ -34,8 +34,16 @@ func (verifier *fakeVerifier) PritunlServiceStale(context.Context) (bool, error)
 	return verifier.stale, verifier.err
 }
 
+// These cases carry no evidence; nothing here is asked to look for an address.
+func (verifier *fakeVerifier) TunnelAddressAbsent(
+	context.Context,
+	string,
+) (bool, error) {
+	return false, nil
+}
+
 func TestRequestIsTypedAndCredentialFree(t *testing.T) {
-	request, err := NewRequest("rescue-request-01", 17)
+	request, err := NewRequest("rescue-request-01", 17, "")
 	if err != nil {
 		t.Fatalf("NewRequest() error: %v", err)
 	}
@@ -66,7 +74,7 @@ func TestHandlerApprovesOnlyRevalidatedPritunlRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewHandler() error: %v", err)
 	}
-	request, _ := NewRequest("rescue-request-01", 17)
+	request, _ := NewRequest("rescue-request-01", 17, "")
 
 	decision, err := handler.Evaluate(context.Background(), 501, request)
 	if err != nil {
@@ -115,7 +123,7 @@ func TestHandlerRejectsUIDAndGenerationBeforeRootProbes(t *testing.T) {
 				stale:      true,
 			}
 			handler, _ := NewHandler(501, verifier)
-			request, _ := NewRequest("rescue-request-01", test.generation)
+			request, _ := NewRequest("rescue-request-01", test.generation, "")
 
 			if _, err := handler.Evaluate(
 				context.Background(),
@@ -163,7 +171,7 @@ func TestHandlerRequiresOuterReadinessAndConfirmedStaleService(t *testing.T) {
 				stale:      test.stale,
 			}
 			handler, _ := NewHandler(501, verifier)
-			request, _ := NewRequest("rescue-request-01", 17)
+			request, _ := NewRequest("rescue-request-01", 17, "")
 
 			decision, err := handler.Evaluate(context.Background(), 501, request)
 			if !errors.Is(err, ErrPrecondition) || decision.Approved {

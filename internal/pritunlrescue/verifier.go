@@ -3,13 +3,18 @@ package pritunlrescue
 import (
 	"context"
 	"errors"
+	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
+	"net/netip"
 	"regexp"
 	"strings"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 )
 
-const launchctlCommand = "/bin/launchctl"
+const (
+	launchctlCommand = "/bin/launchctl"
+	ifconfigCommand  = "/sbin/ifconfig"
+)
 
 // ErrInvalidVerifier is a verifier that could not be built.
 var ErrInvalidVerifier = errors.New("invalid Pritunl rescue verifier")
@@ -111,6 +116,38 @@ func loadedAndNotRunning(output string) bool {
 		}
 	}
 	return false
+}
+
+// TunnelAddressAbsent looks for the address on this host's own interfaces.
+//
+// It answers the question the asking domain answered, with the same parse, so
+// the two cannot drift into disagreeing about what "present" means — a
+// disagreement that would read as the second opinion refusing what the first
+// asked.
+//
+// An address it cannot parse is refused rather than reported absent. Absent is
+// what grounds a restart, and defaulting to it would let a malformed request
+// obtain one.
+func (verifier *LaunchdVerifier) TunnelAddressAbsent(
+	ctx context.Context,
+	address string,
+) (bool, error) {
+	if verifier == nil || verifier.runner == nil || ctx == nil {
+		return false, ErrInvalidVerifier
+	}
+	parsed, err := netip.ParseAddr(address)
+	if err != nil || !parsed.Is4() {
+		return false, ipc.ErrInvalidRescueMessage
+	}
+	output, err := verifier.runner.Output(ctx, ifconfigCommand)
+	if err != nil {
+		// Unable to look is not the same as having looked and found nothing.
+		// Reporting absence here would restart a service on the strength of a
+		// command that did not run.
+		return false, err
+	}
+	_, present := observe.TunnelAddress(output, parsed)
+	return !present, nil
 }
 
 var _ RootVerifier = (*LaunchdVerifier)(nil)

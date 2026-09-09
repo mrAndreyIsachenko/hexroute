@@ -147,6 +147,7 @@ const (
 	ReasonInvalidPolicyMessage   Reason = "invalid_policy_message"
 	ReasonInvalidReconcilerMsg   Reason = "invalid_reconciler_message"
 	ReasonInvalidConnectivityMsg Reason = "invalid_connectivity_message"
+	ReasonInvalidRescueMessage   Reason = "invalid_rescue_message"
 	ReasonConnectivityDomain     Reason = "connectivity_domain_refused"
 	ReasonRootInternal           Reason = "root_internal"
 	ReasonPublicationTimeout     Reason = "publication_timeout"
@@ -341,6 +342,7 @@ func validReason(value Reason) bool {
 		ReasonPolicyStoreUnavailable, ReasonMalformedFrame, ReasonInvalidRequestID,
 		ReasonInvalidTarget, ReasonInvalidPolicyMessage, ReasonInvalidReconcilerMsg,
 		ReasonInvalidConnectivityMsg, ReasonConnectivityDomain,
+		ReasonInvalidRescueMessage,
 		ReasonRootInternal, ReasonPublicationTimeout,
 		ReasonSocketAbsent, ReasonSocketDenied, ReasonPeerSilent,
 		ReasonRecoveryRefused, ReasonUnsignedAuthority,

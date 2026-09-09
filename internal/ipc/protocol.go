@@ -58,6 +58,7 @@ type Request struct {
 	AbortPolicy              *AbortPolicyRequest              `json:"abort_policy,omitempty"`
 	ReconcilerShadowStatus   *ReconcilerShadowStatusRequest   `json:"reconciler_shadow_status,omitempty"`
 	PublishConnectivityFacts *PublishConnectivityFactsRequest `json:"publish_connectivity_facts,omitempty"`
+	RescuePritunlService     *RescuePritunlServiceRequest     `json:"rescue_pritunl_service,omitempty"`
 }
 
 type ErrorCode string
@@ -150,11 +151,19 @@ func (request Request) Validate() error {
 			return ErrInvalidTarget
 		}
 	case ActionRescuePritunlService:
-		if payloads != 0 {
-			return ErrInvalidPolicyMessage
+		// The evidence is optional: a request that names no address asks only
+		// about the service's own state, which is the older question.
+		if payloads > 1 ||
+			(payloads == 1 && request.RescuePritunlService == nil) {
+			return ErrInvalidRescueMessage
 		}
 		if request.Target != control.ComponentPritunl {
 			return ErrInvalidTarget
+		}
+		if request.RescuePritunlService != nil {
+			if err := request.RescuePritunlService.Validate(); err != nil {
+				return err
+			}
 		}
 	case ActionPolicyStatus:
 		if !request.validPolicyEnvelope(payloads, request.PolicyStatus != nil) {
@@ -278,6 +287,7 @@ func (request Request) payloadCount() int {
 		request.AbortPolicy != nil,
 		request.ReconcilerShadowStatus != nil,
 		request.PublishConnectivityFacts != nil,
+		request.RescuePritunlService != nil,
 	} {
 		if present {
 			payloads++

@@ -19,7 +19,6 @@ const (
 
 var (
 	profileIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
-	interfacePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$`)
 )
 
 type ProfileState string
@@ -38,6 +37,39 @@ type ProfileObservation struct {
 	Connecting       bool
 	HasClientAddress bool
 	clientAddress    netip.Addr
+}
+
+// NewProfileObservation states an observation of a session.
+//
+// The address stays unexported so that a caller cannot state one the observer
+// did not see. This is how it is set: the parser below builds every real
+// observation through here, and anything reproducing one uses the same door.
+// Without it the evidence a session offers about its own address could not be
+// exercised outside this package at all.
+func NewProfileObservation(
+	found bool,
+	state ProfileState,
+	connecting bool,
+	address netip.Addr,
+) ProfileObservation {
+	return ProfileObservation{
+		Found:            found,
+		State:            state,
+		Connecting:       connecting,
+		HasClientAddress: address.Is4(),
+		clientAddress:    address,
+	}
+}
+
+// ClientAddress is the address the session says is its own.
+//
+// It is exposed because the root runtime is asked to confirm the same
+// observation about it, and cannot look for an address it is not told.
+func (observation ProfileObservation) ClientAddress() (netip.Addr, bool) {
+	if !observation.HasClientAddress || !observation.clientAddress.Is4() {
+		return netip.Addr{}, false
+	}
+	return observation.clientAddress, true
 }
 
 func (observation ProfileObservation) Connected() bool {
@@ -134,13 +166,17 @@ func parseProfile(output []byte, profileID string) (ProfileObservation, error) {
 		if err != nil {
 			return ProfileObservation{}, err
 		}
-		return ProfileObservation{
-			Found:            true,
-			State:            state,
-			Connecting:       state == ProfileConnecting || strings.EqualFold(online, "Connecting"),
-			HasClientAddress: hasAddress,
-			clientAddress:    clientAddress,
-		}, nil
+		if hasAddress != clientAddress.Is4() {
+			// The two are the same statement, and a parse where they disagree
+			// is one whose address is not what it says it has.
+			return ProfileObservation{}, ErrInvalidObservation
+		}
+		return NewProfileObservation(
+			true,
+			state,
+			state == ProfileConnecting || strings.EqualFold(online, "Connecting"),
+			clientAddress,
+		), nil
 	}
 	return ProfileObservation{
 		Found: false,
@@ -227,29 +263,10 @@ func findClientAddress(output []byte, address netip.Addr) (ClientAddressObservat
 	if !address.Is4() {
 		return ClientAddressObservation{}, ErrInvalidObservation
 	}
-	currentInterface := ""
-	for _, line := range strings.Split(string(output), "\n") {
-		if line != "" && line[0] != ' ' && line[0] != '\t' {
-			name, _, found := strings.Cut(line, ":")
-			if !found ||
-				!strings.HasPrefix(name, "utun") ||
-				!interfacePattern.MatchString(name) {
-				currentInterface = ""
-				continue
-			}
-			currentInterface = name
-			continue
-		}
-		if currentInterface == "" {
-			continue
-		}
-		parts := strings.Fields(strings.TrimSpace(line))
-		if len(parts) >= 2 && parts[0] == "inet" && parts[1] == address.String() {
-			return ClientAddressObservation{
-				Present:   true,
-				Interface: currentInterface,
-			}, nil
-		}
+	// The same parse the root runtime uses to confirm this observation. One
+	// question, one answer, or the second opinion refuses what the first asked.
+	if name, present := observe.TunnelAddress(output, address); present {
+		return ClientAddressObservation{Present: true, Interface: name}, nil
 	}
 	return ClientAddressObservation{}, nil
 }

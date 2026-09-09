@@ -5,10 +5,13 @@ import (
 	"errors"
 	"testing"
 
+	"net/netip"
+
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlplan"
+	"github.com/mrAndreyIsachenko/hexroute/internal/userobserve"
 )
 
 // Being unable to try and trying and failing are different faults.
@@ -57,7 +60,7 @@ func TestAReconnectWithNothingToActWithIsUnequipped(t *testing.T) {
 		},
 	}
 	plan := reconnectPlan()
-	if got := executor.perform(context.Background(), plan); got != recoveryUnequipped {
+	if got := executor.perform(context.Background(), plan, ""); got != recoveryUnequipped {
 		t.Fatalf("a reconnect with no client and no credentials = %q, want %q",
 			got, recoveryUnequipped)
 	}
@@ -104,3 +107,37 @@ type discardWriter struct{}
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 var _ = errors.Is
+
+// Evidence is offered only when there is any.
+//
+// The address is evidence of a session that claims to be up and is carrying
+// nothing. A session whose address is on an interface is carrying, so there is
+// nothing to ask root to confirm, and asking anyway would put a false premise
+// in front of the one runtime that can restart a production service.
+func TestEvidenceIsOfferedOnlyWhenTheAddressIsMissing(t *testing.T) {
+	present := Summary{ClientAddressPresent: true}
+	if got := unreachableClientAddress(present); got != "" {
+		t.Fatalf("evidence %q offered for a session that is carrying", got)
+	}
+	// And with nothing observed at all there is likewise nothing to offer.
+	if got := unreachableClientAddress(Summary{}); got != "" {
+		t.Fatalf("evidence %q offered when no address was observed", got)
+	}
+}
+
+// And when the address is missing, the evidence is what is offered.
+func TestTheMissingAddressIsWhatIsOffered(t *testing.T) {
+	address := netip.MustParseAddr("192.168.244.136")
+	observed := Evidence{
+		Profile: userobserve.NewProfileObservation(
+			true, userobserve.ProfileActive, false, address),
+	}
+	missing := Summary{Observed: observed, ClientAddressPresent: false}
+	if got := unreachableClientAddress(missing); got != address.String() {
+		t.Fatalf("evidence = %q, want %q", got, address)
+	}
+	carrying := Summary{Observed: observed, ClientAddressPresent: true}
+	if got := unreachableClientAddress(carrying); got != "" {
+		t.Fatalf("evidence %q offered for a session that is carrying", got)
+	}
+}

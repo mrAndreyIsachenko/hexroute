@@ -53,7 +53,7 @@ func TestTheRescueRequestCarriesTheAuthorizingGeneration(t *testing.T) {
 			Generation:    controlStateGeneration,
 		},
 	}
-	executor.perform(context.Background(), plan)
+	executor.perform(context.Background(), plan, "")
 
 	if sent.ExpectedGeneration == controlStateGeneration {
 		t.Fatal("the request carries this runtime's control-state generation; " +

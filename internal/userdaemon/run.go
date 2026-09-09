@@ -459,7 +459,8 @@ func observeLoop(
 		// it. Before the ownership cutover nothing does, and every decision
 		// comes back proposed — which is the same loop this daemon has always
 		// run, with the answer written down instead of assumed.
-		summary.Outcome = executor.perform(ctx, summary.Plan)
+		summary.Outcome = executor.perform(
+			ctx, summary.Plan, unreachableClientAddress(summary))
 		// Publishing happens before the daemon acts on its own conclusions and
 		// cannot change them: a root that is unreachable, refusing or absent
 		// leaves this loop exactly as it was.
@@ -668,6 +669,22 @@ func dispatchPritunlNotification(
 			"",
 		)
 	}
+}
+
+// unreachableClientAddress is the evidence this cycle can offer, or nothing.
+//
+// It is the address the session claims while no tunnel interface carries it —
+// the observation that grounds asking for a restart. Root is told the address
+// rather than the conclusion, and looks for itself.
+func unreachableClientAddress(summary Summary) string {
+	if summary.ClientAddressPresent {
+		return ""
+	}
+	address, ok := summary.Observed.Profile.ClientAddress()
+	if !ok {
+		return ""
+	}
+	return address.String()
 }
 
 func operatorReason(reason pritunlplan.Reason) control.Reason {

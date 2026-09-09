@@ -38,7 +38,7 @@ func TestABlackholedSessionCannotSatisfyTheStalenessCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
-	request, err := NewRequest("11111111-1111-4111-8111-111111111111", 4)
+	request, err := NewRequest("11111111-1111-4111-8111-111111111111", 4, "")
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -66,4 +66,11 @@ func (v *agreementVerifier) OuterReady(context.Context) (bool, error) {
 
 func (v *agreementVerifier) PritunlServiceStale(context.Context) (bool, error) {
 	return v.stale, nil
+}
+
+func (v *agreementVerifier) TunnelAddressAbsent(
+	context.Context,
+	string,
+) (bool, error) {
+	return false, nil
 }

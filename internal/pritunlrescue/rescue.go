@@ -14,6 +14,10 @@ type RootVerifier interface {
 	Generation() uint64
 	OuterReady(context.Context) (bool, error)
 	PritunlServiceStale(context.Context) (bool, error)
+	// TunnelAddressAbsent is this runtime looking for itself. The asking domain
+	// says the session's address is on no interface; this answers whether that
+	// is so here, which is a fact rather than the conclusion drawn from it.
+	TunnelAddressAbsent(context.Context, string) (bool, error)
 }
 
 type Decision struct {
@@ -45,13 +49,28 @@ var (
 	ErrServiceNotStale = fmt.Errorf("%w: the service is not stale", ErrPrecondition)
 )
 
-func NewRequest(requestID string, expectedGeneration uint64) (ipc.Request, error) {
+// NewRequest builds the request, with the evidence when there is any.
+//
+// An empty address asks only about the service's own state. A named one says
+// this is what the session claims and no interface carries it — evidence the
+// answering runtime confirms for itself rather than a conclusion it is asked to
+// accept.
+func NewRequest(
+	requestID string,
+	expectedGeneration uint64,
+	unreachableClientAddress string,
+) (ipc.Request, error) {
 	request := ipc.Request{
 		Version:            ipc.ProtocolVersion,
 		RequestID:          requestID,
 		Action:             ipc.ActionRescuePritunlService,
 		Target:             control.ComponentPritunl,
 		ExpectedGeneration: expectedGeneration,
+	}
+	if unreachableClientAddress != "" {
+		request.RescuePritunlService = &ipc.RescuePritunlServiceRequest{
+			UnreachableClientAddress: unreachableClientAddress,
+		}
 	}
 	if err := request.Validate(); err != nil {
 		return ipc.Request{}, ErrInvalidRequest
@@ -67,6 +86,23 @@ func NewHandler(allowedUID uint32, verifier RootVerifier) (*Handler, error) {
 		allowedUID: allowedUID,
 		verifier:   verifier,
 	}, nil
+}
+
+// blackholeConfirmed asks whether this runtime sees what the request describes.
+//
+// A request naming no address is not describing a blackhole, so there is
+// nothing to confirm and nothing is approved on that ground.
+func (handler *Handler) blackholeConfirmed(
+	ctx context.Context,
+	request ipc.Request,
+) (bool, error) {
+	if request.RescuePritunlService == nil ||
+		request.RescuePritunlService.UnreachableClientAddress == "" {
+		return false, nil
+	}
+	return handler.verifier.TunnelAddressAbsent(
+		ctx, request.RescuePritunlService.UnreachableClientAddress,
+	)
 }
 
 func (handler *Handler) Evaluate(
@@ -102,7 +138,20 @@ func (handler *Handler) Evaluate(
 		return Decision{}, err
 	}
 	if !stale {
-		return Decision{}, ErrServiceNotStale
+		// A service that is running is not stale, and until this existed that
+		// ended it — which meant the one fault the asking domain actually sees,
+		// a session up and carrying nothing, could never be approved. That
+		// session's service is running; it is what makes it a blackhole.
+		//
+		// So the other question is asked, and asked of this runtime's own eyes:
+		// is the address the session claims really on no interface.
+		absent, err := handler.blackholeConfirmed(ctx, request)
+		if err != nil {
+			return Decision{}, err
+		}
+		if !absent {
+			return Decision{}, ErrServiceNotStale
+		}
 	}
 
 	action := control.Action{

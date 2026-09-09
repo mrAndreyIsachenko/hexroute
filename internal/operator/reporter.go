@@ -70,6 +70,8 @@ func RejectionReason(err error) (logging.Reason, bool) {
 		reason = logging.ReasonInvalidReconcilerMsg
 	case errors.Is(err, ipc.ErrConnectivityDomain):
 		reason = logging.ReasonConnectivityDomain
+	case errors.Is(err, ipc.ErrInvalidRescueMessage):
+		reason = logging.ReasonInvalidRescueMessage
 	case errors.Is(err, ipc.ErrInvalidConnectivityMessage):
 		reason = logging.ReasonInvalidConnectivityMsg
 	default:
