@@ -55,15 +55,17 @@
       still grows with the record count, because the total size can only come
       from the filesystem — the delta spec was corrected to say so rather than
       claiming it had stopped growing.
-- [ ] 5.2 Confirm the journal's mirror no longer makes a published fact pay a
-      full scan twice.
+- [x] 5.2 Confirm the journal's mirror no longer makes a published fact pay a
+      full scan twice. Two facts per publication, one mirrored append each: about
+      246ms at the live archive size against roughly 1.8s before, well inside the
+      five seconds the publisher allows.
 
 ## 6. Gates
 
-- [ ] 6.1 `make check`.
-- [ ] 6.2 `make secret-test` clean, and read the new fixtures and test names by
+- [x] 6.1 `make check`.
+- [x] 6.2 `make secret-test` clean, and read the new fixtures and test names by
       hand: no live hostname, endpoint or evidence enters this public repository.
-- [ ] 6.3 Confirm no coexistence boundary is touched — AdGuard, both Codex paths,
+- [x] 6.3 Confirm no coexistence boundary is touched — AdGuard, both Codex paths,
       the disjoint labels, paths and sockets, and the split between root network
       authority and user Keychain access are all unaffected by a change to a
       root-owned local store.
