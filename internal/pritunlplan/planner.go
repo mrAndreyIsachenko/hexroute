@@ -48,6 +48,25 @@ const (
 	// and a probe that could not reach it carries no statement from that
 	// authority — reconnecting on it would act on nothing.
 	ReasonProfileUnreadable Reason = "profile_unreadable"
+
+	// ReasonServiceNotRunning is the service beneath the session being absent.
+	//
+	// It is a reason to ask root, not a reason to reconnect: the reconnect would
+	// go through the service that is not there.
+	ReasonServiceNotRunning Reason = "service_not_running"
+)
+
+// ServiceState is what was seen of the service beneath the session.
+type ServiceState string
+
+const (
+	// ServiceUnspecified is a caller that said nothing about the service. It is
+	// the zero value, and it asks for nothing.
+	ServiceUnspecified ServiceState = ""
+	// ServiceRunning was observed running.
+	ServiceRunning ServiceState = "running"
+	// ServiceStopped was observed not running, or could not be observed.
+	ServiceStopped ServiceState = "stopped"
 )
 
 type OptionalInnerState string
@@ -85,6 +104,23 @@ type Observation struct {
 	// most recent real cause of a restart.
 	OptionalInner       OptionalInnerState
 	OTPSecondsRemaining uint32
+	// Service is what was seen of the service beneath the session.
+	//
+	// It is three-valued on purpose. This field grounds a request for root to
+	// restart a production service, so the value a caller gets by not setting
+	// it must be the one that asks for nothing: an unset field is a caller that
+	// said nothing, not a caller reporting a stopped service.
+	//
+	// ServiceStopped covers both "observed and not running" and "could not be
+	// observed". Those are one answer to the only question asked here — is the
+	// thing that would carry out a reconnect there — and a service that cannot
+	// be found is not one that is running. Conflating them is safe because what
+	// it grounds is a request: root reaches its own conclusion before
+	// restarting anything, and refuses when it disagrees.
+	//
+	// Until this existed the service observation was collected and discarded,
+	// so a service that was simply gone could never become a reason to ask.
+	Service ServiceState
 	// ProfileUnreadable says the profile probe did not run, as distinct from
 	// running and reporting a session that is not connected.
 	//
@@ -213,6 +249,20 @@ func (planner *Planner) Plan(observation Observation) (Plan, error) {
 		if _, err := planner.step(observation.At, control.EventDependenciesReady); err != nil {
 			return Plan{}, err
 		}
+	}
+
+	// A session that is not carrying traffic cannot be repaired by reconnecting
+	// through a service that is not running: the reconnect goes through that
+	// service. So the service's absence is asked about first, and it is asked
+	// about as a request rather than acted on — root looks for itself.
+	if !observation.Profile.Connected() && observation.Service == ServiceStopped &&
+		planner.rescueRequestAllowed(observation.At) {
+		if _, err := planner.step(observation.At, control.EventProbeFailed); err != nil {
+			return Plan{}, err
+		}
+		planner.lastRescueAt = observation.At
+		planner.hasRequestedRescue = true
+		return planner.result(ReasonServiceNotRunning, ActionRequestRescue, 0), nil
 	}
 
 	if observation.ProfileUnreadable {

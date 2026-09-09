@@ -103,6 +103,43 @@ minutes while its supervisor reported HEALTHY with zero consecutive failures.
 - **WHEN** an observation cannot be made and nothing about the subject is established
 - **THEN** the planner decides on what is known rather than on an assumption about what is not
 
+### Requirement: A service that is not running is asked about
+
+The service beneath the session SHALL reach the decision that can ask root to
+restart it. A service observed not running, or that could not be observed at
+all, SHALL be grounds for requesting a restart when the session is not
+connected, and SHALL take precedence over reconnecting — the reconnect goes
+through the service that is not there.
+
+Those two cases are one answer to the only question asked here, and a service
+that cannot be found is not one that is running. Conflating them is safe because
+what it grounds is a request: root reaches its own conclusion before restarting
+anything.
+
+The value a caller gets by saying nothing SHALL ask for nothing. This grounds a
+request for root to restart a production service, so an unset observation is a
+caller that made none, not a caller reporting a stopped service.
+
+#### Scenario: The service is not running
+
+- **WHEN** the session is not connected and the service is observed not running
+- **THEN** root is asked to restart it, rather than the session being reconnected through it
+
+#### Scenario: The service cannot be observed
+
+- **WHEN** the service cannot be observed at all
+- **THEN** it is treated as not running, and root reaches its own conclusion before acting
+
+#### Scenario: The service is running
+
+- **WHEN** the service is observed running
+- **THEN** its state is not grounds for a restart, whatever the session is doing
+
+#### Scenario: Nothing was observed of the service
+
+- **WHEN** an observation carries no statement about the service
+- **THEN** no restart is requested on that ground
+
 ### Requirement: A session that carries no traffic is recoverable
 
 A session reporting itself connected, with a client address, while measurement
