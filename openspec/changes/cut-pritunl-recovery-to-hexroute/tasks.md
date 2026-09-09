@@ -56,8 +56,34 @@
       still reach the planner, and must not leave the previous state reported as
       current. Confirm it fails against the unchanged cycle before fixing it.
 
-- [ ] 4.6 The induction the runbook documents creates a condition root refuses by
-      design, so it cannot prove the root half. `bootout` unloads the job
+- [x] 4.6 The induction the runbook documents creates a condition root refuses by
+      design, so it cannot prove the root half — and measurement now says no
+      induction can, for this service.
+
+      Measured on 2026-09-09 against a synthetic KeepAlive job, sampled every
+      100ms for twelve seconds after SIGKILL: `spawn scheduled` for about 8.2
+      seconds, then `running`. `not running` never appeared. Staleness is
+      exactly `not running`, deliberately — a service that is starting says so,
+      and restarting one mid-start interrupts the recovery already under way.
+
+      So for a service launchd keeps alive, launchd's own restart is the
+      recovery and this runtime correctly declines to interfere. The root half's
+      real trigger is the one the specification always described: a session
+      reporting itself connected while carrying no traffic. That is what has to
+      be induced, and an absent or crashed service is not it.
+
+      The parse itself is now checked against real `launchctl` output rather
+      than against strings written by hand, in
+      `verifier_live_darwin_test.go`. It also confirms that a loaded,
+      not-running job is observable — for a job launchd has no reason to
+      restart.
+
+- [ ] 4.6b Rewrite the induction the runbook documents. It should induce the
+      blackhole condition — a session reporting itself connected while carrying
+      no traffic — because that is the trigger the root half actually has. The
+      current text says an absent service, which measurement has now shown this
+      runtime declines by design and always will for a service launchd keeps
+      alive. `bootout` unloads the job
       entirely; `launchctl print` then exits non-zero and the verifier answers
       "not stale" on purpose — its comment says a service that is not loaded is
       not this runtime's problem to solve. Stale means `state = not running`

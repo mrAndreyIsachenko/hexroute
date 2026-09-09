@@ -53,6 +53,7 @@ ENVIRONMENTAL = {
     "running as root cannot demonstrate a foreign owner",
     "no supplemental group available",
     "no second group to inherit from",
+    "no launchd user session",
     "cannot set a differing parent group: %v",
     "cannot assign supplemental group: %v",
 }
