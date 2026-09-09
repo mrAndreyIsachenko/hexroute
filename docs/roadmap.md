@@ -93,6 +93,32 @@ written down in advance in
 because a rollback discovered during an incident is not a rollback. It is item
 7 below.
 
+`bound-archive-append-cost` is proposed and not yet built. It is the same defect
+as `bound-spool-operation-cost`, in the store that change did not touch.
+`Archive.scan` reads and decodes every stored record, and `Append` calls it on
+every record — twice when anything is evicted — while the connectivity journal
+mirrors every fact into the archive synchronously. Measured on this repository's
+records: 18ms per scan at 1,000 stored records, 189ms at 10,000, and 898ms at the
+41,492 the live root archive had reached.
+
+That is what stopped the root daemon answering. It burned 23.3 CPU-seconds in
+every 30 of wall time, a CPU profile put the burn in this package, and every
+connectivity publication was refused for about a day because the publisher bounds
+a publication at a third of its cycle and root could not answer inside it.
+Nothing about the network, the socket or the exchange was wrong; the diagnosis
+took a day because neither side's log named its own fault, which
+`name-what-the-ipc-refused` has since fixed.
+
+The archive is harder than the spool in one place: the spool has no age bound, so
+it never needed a timestamp from inside a record. Records are named by a
+monotonic sequence and appended in order, so the oldest retained record is the
+lowest retained sequence — one read says whether anything expired, and further
+records are read only while they are themselves expired. Retention is
+deliberately unchanged: the same bounds, the same priority-ordered eviction, the
+same overflow accounting. An entry-count bound is a question about what the
+archive should keep rather than about what an append should cost, and it is asked
+separately.
+
 `bound-spool-operation-cost` closed on 2026-09-07. `Spool.Append` called
 `scanStable`, which read and fully decoded every stored record — from all six
 operations that called it, so asking the spool its own size re-proved every
