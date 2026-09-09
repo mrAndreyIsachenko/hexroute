@@ -51,7 +51,12 @@ func NewLaunchdVerifier(
 	}, nil
 }
 
-// Generation is the control-state generation the root runtime is on.
+// Generation is the generation of the policy in force here.
+//
+// A request carries the same number from the other domain, so comparing them
+// asks whether both sides are acting under the same authorization. Comparing
+// control-state generations asked whether two independent per-process counters
+// happened to agree, which they did not.
 func (verifier *LaunchdVerifier) Generation() uint64 {
 	if verifier == nil || verifier.generation == nil {
 		return 0

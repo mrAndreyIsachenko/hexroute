@@ -305,7 +305,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	rescuer := newPritunlRescuer(
 		config.PritunlServiceLabel,
 		uint32(config.OperatorUID),
-		observations.currentGeneration,
+		// The generation a request is compared against is the one that permits
+		// the act, not this runtime's count of its own cycles. The two domains
+		// share the first and nothing about the second.
+		policyHandler.ActiveBundleGeneration,
 		observations.currentOuterReady,
 		func(generation uint64, digest string) policy.ActionAuthorizationDecision {
 			if policyHandler == nil {

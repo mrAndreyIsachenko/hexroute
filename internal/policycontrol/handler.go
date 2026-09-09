@@ -500,6 +500,20 @@ func (handler *Handler) ExpiryAnnouncement(now time.Time) (policyexpiry.Stage, u
 	return stage, generation, true
 }
 
+// ActiveBundleGeneration is the generation of the policy in force.
+//
+// It is what a cross-domain request compares, because it is the one number both
+// domains share: a control-state generation counts a single runtime's own
+// cycles and means nothing to the other side.
+func (handler *Handler) ActiveBundleGeneration() uint64 {
+	if handler == nil {
+		return 0
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	return handler.status.BundleGeneration
+}
+
 func (handler *Handler) MutationAllowed() bool {
 	if handler == nil {
 		return false

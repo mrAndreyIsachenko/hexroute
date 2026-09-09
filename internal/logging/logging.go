@@ -152,13 +152,19 @@ const (
 	ReasonSocketAbsent           Reason = "socket_absent"
 	ReasonSocketDenied           Reason = "socket_denied"
 	ReasonPeerSilent             Reason = "peer_did_not_answer"
-	ReasonOversizedRequest       Reason = "oversized_request"
-	ReasonUnsupportedAction      Reason = "unsupported_action"
-	ReasonUnsupportedVersion     Reason = "unsupported_version"
-	ReasonMissingGeneration      Reason = "missing_generation"
-	ReasonGenerationConflict     Reason = "generation_conflict"
-	ReasonSafetyPolicyViolation  Reason = "safety_policy_violation"
-	ReasonInvalidConfiguration   Reason = "invalid_configuration"
+	// ReasonRecoveryRefused is the other side having looked and disagreed.
+	//
+	// A refusal is not a failure — it is what the second opinion is for — but a
+	// rejected event needs a reason, and without one the attempt to write this
+	// down returned an error that ended the observe loop.
+	ReasonRecoveryRefused       Reason = "recovery_refused"
+	ReasonOversizedRequest      Reason = "oversized_request"
+	ReasonUnsupportedAction     Reason = "unsupported_action"
+	ReasonUnsupportedVersion    Reason = "unsupported_version"
+	ReasonMissingGeneration     Reason = "missing_generation"
+	ReasonGenerationConflict    Reason = "generation_conflict"
+	ReasonSafetyPolicyViolation Reason = "safety_policy_violation"
+	ReasonInvalidConfiguration  Reason = "invalid_configuration"
 
 	// The reasons below name the subsystem a startup refused on. They exist
 	// because a daemon under KeepAlive that reports one reason for every
@@ -318,7 +324,8 @@ func validReason(value Reason) bool {
 		ReasonInvalidTarget, ReasonInvalidPolicyMessage, ReasonInvalidReconcilerMsg,
 		ReasonInvalidConnectivityMsg, ReasonConnectivityDomain,
 		ReasonRootInternal, ReasonPublicationTimeout,
-		ReasonSocketAbsent, ReasonSocketDenied, ReasonPeerSilent:
+		ReasonSocketAbsent, ReasonSocketDenied, ReasonPeerSilent,
+		ReasonRecoveryRefused:
 		return true
 	default:
 		return false

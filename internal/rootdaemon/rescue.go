@@ -165,13 +165,6 @@ func (observations *rootObservations) record(generation uint64, outerReady bool)
 	observations.outerReady.Store(outerReady)
 }
 
-func (observations *rootObservations) currentGeneration() uint64 {
-	if observations == nil {
-		return 0
-	}
-	return observations.generation.Load()
-}
-
 func (observations *rootObservations) currentOuterReady(context.Context) (bool, error) {
 	if observations == nil {
 		return false, nil

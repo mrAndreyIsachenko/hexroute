@@ -48,6 +48,12 @@ type recovery struct {
 	source    credentials.Source
 	roundTrip func(context.Context, ipc.Request) (ipc.Response, error)
 	requestID func() (string, error)
+	// bundleGeneration is the generation of the policy that permits the act.
+	//
+	// It is what the request carries. The control-state generation it used to
+	// carry counts this runtime's own cycles, and root compared it with the
+	// count of its own — two numbers that could match only by coincidence.
+	bundleGeneration func() uint64
 }
 
 // perform decides and acts.
@@ -107,7 +113,10 @@ func (executor *recovery) requestRescue(
 	if err != nil {
 		return recoveryFailed
 	}
-	request, err := pritunlrescue.NewRequest(id, plan.Snapshot.Generation)
+	if executor.bundleGeneration == nil {
+		return recoveryUnequipped
+	}
+	request, err := pritunlrescue.NewRequest(id, executor.bundleGeneration())
 	if err != nil {
 		return recoveryFailed
 	}
@@ -184,6 +193,7 @@ func newRecovery(
 ) *recovery {
 	executor := &recovery{requestID: newRecoveryRequestID}
 	if handler != nil {
+		executor.bundleGeneration = handler.ActiveBundleGeneration
 		executor.authorize = func(
 			target string,
 			generation uint64,
