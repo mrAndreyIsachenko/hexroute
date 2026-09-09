@@ -105,10 +105,18 @@ everything up to it: the user runtime noticed the missing service within one
 cycle, degraded across the whole outage, requested the restart, and root looked
 and disagreed. It cannot prove the link after that.
 
-The service carries `KeepAlive`, so killing its process has launchd restart it
-at once and the loaded-but-not-running window barely exists. Until an induction
-is found that holds that state open, the root half is provable only by a real
-fault, and saying so is better than repeating a procedure that cannot reach it.
+**No induction of an absent service can work here, and that was measured.**
+Sampling a synthetic `KeepAlive` job every 100ms for twelve seconds after
+SIGKILL: `spawn scheduled` for about 8.2 seconds, then `running`. `not running`
+never appeared. Staleness is exactly `not running` on purpose — a service that
+is starting says so, and restarting one mid-start interrupts the recovery
+already under way — so for a service launchd keeps alive, launchd's own restart
+is the recovery and this runtime declines to interfere with it.
+
+The root half's real trigger is the one this document should describe instead: a
+session reporting itself connected while carrying no traffic. That is the
+condition the capability exists for, and inducing it is a different problem than
+stopping a service.
 
 ## What closes it
 
