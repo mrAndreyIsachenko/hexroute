@@ -765,6 +765,13 @@ func outcomeReason(outcome recoveryOutcome) logging.Reason {
 		// Root's own checks were not satisfied and the code cannot say which.
 		// Its log names the one that refused, beside the same refusal.
 		return logging.ReasonRecoveryRefused
+	case recoveryUnequipped:
+		// An authority this runtime was granted and cannot exercise. That is a
+		// fault in the deployment, and it is not the same as an attempt that
+		// did not work — they send the reader to different places.
+		return logging.ReasonRecoveryUnequipped
+	case recoveryFailed:
+		return logging.ReasonRecoveryFailed
 	default:
 		return ""
 	}

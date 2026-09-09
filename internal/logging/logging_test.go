@@ -157,3 +157,30 @@ func loadCanaries(t *testing.T) []string {
 	}
 	return values
 }
+
+// A refusal explains itself; anything else may.
+//
+// The rule was symmetric, so a degraded result could not carry a reason at all
+// — and being unable to act and acting and failing were reported as the same
+// unexplained degraded cycle. The half worth keeping is that a refusal is never
+// unexplained.
+func TestOnlyARefusalMustExplainItself(t *testing.T) {
+	buffer := &strings.Builder{}
+	logger, err := New(buffer, ComponentUser)
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+	if err := logger.Emit(
+		LevelWarn, EventObservationCycle, ResultRejected, "",
+	); err == nil {
+		t.Fatal("a refusal was written with nothing to say for itself")
+	}
+	if err := logger.Emit(
+		LevelWarn, EventObservationCycle, ResultDegraded, ReasonRecoveryUnequipped,
+	); err != nil {
+		t.Fatalf("a degraded result could not explain itself: %v", err)
+	}
+	if !strings.Contains(buffer.String(), `"reason":"recovery_unequipped"`) {
+		t.Fatalf("the reason was not written: %s", buffer.String())
+	}
+}
