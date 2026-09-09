@@ -20,6 +20,17 @@
 
 ## 4. Prove
 
+- [x] 4.8 Before waiting on 4.1, make its outcome legible. A reconnect attempted
+      on 2026-09-09 reported a degraded cycle with nothing else, because being
+      unable to act and acting and failing were the same unexplained result —
+      so waiting could not have proved anything either way.
+
+      The logger's rule was symmetric: a refusal had to explain itself and
+      nothing else was allowed to. The half worth keeping is the first. A
+      degraded outcome now names whether the runtime had nothing to act with or
+      tried and failed, which is the difference between a fault in the
+      deployment and a fault in the attempt.
+
 - [ ] 4.1 (deferred to the cutover itself) Prove the user half by waiting. Reconnects run at 796 across 48 days with only six days seeing none, so a soak is a real sample, and the code-window and backoff paths appear in it on their own.
 - [ ] 4.2 (deferred to the cutover itself) Prove the root half by inducing the precondition — a stale service — and not the request. A request written by hand proves the handler and skips the detection, and detection is the half this moves. 108 rescues across the same period, 90 of them in two days, is one incident rather than a rate: waiting for the next would mean holding an untested grant of root authority until an outage.
 - [x] 4.4 Inducing the precondition on 2026-09-09 showed the detection half does

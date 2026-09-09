@@ -135,6 +135,16 @@ outage's worth of diagnosis, which is what it cost on 2026-09-09.
 - **WHEN** a request is refused
 - **THEN** the caller's own record names the ground, so it is legible without reading the other runtime's log
 
+#### Scenario: The runtime cannot act at all
+
+- **WHEN** an authority was granted and what would exercise it is absent
+- **THEN** that is recorded as a fault in the deployment, distinct from an attempt that did not work
+
+#### Scenario: The act was attempted and did not work
+
+- **WHEN** the act is attempted and the attempt fails
+- **THEN** that is recorded as such, and not as an absence of the means to try
+
 ### Requirement: A service that is not running is asked about
 
 The service beneath the session SHALL reach the decision that can ask root to

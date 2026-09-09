@@ -162,9 +162,14 @@ const (
 	// The reasons a request for the one production act can be refused. They are
 	// separate because they send the reader to different places: the peer, the
 	// signed policy, this runtime's view of the path, and the service itself.
-	ReasonUnsignedAuthority     Reason = "unsigned_authority"
-	ReasonOuterPathNotReady     Reason = "outer_path_not_ready"
-	ReasonServiceNotStale       Reason = "service_not_stale"
+	ReasonUnsignedAuthority Reason = "unsigned_authority"
+	ReasonOuterPathNotReady Reason = "outer_path_not_ready"
+	ReasonServiceNotStale   Reason = "service_not_stale"
+	// What a runtime could not do on its own behalf, as distinct from what
+	// another refused it. Unequipped is an authority it was granted and cannot
+	// exercise; failed is an attempt that did not work.
+	ReasonRecoveryUnequipped    Reason = "recovery_unequipped"
+	ReasonRecoveryFailed        Reason = "recovery_failed"
 	ReasonOversizedRequest      Reason = "oversized_request"
 	ReasonUnsupportedAction     Reason = "unsupported_action"
 	ReasonUnsupportedVersion    Reason = "unsupported_version"
@@ -238,8 +243,13 @@ func (l *Logger) Emit(level Level, event EventName, result Result, reason Reason
 	if !validLevel(level) || !validEvent(event) || !validResult(result) || !validReason(reason) {
 		return errors.New("event contains a non-allowlisted value")
 	}
-	if (result == ResultRejected) != (reason != "") {
-		return errors.New("rejected events require exactly one reason")
+	// A refusal has to explain itself. The reverse — that only a refusal may —
+	// was the rule until a degraded outcome needed explaining and could not:
+	// being unable to act and acting and failing arrived as the same
+	// unexplained degraded cycle, and telling those apart is the difference
+	// between a fault in the deployment and a fault in the attempt.
+	if result == ResultRejected && reason == "" {
+		return errors.New("a rejected event requires a reason")
 	}
 
 	record := wireEvent{
@@ -334,7 +344,8 @@ func validReason(value Reason) bool {
 		ReasonRootInternal, ReasonPublicationTimeout,
 		ReasonSocketAbsent, ReasonSocketDenied, ReasonPeerSilent,
 		ReasonRecoveryRefused, ReasonUnsignedAuthority,
-		ReasonOuterPathNotReady, ReasonServiceNotStale:
+		ReasonOuterPathNotReady, ReasonServiceNotStale,
+		ReasonRecoveryUnequipped, ReasonRecoveryFailed:
 		return true
 	default:
 		return false
