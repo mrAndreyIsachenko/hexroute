@@ -68,6 +68,41 @@ argument, an environment variable, a log line or an error.
 - **WHEN** the client exits non-zero
 - **THEN** the recorded reason names the failure without reproducing what was submitted
 
+### Requirement: A probe that cannot run still reaches the decision
+
+An observation the runtime could not make SHALL reach the planner as an
+observation it could not make. It SHALL NOT end the cycle before the planner is
+consulted, and it SHALL NOT leave the previous conclusion standing as the
+current one.
+
+This is what makes the supervised subject's absence detectable at all. Reading
+the Pritunl profile goes through the service; reading the service goes through
+launchd and answers whether or not the service is there. Ordering the first
+ahead of the second, and ending the cycle when it fails, puts the only probe
+that can see a missing service behind a probe that requires it — so the one
+condition meaning "the thing I supervise is gone" becomes the one condition
+under which nothing is decided.
+
+A runtime that cannot see SHALL NOT report health. Reporting the last state as
+though it were current is how a supervised service stayed absent for nine
+minutes while its supervisor reported HEALTHY with zero consecutive failures.
+
+#### Scenario: The service is gone and its profile cannot be read
+
+- **WHEN** the Pritunl service is absent, so reading the profile fails
+- **THEN** the planner is still given the cycle's observation
+- **AND** the runtime does not report the state it last observed as current
+
+#### Scenario: An observation that does not depend on the subject
+
+- **WHEN** one probe requires the supervised service and another does not
+- **THEN** the one that does not is not made unreachable by the failure of the one that does
+
+#### Scenario: A probe fails for a reason unrelated to the subject
+
+- **WHEN** an observation cannot be made and nothing about the subject is established
+- **THEN** the planner decides on what is known rather than on an assumption about what is not
+
 ### Requirement: A session that carries no traffic is recoverable
 
 A session reporting itself connected, with a client address, while measurement

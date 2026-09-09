@@ -40,6 +40,14 @@ const (
 	// ReasonInnerBlackholed is a session that reports itself connected, with a
 	// client address, while the path it should be carrying carries nothing.
 	ReasonInnerBlackholed Reason = "inner_blackholed"
+
+	// ReasonProfileUnreadable is the profile probe failing rather than the
+	// profile reporting anything.
+	//
+	// It is not "not connected". Pritunl is the authority on its own session,
+	// and a probe that could not reach it carries no statement from that
+	// authority — reconnecting on it would act on nothing.
+	ReasonProfileUnreadable Reason = "profile_unreadable"
 )
 
 type OptionalInnerState string
@@ -77,6 +85,14 @@ type Observation struct {
 	// most recent real cause of a restart.
 	OptionalInner       OptionalInnerState
 	OTPSecondsRemaining uint32
+	// ProfileUnreadable says the profile probe did not run, as distinct from
+	// running and reporting a session that is not connected.
+	//
+	// The zero value is "it was read", because until this existed every caller
+	// had read it — a cycle whose profile probe failed returned before the
+	// planner was consulted at all, which is how a supervised service stayed
+	// absent for twenty-six minutes while the runtime reported HEALTHY.
+	ProfileUnreadable bool
 }
 
 type Plan struct {
@@ -197,6 +213,17 @@ func (planner *Planner) Plan(observation Observation) (Plan, error) {
 		if _, err := planner.step(observation.At, control.EventDependenciesReady); err != nil {
 			return Plan{}, err
 		}
+	}
+
+	if observation.ProfileUnreadable {
+		// The state still moves: a probe did fail, and saying otherwise is how
+		// the previous conclusion goes on being reported as the current one.
+		// What does not follow is an action. Reconnecting needs Pritunl's
+		// account of its own session, and there is none.
+		if _, err := planner.step(observation.At, control.EventProbeFailed); err != nil {
+			return Plan{}, err
+		}
+		return planner.result(ReasonProfileUnreadable, ActionNone, 0), nil
 	}
 
 	if observation.Profile.Connected() {

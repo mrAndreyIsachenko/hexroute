@@ -126,11 +126,19 @@ func (cycle *Cycle) Observe(
 		})
 	}
 
+	// A failed profile probe does not end the cycle.
+	//
+	// Reading the profile goes through the Pritunl service; reading the service
+	// goes through launchd and answers whether or not the service is there.
+	// Returning here put the only observation that can see a missing service
+	// behind one that requires it, so the single condition meaning "the thing I
+	// supervise is gone" was the condition under which nothing was decided and
+	// the previous conclusion went on being reported as current.
 	profile, err := cycle.pritunl.Profile(ctx, cycle.config.ProfileID)
 	summary.Observed.Profile, summary.Observed.ProfileError = profile, err
-	if err != nil {
+	profileUnreadable := err != nil
+	if profileUnreadable {
 		summary.Failures++
-		return summary
 	}
 	service, err := cycle.pritunl.Service(ctx)
 	summary.Observed.Service, summary.Observed.ServiceError = service, err
@@ -174,6 +182,7 @@ func (cycle *Cycle) Observe(
 		Wake:                wake,
 		OuterReady:          summary.OuterReady,
 		Profile:             profile,
+		ProfileUnreadable:   profileUnreadable,
 		OptionalInner:       optionalInner,
 		OTPSecondsRemaining: otpRemaining,
 	})
