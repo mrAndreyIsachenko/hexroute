@@ -101,7 +101,7 @@ func TestAnUnsignedActIsRefusedOnAuthority(t *testing.T) {
 func rescueRequest(t *testing.T) ipc.Request {
 	t.Helper()
 	request, err := pritunlrescue.NewRequest(
-		"11111111-1111-4111-8111-111111111111", 4)
+		"11111111-1111-4111-8111-111111111111", 4, "")
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -142,6 +142,14 @@ func (v *refusingVerifier) OuterReady(context.Context) (bool, error) {
 
 func (v *refusingVerifier) PritunlServiceStale(context.Context) (bool, error) {
 	return v.stale, nil
+}
+
+// These cases carry no evidence, so nothing here is asked to look.
+func (v *refusingVerifier) TunnelAddressAbsent(
+	context.Context,
+	string,
+) (bool, error) {
+	return false, nil
 }
 
 // The ground root gave is written down here, because the code cannot carry it.

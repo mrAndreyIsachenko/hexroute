@@ -103,6 +103,45 @@ minutes while its supervisor reported HEALTHY with zero consecutive failures.
 - **WHEN** an observation cannot be made and nothing about the subject is established
 - **THEN** the planner decides on what is known rather than on an assumption about what is not
 
+### Requirement: The answering runtime confirms the fault for itself
+
+A request naming a session that carries nothing SHALL carry the evidence — the
+address the session claims — and not the conclusion drawn from it. The answering
+runtime SHALL look for that address on its own interfaces before acting, and
+SHALL refuse when it finds it.
+
+Both runtimes SHALL read an interface the same way. Two parses of one command
+agree until one is edited, and the disagreement would read as the second opinion
+refusing what the first asked.
+
+An address that cannot be read, or a look that could not be taken, SHALL NOT be
+reported as an absence. Absence is what grounds a restart, and defaulting to it
+would obtain one from a malformed request or a command that did not run.
+
+Evidence SHALL be offered only when there is any. A session whose address is on
+an interface is carrying, and asking about it would put a false premise in front
+of the only runtime that can restart a production service.
+
+#### Scenario: The session carries nothing and both runtimes see it
+
+- **WHEN** the session reports itself connected, and neither runtime finds its address on any interface
+- **THEN** the restart is approved, although the service is running
+
+#### Scenario: The answering runtime finds the address
+
+- **WHEN** the asking runtime reports the address missing and the answering one finds it
+- **THEN** the request is refused
+
+#### Scenario: The evidence cannot be read, or the look cannot be taken
+
+- **WHEN** the address does not parse, or the command that would look does not run
+- **THEN** the request is refused rather than treated as an absence
+
+#### Scenario: The outer path is not ready
+
+- **WHEN** the session carries nothing and the outer path is not ready
+- **THEN** the request is refused, because restarting into a path that is not there repairs nothing
+
 ### Requirement: A refusal names the check that made it
 
 A refusal SHALL carry the ground it was refused on, as far as the protocol can

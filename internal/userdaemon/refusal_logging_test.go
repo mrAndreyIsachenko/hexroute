@@ -152,7 +152,7 @@ func TestARefusalRecordsTheGroundRootGave(t *testing.T) {
 					State:         control.StateDegraded,
 					Generation:    7,
 				},
-			})
+			}, "")
 			if got != testCase.outcome {
 				t.Fatalf("outcome for %q = %q, want %q",
 					testCase.code, got, testCase.outcome)

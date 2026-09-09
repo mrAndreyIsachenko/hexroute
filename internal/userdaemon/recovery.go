@@ -73,6 +73,7 @@ type recovery struct {
 func (executor *recovery) perform(
 	ctx context.Context,
 	plan pritunlplan.Plan,
+	unreachableAddress string,
 ) recoveryOutcome {
 	if executor == nil || ctx == nil || executor.authorize == nil {
 		return recoveryProposed
@@ -102,7 +103,7 @@ func (executor *recovery) perform(
 		}
 		return recoveryDone
 	case pritunlplan.ActionRequestRescue:
-		return executor.requestRescue(ctx, plan)
+		return executor.requestRescue(ctx, plan, unreachableAddress)
 	}
 	return recoveryProposed
 }
@@ -115,6 +116,7 @@ func (executor *recovery) perform(
 func (executor *recovery) requestRescue(
 	ctx context.Context,
 	plan pritunlplan.Plan,
+	unreachableAddress string,
 ) recoveryOutcome {
 	if executor.roundTrip == nil || executor.requestID == nil {
 		return recoveryUnequipped
@@ -126,7 +128,10 @@ func (executor *recovery) requestRescue(
 	if executor.bundleGeneration == nil {
 		return recoveryUnequipped
 	}
-	request, err := pritunlrescue.NewRequest(id, executor.bundleGeneration())
+	// The evidence, when this cycle saw any: the address the session claims and
+	// that no tunnel interface carries. Root looks for it itself.
+	request, err := pritunlrescue.NewRequest(
+		id, executor.bundleGeneration(), unreachableAddress)
 	if err != nil {
 		return recoveryFailed
 	}

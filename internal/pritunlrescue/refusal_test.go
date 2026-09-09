@@ -46,7 +46,7 @@ func TestEachRefusalNamesItsOwnCheck(t *testing.T) {
 			if err != nil {
 				t.Fatalf("handler: %v", err)
 			}
-			request, err := NewRequest("11111111-1111-4111-8111-111111111111", 4)
+			request, err := NewRequest("11111111-1111-4111-8111-111111111111", 4, "")
 			if err != nil {
 				t.Fatalf("request: %v", err)
 			}
@@ -88,6 +88,14 @@ func (verifier *stubVerifier) OuterReady(context.Context) (bool, error) {
 
 func (verifier *stubVerifier) PritunlServiceStale(context.Context) (bool, error) {
 	return verifier.stale, nil
+}
+
+// These cases carry no evidence, so nothing here is ever asked to look.
+func (verifier *stubVerifier) TunnelAddressAbsent(
+	context.Context,
+	string,
+) (bool, error) {
+	return false, nil
 }
 
 var _ RootVerifier = (*stubVerifier)(nil)

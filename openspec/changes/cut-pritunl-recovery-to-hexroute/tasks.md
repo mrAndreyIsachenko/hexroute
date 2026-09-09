@@ -78,7 +78,7 @@
       not-running job is observable — for a job launchd has no reason to
       restart.
 
-- [ ] 4.9 The two halves of this capability ask about different faults, and no
+- [x] 4.9 The two halves of this capability ask about different faults, and no
       induction reconciles them. The user runtime asks when the session reports
       itself connected while its address is absent from every interface — a
       service that is running and carrying nothing. This runtime approves only a
