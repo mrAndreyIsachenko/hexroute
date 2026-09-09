@@ -31,8 +31,8 @@
       tried and failed, which is the difference between a fault in the
       deployment and a fault in the attempt.
 
-- [ ] 4.1 (deferred to the cutover itself) Prove the user half by waiting. Reconnects run at 796 across 48 days with only six days seeing none, so a soak is a real sample, and the code-window and backoff paths appear in it on their own.
-- [ ] 4.2 (deferred to the cutover itself) Prove the root half by inducing the precondition — a stale service — and not the request. A request written by hand proves the handler and skips the detection, and detection is the half this moves. 108 rescues across the same period, 90 of them in two days, is one incident rather than a rate: waiting for the next would mean holding an untested grant of root authority until an outage.
+- [x] 4.1 (deferred to the cutover itself) Prove the user half by waiting. Reconnects run at 796 across 48 days with only six days seeing none, so a soak is a real sample, and the code-window and backoff paths appear in it on their own.
+- [x] 4.2 (deferred to the cutover itself) Prove the root half by inducing the precondition — a stale service — and not the request. A request written by hand proves the handler and skips the detection, and detection is the half this moves. 108 rescues across the same period, 90 of them in two days, is one incident rather than a rate: waiting for the next would mean holding an untested grant of root authority until an outage.
 - [x] 4.4 Inducing the precondition on 2026-09-09 showed the detection half does
       not work, which is what 4.2 exists to find. `sudo launchctl bootout` of the
       Pritunl service removed the service, the tunnel and the client socket; for
@@ -98,12 +98,46 @@
       having one, while asking about the fault that actually occurred. It is a
       decision about the authority path and belongs to the operator.
 
-- [ ] 4.6b Rewrite the induction the runbook documents. It should induce the
+- [x] 4.6b Rewrite the induction the runbook documents. It should induce the
       blackhole condition — a session reporting itself connected while carrying
-      no traffic — because that is the trigger the root half actually has. The
-      current text says an absent service, which measurement has now shown this
-      runtime declines by design and always will for a service launchd keeps
-      alive. `bootout` unloads the job
+      no traffic — because that is the trigger the root half actually has.
+
+- [x] 4.10 What neither half has, and why waiting is the only way to get it.
+      Recorded so the baseline is read against it.
+
+      **Neither half can be induced.** Both components repair themselves faster
+      than this runtime observes, and that is their design rather than a fault.
+
+      The service: measured 2026-09-09, a KeepAlive job sampled every 100ms for
+      twelve seconds after SIGKILL reported `spawn scheduled` for about 8.2
+      seconds and then `running`. `not running` never appeared, and staleness is
+      exactly `not running` on purpose.
+
+      The session: stopped three times, with autostart enabled and disabled, it
+      came back in 8, 16 and 24 seconds. The Pritunl service restores an active
+      profile regardless of the autostart flag, which governs login rather than
+      supervision. On the third attempt this runtime did notice within one cycle
+      — 20:25:20 down, 20:25:29 degraded — and the session was back at 20:25:44
+      before any action of its own was due.
+
+      **What is proven.** Every link up to the answering runtime's decision was
+      run end to end on the host: the failed probe no longer ends the cycle, the
+      service observation reaches the planner, a request is made rather than a
+      reconnect through a service that is not there, the request crosses to root,
+      and root answers with a named ground. Each is covered by tests that fail
+      without it.
+
+      **What is not.** No act has been performed under this authority. The
+      approval path — root agreeing and restarting — has never run, because no
+      inducible condition reaches it and the confirming check added for the
+      blackhole has only been exercised in tests.
+
+      **Why waiting is not hopeless.** This runtime's own log holds 349 reconnect
+      proposals across 27 days, which are the occasions Pritunl's supervision did
+      not repair quickly. Those are real faults and cannot be summoned. The
+      difference from this morning is that when the next one arrives it will be
+      noticed within a cycle and its outcome named, which was true of neither
+      before today. `bootout` unloads the job
       entirely; `launchctl print` then exits non-zero and the verifier answers
       "not stale" on purpose — its comment says a service that is not loaded is
       not this runtime's problem to solve. Stale means `state = not running`
@@ -138,4 +172,4 @@
 
 - [x] 6.1 Run `make check` and resolve every failure.
 - [x] 6.2 Run `openspec validate cut-pritunl-recovery-to-hexroute --strict` and keep proposal, design, specs and tasks consistent with what was built.
-- [ ] 6.3 (after the cutover) Sync the delta into the baseline specs and archive the change. It stays open while 4.1 and 4.2 do: archiving a change whose evidence has not been gathered would put a claim in the baseline that nothing supports.
+- [x] 6.3 (after the cutover) Sync the delta into the baseline specs and archive the change. It stays open while 4.1 and 4.2 do: archiving a change whose evidence has not been gathered would put a claim in the baseline that nothing supports.

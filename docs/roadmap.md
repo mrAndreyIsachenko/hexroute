@@ -77,7 +77,27 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`cut-pritunl-recovery-to-hexroute` is active and built. It moves the whole Pritunl
+None. What follows is what the recent ones changed and what they left standing,
+kept because the reasons are worth more than the record of having done them.
+
+`cut-pritunl-recovery-to-hexroute` closed on 2026-09-09 with its behaviour built
+and specified, and with one thing it does not have: no act has ever been
+performed under this authority.
+
+Neither half can be induced, which was measured rather than assumed. A service
+launchd keeps alive reports `spawn scheduled` and then `running` after a kill,
+never the `not running` that staleness means. A session stopped three times, with
+autostart on and off, came back in 8, 16 and 24 seconds — the Pritunl service
+restores an active profile whatever that flag says. Both components repair
+themselves faster than this runtime observes, which is their design and not a
+fault in it.
+
+So the approval path has never run outside tests, and the evidence for it can
+only come from a real fault. That is not hopeless: the user runtime's own log
+holds 349 reconnect proposals across 27 days, which are the occasions Pritunl's
+supervision did not repair quickly. What changed today is that the next one will
+be noticed within a cycle and its outcome named — neither of which was true this
+morning. It moved the whole Pritunl
 recovery path — observation, decision, one-time code, reconnect and the request
 to restart a stale service — and grants the first production authority in this
 system: one named service restart, on a typed credential-free request that root
