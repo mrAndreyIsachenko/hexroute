@@ -93,7 +93,7 @@ written down in advance in
 because a rollback discovered during an incident is not a rollback. It is item
 7 below.
 
-`bound-archive-append-cost` is built and awaits the install. It is the same defect
+`bound-archive-append-cost` closed on 2026-09-09. It is the same defect
 as `bound-spool-operation-cost`, in the store that change did not touch.
 `Archive.scan` reads and decodes every stored record, and `Append` calls it on
 every record — twice when anything is evicted — while the connectivity journal
@@ -113,9 +113,12 @@ Appending now costs 123ms at those 41,492 records against 898ms, and 15ms at a
 thousand. The cost still grows with the record count — the total size can only
 come from the filesystem — so the specification says that rather than the
 stronger thing first written, exactly as `bound-spool-operation-cost` had to
-after measuring. What remains is the install on the live host, and restoring the
-publication deadline to `interval/3` from the twelve-second binary put there to
-establish that root was the slow side.
+after measuring. Installed on the live host the same day: the root daemon's
+CPU fell from 27.2 seconds in every 30 of wall time to a mean of 6.2, the
+connectivity stream advanced in every observed window, and the publication
+deadline went back to `interval/3` from the twelve-second binary that had been
+put there to establish that root was the slow side. No publication has been
+refused since.
 
 The archive is harder than the spool in one place: the spool has no age bound, so
 it never needed a timestamp from inside a record. Records are named by a
