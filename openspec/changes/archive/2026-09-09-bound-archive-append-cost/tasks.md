@@ -72,18 +72,25 @@
 
 ## 7. Deploy and confirm on the live host
 
-- [ ] 7.1 Build and install the root daemon with
+- [x] 7.1 Build and install the root daemon with
       `scripts/macos/observe-root-launchd.sh`, keeping the previous binary for
       rollback.
-- [ ] 7.2 Confirm the root daemon's CPU falls from the measured 23.3 seconds per
-      30 seconds of wall time.
-- [ ] 7.3 Confirm connectivity publications are accepted: `connectivity-stream.json`
+- [x] 7.2 Confirm the root daemon's CPU falls from the measured 23.3 seconds per
+      30 seconds of wall time. Measured 27.2 immediately before the install and a
+      mean of 6.2 over four settled windows after it. The first two windows after
+      a restart are higher because startup reads both journals in full to
+      establish the highest issued sequence — that path is unchanged by this
+      work.
+- [x] 7.3 Confirm connectivity publications are accepted: `connectivity-stream.json`
       advances every cycle, and the user daemon logs no `connectivity_publication`
-      refusal.
-- [ ] 7.4 Restore the publication deadline to `interval/3` by installing a user
+      refusal. The stream advanced in every observed window and no refusal has
+      been logged since.
+- [x] 7.4 Restore the publication deadline to `interval/3` by installing a user
       daemon built from the branch, replacing the experimental twelve-second
-      binary now on the host, and confirm publications still land.
+      binary now on the host, and confirm publications still land. Installed from
+      merged main and confirmed by digest; publications continued to land under
+      the five-second bound with no refusal.
 
 ## 8. Close
 
-- [ ] 8.1 Reconcile the delta into the baseline and archive the change.
+- [x] 8.1 Reconcile the delta into the baseline and archive the change.
