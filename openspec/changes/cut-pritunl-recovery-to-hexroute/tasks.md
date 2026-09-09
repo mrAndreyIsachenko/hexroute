@@ -78,6 +78,26 @@
       not-running job is observable — for a job launchd has no reason to
       restart.
 
+- [ ] 4.9 The two halves of this capability ask about different faults, and no
+      induction reconciles them. The user runtime asks when the session reports
+      itself connected while its address is absent from every interface — a
+      service that is running and carrying nothing. This runtime approves only a
+      service that is loaded and not running. The request therefore arrives
+      exactly when the check refuses it.
+
+      Proven in `agreement_test.go`, and the reachable states measured on
+      2026-09-09 leave no other pairing: absent makes the probe error, killed
+      under KeepAlive reports `spawn scheduled` then `running`, and the one
+      state that would be approved does not occur for a service launchd keeps
+      alive.
+
+      Either the trigger changes or the check does. What this runtime can verify
+      for itself about a blackhole is the same thing the user domain observed —
+      whether the address is on an interface — and it can see interfaces. That
+      keeps the second opinion genuinely independent, which is the point of
+      having one, while asking about the fault that actually occurred. It is a
+      decision about the authority path and belongs to the operator.
+
 - [ ] 4.6b Rewrite the induction the runbook documents. It should induce the
       blackhole condition — a session reporting itself connected while carrying
       no traffic — because that is the trigger the root half actually has. The
