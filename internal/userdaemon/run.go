@@ -212,6 +212,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			NightEndHour:   8,
 		},
 		macOSNotifier,
+		// Beside the other state this daemon already writes every cycle. An
+		// announcement made for a generation stays made across a restart;
+		// without this the same crossing was announced again on every start.
+		notification.DeliveryRecordAt(filepath.Join(
+			filepath.Dir(*statePath), "notification-deliveries.json")),
 	)
 	if err != nil {
 		return 1
@@ -578,6 +583,9 @@ func dispatchPolicyExpiryNotification(
 				Generation: generation,
 			},
 			External: notification.ExternalNotRequired,
+			// A policy generation is the same number in the next process, so a
+			// crossing announced for it must not be announced again.
+			DurableGeneration: true,
 		},
 		at,
 	)
