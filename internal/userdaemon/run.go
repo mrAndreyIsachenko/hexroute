@@ -729,11 +729,16 @@ func emitSummary(
 			return nil
 		}
 		gate.Changed(logging.EventPritunlReconnect, key)
+		result := outcomeResult(summary.Outcome)
 		return logger.Emit(
 			logging.LevelInfo,
 			logging.EventPritunlReconnect,
-			outcomeResult(summary.Outcome),
-			"",
+			result,
+			// A rejected event carries a reason or the logger refuses it, and
+			// an error here ends the observe loop. The one outcome this daemon
+			// exists to record — the other side looked and disagreed — must not
+			// be the one it cannot write down.
+			outcomeReason(result),
 		)
 	}
 	gate.Changed(logging.EventPritunlReconnect, "")
@@ -745,6 +750,17 @@ func emitSummary(
 // An authorized act that could not be performed is degraded rather than
 // proposed: an authority that cannot be exercised is a fault in the deployment,
 // and reporting it as a proposal would hide it behind the pre-cutover state.
+// outcomeReason names a rejected outcome, and nothing else.
+//
+// The logger pairs them strictly: a rejected result without a reason is refused,
+// and so is any other result carrying one.
+func outcomeReason(result logging.Result) logging.Reason {
+	if result == logging.ResultRejected {
+		return logging.ReasonRecoveryRefused
+	}
+	return ""
+}
+
 func outcomeResult(outcome recoveryOutcome) logging.Result {
 	switch outcome {
 	case recoveryDone:
