@@ -77,23 +77,35 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`name-the-refusal-nobody-wrote-down` is open. A rescue was refused on this
-machine on 2026-09-10 and neither runtime recorded why. Root wrote nothing; the
-asking runtime wrote `recovery_refused`, which is also what it writes when root
-fails internally.
+None. What follows is what the recent ones changed and what they left standing,
+kept because the reasons are worth more than the record of having done them.
 
-The capability already requires that a refusal name the check that made it, and
-two paths do not honour it. Both answer above the rescuer — the dispatcher's
-mutation gate and the broker's answer when no reader takes the envelope — and
-neither has anywhere to write. The asking runtime then loses the one distinction
-that does survive the boundary, mapping a precondition failure and an internal
-failure to the same reason. So a reader cannot tell "root looked and disagreed"
-from "root did not get to it".
+`name-the-refusal-nobody-wrote-down` closed on 2026-09-10. Two layers answered
+above the rescuer and neither could write: the dispatcher's mutation gate and
+the broker's answer when no reader takes the envelope. Both now report, and the
+reporter is a required constructor argument rather than an optional one, so a
+dispatcher or broker that can refuse and leave nothing behind is unbuildable.
+The asking runtime stopped reporting the other side's internal failure as the
+other side's refusal.
 
-It is the fifth path here found reporting a refusal without saying which check
-produced it, after the IPC layer, the rescue refusal itself, the difference
-between being unable to act and acting and failing, and the eight places a
-reconnect can stop.
+Only one of the two was reproduced on a machine. A spare user daemon with a
+deliberately slow cycle recorded `request_not_taken` at the moment the
+request's deadline expired. The gate refusal cannot be induced here at all: the
+gate closes only on a suspended authorization or a store with no active
+generation, both domains carry an active generation 4, and every route to the
+closed state changes production policy state. That is the third condition in
+this capability worth observing and impossible to produce on demand.
+
+Installing the two daemons to prove it cost this machine its policy state and
+found a hazard the procedure does not mention. The documented install command
+names `private/<domain>-observe.json` and the installer copies it over the live
+configuration without comparing them. Both checkout copies were stale, so the
+install replaced runtimes holding a signed generation 4 with runtimes holding
+no policy, and root lost the named service that is its whole rescue capability.
+Both were rebuilt from the active manifest and the signer's public key, matched
+by digest rather than by path. It was survivable only because the policy store
+is a different file from the configuration, and it will happen again to anyone
+who follows the documented command with a stale working copy.
 
 `name-what-a-reconnect-could-not-do` closed on 2026-09-10. A reconnect now says
 which step it stopped at. Proving it on this machine did not work as planned:
