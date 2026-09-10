@@ -80,6 +80,23 @@ Status date: 2026-09-04.
 None. What follows is what the recent ones changed and what they left standing,
 kept because the reasons are worth more than the record of having done them.
 
+`name-what-a-reconnect-could-not-do` closed on 2026-09-10. A reconnect now says
+which step it stopped at. Proving it on this machine did not work as planned:
+the only fault that can be induced by hand is a blackholed tunnel, and the
+planner answers that with a rescue rather than a reconnect, so the named
+failures remain unexercised on live hardware. The induction found a refusal
+neither runtime wrote down instead.
+
+It also left one thing measured and undiagnosed: root's observation cycle stops
+answering its own operator socket for 6.6 to 13.1 seconds once every ~70
+seconds. Over 400 requests the pause held that band without a trend — a first
+short sample looked like growth and a longer one does not support it. What
+matters is the ceiling rather than the direction: the I/O deadline on that
+socket is 15 seconds, and a pause that reaches it stops producing a late answer
+and starts producing a caller that gives up, which reads as a failure rather
+than as the slow answer it is. That is not a refusal problem and has no change
+yet.
+
 `cut-pritunl-recovery-to-hexroute` closed on 2026-09-09 with its behaviour built
 and specified, and with one thing it does not have: no act has ever been
 performed under this authority.
