@@ -77,15 +77,30 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None. What follows is what the recent ones changed and what they left standing,
-kept because the reasons are worth more than the record of having done them.
+`name-the-refusal-nobody-wrote-down` is open. A rescue was refused on this
+machine on 2026-09-10 and neither runtime recorded why. Root wrote nothing; the
+asking runtime wrote `recovery_refused`, which is also what it writes when root
+fails internally.
+
+The capability already requires that a refusal name the check that made it, and
+two paths do not honour it. Both answer above the rescuer — the dispatcher's
+mutation gate and the broker's answer when no reader takes the envelope — and
+neither has anywhere to write. The asking runtime then loses the one distinction
+that does survive the boundary, mapping a precondition failure and an internal
+failure to the same reason. So a reader cannot tell "root looked and disagreed"
+from "root did not get to it".
+
+It is the fifth path here found reporting a refusal without saying which check
+produced it, after the IPC layer, the rescue refusal itself, the difference
+between being unable to act and acting and failing, and the eight places a
+reconnect can stop.
 
 `name-what-a-reconnect-could-not-do` closed on 2026-09-10. A reconnect now says
 which step it stopped at. Proving it on this machine did not work as planned:
 the only fault that can be induced by hand is a blackholed tunnel, and the
 planner answers that with a rescue rather than a reconnect, so the named
-failures remain unexercised on live hardware. The induction found a refusal
-neither runtime wrote down instead.
+failures remain unexercised on live hardware. The induction found the silent
+refusal above instead.
 
 It also left one thing measured and undiagnosed: root's observation cycle stops
 answering its own operator socket for 6.6 to 13.1 seconds once every ~70
