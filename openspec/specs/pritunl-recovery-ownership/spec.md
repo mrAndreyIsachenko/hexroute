@@ -173,6 +173,14 @@ who asked, to what signed for it, to the generation in force, to the runtime's
 own view of the outer path, and to the service itself. Collapsing them costs an
 outage's worth of diagnosis, which is what it cost on 2026-09-09.
 
+An attempt that was made and did not work SHALL say where it stopped. A
+reconnect passes through several steps that fail for unrelated reasons — a
+one-time-code window too short to use, credentials it could not read, a client
+that would not start the session — and they send the reader to different places
+in the same way a refusal does. Reporting only that the attempt failed leaves
+the next reader to choose between explanations by reading source, which cannot
+say which one happened.
+
 #### Scenario: The peer or the authority is refused
 
 - **WHEN** the caller is not the operator, or nothing signed for the act
@@ -202,7 +210,22 @@ outage's worth of diagnosis, which is what it cost on 2026-09-09.
 
 - **WHEN** the act is attempted and the attempt fails
 - **THEN** that is recorded as such, and not as an absence of the means to try
+- **AND** the step it stopped at is recorded with it
 
+#### Scenario: The credentials cannot be read
+
+- **WHEN** a reconnect cannot obtain what it would submit
+- **THEN** that is what is recorded, and not confused with a client that refused the attempt
+
+#### Scenario: The client would not start the session
+
+- **WHEN** the submission is made and the client does not start the session
+- **THEN** that is what is recorded, and not confused with credentials it never had
+
+#### Scenario: The window is too short to use
+
+- **WHEN** the one-time code would expire before it could be used
+- **THEN** that is recorded as a reason to wait rather than as a failure of the attempt
 ### Requirement: A service that is not running is asked about
 
 The service beneath the session SHALL reach the decision that can ask root to
