@@ -151,6 +151,14 @@ type Archive struct {
 	clock    metadata.Clock
 	metadata *metadata.Generator
 	faults   map[Boundary]struct{}
+	// indexed is what the archive last learned about its own directory, kept
+	// under mu with everything else that touches it. Nil means it does not
+	// know and the next question pays for a walk.
+	indexed []stableEntry
+	// walks counts the directory walks taken. It is the measure the defect
+	// this replaces was invisible without: one walk is cheap and the fault was
+	// always in how many of them one cycle asked for.
+	walks int
 	// readOnly marks an archive opened by a reader. A review must not be able
 	// to add to what it is reviewing, and the way to guarantee that is for the
 	// reader to hold a handle that cannot write rather than for it to be
@@ -635,15 +643,29 @@ func (archive *Archive) commit(record Record, evictions []Record) error {
 	); err != nil {
 		return fmt.Errorf("%w: publish record: %v", ErrArchive, err)
 	}
+	// From here the record may be in the directory whatever happens next, so
+	// nothing below amends the listing: it drops it and lets the next question
+	// pay for a walk.
 	if archive.fires(AfterRename) || archive.fires(BeforeDirectorySync) {
+		archive.forgetIndex()
 		return ErrInjectedFault
 	}
 	if err := syncDirectory(archive.path); err != nil {
+		archive.forgetIndex()
 		return err
 	}
 	if archive.fires(AfterDirectorySync) {
+		archive.forgetIndex()
 		return ErrInjectedFault
 	}
+	info, err := os.Lstat(archive.stablePath(record.Sequence))
+	if err != nil {
+		archive.forgetIndex()
+		return fmt.Errorf("%w: inspect published record: %v", ErrArchive, err)
+	}
+	archive.noteAppended(stableEntry{
+		Sequence: record.Sequence, Size: info.Size(),
+	})
 	return nil
 }
 
@@ -651,13 +673,21 @@ func (archive *Archive) evict(records []Record) error {
 	for _, record := range records {
 		if err := os.Remove(archive.stablePath(record.Sequence)); err != nil &&
 			!os.IsNotExist(err) {
+			// Some of them may be gone already. What the directory holds is no
+			// longer something this archive can state.
+			archive.forgetIndex()
 			return fmt.Errorf("%w: evict record: %v", ErrArchive, err)
 		}
 	}
 	if len(records) == 0 {
 		return nil
 	}
-	return syncDirectory(archive.path)
+	if err := syncDirectory(archive.path); err != nil {
+		archive.forgetIndex()
+		return err
+	}
+	archive.noteEvicted(records)
+	return nil
 }
 
 // discardStaged removes what an interrupted write left. A staged file was never
