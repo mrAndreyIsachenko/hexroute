@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# macOS ships bash 3.2, where `set -e` does not fire on a failing `[[ ]]`. An
+# assertion written as a bare conditional evaluates, reports false, and lets the
+# script run on to its success message, so every assertion here says what to do
+# when it fails.
+fail() {
+  printf '%s: %s\n' "$(basename "${BASH_SOURCE[0]}")" "$1" >&2
+  exit 1
+}
+
 # The rollback for the connectivity read model is to stop passing its
 # arguments. This checks the claim rather than the sentence: that the daemon
 # accepts the rolled-back argument set, that the procedure leaves a plist with
@@ -13,7 +22,7 @@ config="$repo_root/deploy/macos/root-observe.example.json"
 binary="$repo_root/bin/hexrouted"
 doc="$repo_root/docs/connectivity-read-model.md"
 
-[[ -f "$plist" && -f "$config" && -x "$binary" ]]
+[[ -f "$plist" && -f "$config" && -x "$binary" ]] || fail "[[ -f '$plist' && -f '$config' && -x '$binary' ]]"
 
 # The rollback has to be written down where an operator will find it, and it
 # has to be a sequence rather than a description.
@@ -45,7 +54,7 @@ if command -v /usr/libexec/PlistBuddy >/dev/null 2>&1; then
   # document so the two cannot drift apart.
   indices="$(grep -o 'Delete :ProgramArguments:[0-9]\{1,\}' "$doc" |
     grep -o '[0-9]\{1,\}$' | tr '\n' ' ')"
-  [[ -n "$indices" ]]
+  [[ -n "$indices" ]] || fail "[[ -n '$indices' ]]"
   for index in $indices; do
     /usr/libexec/PlistBuddy -c "Delete :ProgramArguments:$index" "$rolled" \
       >/dev/null 2>&1 || true

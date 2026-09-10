@@ -137,13 +137,21 @@ for installer in \
 
   # Refusing after the binary is replaced leaves a half-installed daemon whose
   # loaded job is still the old one, so the comparison has to come first.
+  #
+  # The line to compare against is the one that replaces the binary, not the
+  # first `install` in the file: these scripts create directories in helpers
+  # that run earlier, and creating a directory replaces nothing. Written the
+  # loose way this assertion was false and said nothing, because a bare
+  # conditional cannot fail under the bash these gates run with.
   guard_line="$(grep -n -- '--installed' "$installer" | head -n 1 | cut -d: -f1)"
-  install_line="$(grep -n '/usr/bin/install -' "$installer" | head -n 1 | cut -d: -f1)"
-  [[ "$guard_line" -lt "$install_line" ]]
+  binary_line="$(grep -n '"\$binary" "\$BIN_DIR/' "$installer" | head -n 1 | cut -d: -f1)"
+  [[ -n "$binary_line" ]] || fail "$installer never replaces the binary"
+  [[ "$guard_line" -lt "$binary_line" ]] ||
+    fail "$installer asks at line $guard_line, after replacing the binary at $binary_line"
 
   # And the copy that is kept must be taken before the replacement lands.
   keep_line="$(grep -n '\.replaced"' "$installer" | head -n 1 | cut -d: -f1)"
-  [[ "$keep_line" -gt "$guard_line" ]]
+  [[ "$keep_line" -gt "$guard_line" ]] || fail "[[ '$keep_line' -gt '$guard_line' ]]"
 done
 
 printf 'install-reduction-guard: ok\n'

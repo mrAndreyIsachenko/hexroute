@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# macOS ships bash 3.2, where `set -e` does not fire on a failing `[[ ]]`. An
+# assertion written as a bare conditional evaluates, reports false, and lets the
+# script run on to its success message, so every assertion here says what to do
+# when it fails.
+fail() {
+  printf '%s: %s\n' "$(basename "${BASH_SOURCE[0]}")" "$1" >&2
+  exit 1
+}
+
 # The watcher is a scheduled system daemon, and the two things that would make
 # it useless are easy to get wrong: restarting it on exit, which turns its
 # regression status into a crash loop, and a session identity committed to the
@@ -11,8 +20,8 @@ label="com.hexroute.observe.connectivity-watch"
 plist="$repo_root/deploy/macos/$label.plist"
 installer="$repo_root/scripts/macos/connectivity-watch-launchd.sh"
 
-[[ -f "$plist" ]]
-[[ -x "$installer" ]]
+[[ -f "$plist" ]] || fail "[[ -f '$plist' ]]"
+[[ -x "$installer" ]] || fail "[[ -x '$installer' ]]"
 
 if command -v plutil >/dev/null 2>&1; then
   plutil -lint "$plist" >/dev/null
@@ -52,7 +61,7 @@ grep -q 'SESSION_UUID must be a lowercase UUID' "$installer"
 # file the next line overwrites.
 splice_line="$(grep -n 'add_qualification "$PLIST_DEST"' "$installer" | cut -d: -f1)"
 install_line="$(grep -n '"$PLIST_SOURCE" "$PLIST_DEST"' "$installer" | cut -d: -f1)"
-[[ "$splice_line" -gt "$install_line" ]]
+[[ "$splice_line" -gt "$install_line" ]] || fail "[[ '$splice_line' -gt '$install_line' ]]"
 
 # Uninstalling keeps the memory of the last look. Removing it would make the
 # next install a first look, and a first look reports nothing.
