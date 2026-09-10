@@ -80,6 +80,26 @@ Status date: 2026-09-04.
 None. What follows is what the recent ones changed and what they left standing,
 kept because the reasons are worth more than the record of having done them.
 
+`make-a-failed-assertion-say-so` closed on 2026-09-10. Thirty-three assertions
+in ten gates were written as bare conditionals, which the bash macOS ships does
+not fail on, and `make check` — the only job that runs the shell gates — runs on
+macOS. Each now says what to do when it fails and names the condition, and a
+gate refuses the shape so it cannot come back by being copied from a neighbour.
+
+Converting them found exactly one that was false, and it was a day old: the gate
+added with the installer guard asserted that each installer asks its question
+before replacing the binary, and compared against the first `install` anywhere
+in the file rather than the one that replaces the binary. The installers were
+right; the measurement was not. That is the argument for the whole exercise —
+the shape hides the assertion that matters among the ones that happen to hold.
+
+Two forms are left alone on purpose. A conditional heading an `&&` list is inert
+too, and the four here are `break`, `continue` or a flag. A conditional that
+ends a function is that function's return value, and a caller does fail on it.
+
+What follows is what the recent ones changed and what they left standing, kept
+because the reasons are worth more than the record of having done them.
+
 `refuse-an-install-that-drops-authority` closed on 2026-09-10. The offline
 check takes the installed configuration as a second input and refuses a
 candidate that drops any of its settings; the installers ask before they touch
@@ -90,8 +110,10 @@ the only one that works however the configuration arrived, including by hand.
 It found something wider than itself. macOS ships bash 3.2, where `set -e` does
 not fire on a failing `[[ ]]`, so an assertion written as a bare conditional
 evaluates, reports false, and lets the script continue to its success message.
-Sixty-seven such assertions stand in seventeen gates under `tests/`, and on the
-macOS runner they check nothing. The gate added here says what to do when each
+Thirty-three such assertions stand in ten gates under `tests/`, and on the macOS
+runner — the only one that runs them — they check nothing. A first count of
+sixty-seven in seventeen included conditionals inside `if`, `while` and
+intentional `&&` lists, which are control flow rather than claims. The gate added here says what to do when each
 assertion fails; the rest do not, and that has no change yet.
 
 What follows is what the recent ones changed and what they left standing, kept

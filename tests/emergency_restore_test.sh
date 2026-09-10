@@ -2,6 +2,15 @@
 
 set -euo pipefail
 
+# macOS ships bash 3.2, where `set -e` does not fire on a failing `[[ ]]`. An
+# assertion written as a bare conditional evaluates, reports false, and lets the
+# script run on to its success message, so every assertion here says what to do
+# when it fails.
+fail() {
+  printf '%s: %s\n' "$(basename "${BASH_SOURCE[0]}")" "$1" >&2
+  exit 1
+}
+
 umask 077
 
 readonly ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -38,7 +47,7 @@ if [[ "$build_output" == *"$SECRET_CANARY"* ]]; then
 fi
 
 package="$(printf '%s\n' "$build_output" | awk -F= '$1 == "package" { print substr($0, index($0, "=") + 1) }')"
-[[ -n "$package" && -d "$package" ]]
+[[ -n "$package" && -d "$package" ]] || fail "[[ -n '$package' && -d '$package' ]]"
 
 "$package/bin/hexroute-emergency" verify --package "$package" >/dev/null
 restore_output="$(
@@ -57,7 +66,7 @@ cmp "$SOURCE_PLIST" "$RESTORE_ROOT/Library/LaunchDaemons/com.twilight.supervisor
 
 after_runtime="$(find "$SOURCE_RUNTIME" -type f -exec shasum -a 256 {} \; | LC_ALL=C sort)"
 after_plist="$(shasum -a 256 "$SOURCE_PLIST")"
-[[ "$before_runtime" == "$after_runtime" ]]
-[[ "$before_plist" == "$after_plist" ]]
+[[ "$before_runtime" == "$after_runtime" ]] || fail "[[ '$before_runtime' == '$after_runtime' ]]"
+[[ "$before_plist" == "$after_plist" ]] || fail "[[ '$before_plist' == '$after_plist' ]]"
 
 printf 'ok: isolated emergency restore is exact and source remains unchanged\n'

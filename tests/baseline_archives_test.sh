@@ -2,6 +2,15 @@
 
 set -euo pipefail
 
+# macOS ships bash 3.2, where `set -e` does not fire on a failing `[[ ]]`. An
+# assertion written as a bare conditional evaluates, reports false, and lets the
+# script run on to its success message, so every assertion here says what to do
+# when it fails.
+fail() {
+  printf '%s: %s\n' "$(basename "${BASH_SOURCE[0]}")" "$1" >&2
+  exit 1
+}
+
 umask 077
 
 readonly ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -70,8 +79,8 @@ fi
 root_archive="$(printf '%s\n' "$output" | awk -F= '$1 == "root_archive" { print substr($0, index($0, "=") + 1) }')"
 user_archive="$(printf '%s\n' "$output" | awk -F= '$1 == "user_archive" { print substr($0, index($0, "=") + 1) }')"
 
-[[ -f "$root_archive" && -f "${root_archive}.sha256" ]]
-[[ -f "$user_archive" && -f "${user_archive}.sha256" ]]
+[[ -f "$root_archive" && -f "${root_archive}.sha256" ]] || fail "[[ -f '$root_archive' && -f '${root_archive}.sha256' ]]"
+[[ -f "$user_archive" && -f "${user_archive}.sha256" ]] || fail "[[ -f '$user_archive' && -f '${user_archive}.sha256' ]]"
 shasum -a 256 -c "${root_archive}.sha256" >/dev/null
 shasum -a 256 -c "${user_archive}.sha256" >/dev/null
 
@@ -84,7 +93,7 @@ after="$(
   find "$SOURCE_ROOT" -type f -exec shasum -a 256 {} \; |
     LC_ALL=C sort
 )"
-[[ "$before" == "$after" ]]
+[[ "$before" == "$after" ]] || fail "[[ '$before' == '$after' ]]"
 
 if grep -Eq '(^|[[:space:]])(launchctl|security)([[:space:]]|$)' \
   "$ROOT/scripts/baseline/build-baseline-archives.sh"; then

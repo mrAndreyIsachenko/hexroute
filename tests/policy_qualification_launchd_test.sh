@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# macOS ships bash 3.2, where `set -e` does not fire on a failing `[[ ]]`. An
+# assertion written as a bare conditional evaluates, reports false, and lets the
+# script run on to its success message, so every assertion here says what to do
+# when it fails.
+fail() {
+  printf '%s: %s\n' "$(basename "${BASH_SOURCE[0]}")" "$1" >&2
+  exit 1
+}
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST="$ROOT/deploy/macos/com.hexroute.policy-qualification.plist"
 INSTALLER="$ROOT/scripts/macos/policy-qualification-launchd.sh"
 FAULTS="$ROOT/scripts/macos/policy-qualification-faults.sh"
 
-[[ -f "$PLIST" ]]
-[[ -x "$INSTALLER" ]]
-[[ -x "$FAULTS" ]]
+[[ -f "$PLIST" ]] || fail "[[ -f '$PLIST' ]]"
+[[ -x "$INSTALLER" ]] || fail "[[ -x '$INSTALLER' ]]"
+[[ -x "$FAULTS" ]] || fail "[[ -x '$FAULTS' ]]"
 if command -v plutil >/dev/null 2>&1; then
   plutil -lint "$PLIST" >/dev/null
 fi

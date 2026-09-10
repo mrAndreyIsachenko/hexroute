@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# macOS ships bash 3.2, where `set -e` does not fire on a failing `[[ ]]`. An
+# assertion written as a bare conditional evaluates, reports false, and lets the
+# script run on to its success message, so every assertion here says what to do
+# when it fails.
+fail() {
+  printf '%s: %s\n' "$(basename "${BASH_SOURCE[0]}")" "$1" >&2
+  exit 1
+}
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLIST="$ROOT/deploy/macos/com.hexroute.observe.hexrouted.plist"
 CONFIG="$ROOT/deploy/macos/root-observe.example.json"
 INSTALLER="$ROOT/scripts/macos/observe-root-launchd.sh"
 
-[[ -f "$PLIST" ]]
-[[ -f "$CONFIG" ]]
-[[ -x "$INSTALLER" ]]
+[[ -f "$PLIST" ]] || fail "[[ -f '$PLIST' ]]"
+[[ -f "$CONFIG" ]] || fail "[[ -f '$CONFIG' ]]"
+[[ -x "$INSTALLER" ]] || fail "[[ -x '$INSTALLER' ]]"
 
 if command -v plutil >/dev/null 2>&1; then
   plutil -lint "$PLIST" >/dev/null
@@ -27,10 +36,10 @@ grep -q 'for attempt in 1 2 3' "$INSTALLER"
 grep -q 'launchctl bootstrap "$domain" "$plist" 2>"$error_file"' "$INSTALLER"
 error_output_line="$(grep -n 'cat "$error_file" >&2' "$INSTALLER" | cut -d: -f1)"
 retry_loop_line="$(grep -n 'for attempt in 1 2 3' "$INSTALLER" | cut -d: -f1)"
-[[ "$error_output_line" -gt "$retry_loop_line" ]]
+[[ "$error_output_line" -gt "$retry_loop_line" ]] || fail "[[ '$error_output_line' -gt '$retry_loop_line' ]]"
 source_check_line="$(grep -n '    --config "$config"' "$INSTALLER" | head -n 1 | cut -d: -f1)"
 install_binary_line="$(grep -n '"$binary" "$BIN_DIR/hexrouted"' "$INSTALLER" | cut -d: -f1)"
-[[ "$source_check_line" -lt "$install_binary_line" ]]
+[[ "$source_check_line" -lt "$install_binary_line" ]] || fail "[[ '$source_check_line' -lt '$install_binary_line' ]]"
 
 if grep -Eqi 'com\.twilight|/twilight/|pritunl-otp-watchdog|adguard' "$PLIST" "$INSTALLER"; then
   echo "observe-only launchd package overlaps a protected runtime namespace" >&2
@@ -71,4 +80,4 @@ grep -q 'SESSION_UUID must be a lowercase UUID' "$INSTALLER"
 # file the next line overwrites.
 splice_line="$(grep -n 'add_qualification "$PLIST_DEST"' "$INSTALLER" | cut -d: -f1)"
 plist_install_line="$(grep -n '"$PLIST_SOURCE" "$PLIST_DEST"' "$INSTALLER" | cut -d: -f1)"
-[[ "$splice_line" -gt "$plist_install_line" ]]
+[[ "$splice_line" -gt "$plist_install_line" ]] || fail "[[ '$splice_line' -gt '$plist_install_line' ]]"

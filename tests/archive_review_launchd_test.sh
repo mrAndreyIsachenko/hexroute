@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# macOS ships bash 3.2, where `set -e` does not fire on a failing `[[ ]]`. An
+# assertion written as a bare conditional evaluates, reports false, and lets the
+# script run on to its success message, so every assertion here says what to do
+# when it fails.
+fail() {
+  printf '%s: %s\n' "$(basename "${BASH_SOURCE[0]}")" "$1" >&2
+  exit 1
+}
+
 # The weekly review runs unattended, which makes two failures likely and both
 # silent: a review that dies leaving no trace it was attempted, and a review
 # whose failure launchd reads as a crashing job. Both are exercised here rather
@@ -14,9 +23,9 @@ plist="deploy/macos/$label.plist"
 installer="scripts/macos/archive-review-launchd.sh"
 wrapper="scripts/macos/archive-review-run.sh"
 
-[[ -f "$plist" ]]
-[[ -x "$installer" ]]
-[[ -x "$wrapper" ]]
+[[ -f "$plist" ]] || fail "[[ -f '$plist' ]]"
+[[ -x "$installer" ]] || fail "[[ -x '$installer' ]]"
+[[ -x "$wrapper" ]] || fail "[[ -x '$wrapper' ]]"
 
 if command -v plutil >/dev/null 2>&1; then
   plutil -lint "$plist" >/dev/null
