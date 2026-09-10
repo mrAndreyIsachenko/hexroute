@@ -93,6 +93,33 @@ install_observer() {
   if [[ ! -d "$HOME/Library/LaunchAgents" ]]; then
     /usr/bin/install -d -m 0755 "$HOME/Library/LaunchAgents"
   fi
+
+  # A candidate is judged against what it would replace, before anything is
+  # replaced. On 2026-09-10 this script copied a stale working copy over two
+  # live configurations and removed a signed generation from this machine; the
+  # file was valid, so every check in the path reported success.
+  #
+  # The comparison happens here, before the binary and the plist are touched.
+  # Refusing halfway is how a half-installed daemon is made.
+  if [[ -f "$CONFIG_DIR/user-observe.json" && ! "$config" -ef "$CONFIG_DIR/user-observe.json" ]]; then
+    # The status has to come from the command itself. Under `if ! cmd` the
+    # shell reports the negation, so a refusal to compare and a refusal on the
+    # comparison would arrive as the same 1.
+    status=0
+    "$binary" --check --config "$config" --installed "$CONFIG_DIR/user-observe.json" || status=$?
+    if [[ "$status" -ne 0 ]]; then
+      if [[ "$status" -ne 3 ]]; then
+        die "the prepared configuration was refused"
+      fi
+      if [[ "${HEXROUTE_ALLOW_REDUCED_CONFIG:-}" != "1" ]]; then
+        die "the prepared configuration drops the settings listed above.
+The working copy is not the record of what is installed; read the installed
+configuration and carry those settings forward. If the reduction is deliberate,
+run again with HEXROUTE_ALLOW_REDUCED_CONFIG=1."
+      fi
+      printf 'proceeding with a reduced configuration by explicit request\n'
+    fi
+  fi
   /usr/bin/install -m 0755 "$binary" "$BIN_DIR/hexroute-userd"
   # Same as the root installer: a configuration already at its destination is
   # the ordinary case on reinstall, and copying a file onto itself fails
@@ -101,6 +128,15 @@ install_observer() {
     printf 'configuration is already in place; keeping it\n'
     /bin/chmod 0600 "$CONFIG_DIR/user-observe.json"
   else
+    # What is replaced is kept beside it. Reconstructing the configuration lost
+    # on 2026-09-10 meant matching digests against a policy manifest to work out
+    # which of two signer directories was the right one; a copy of the file
+    # would have made it a move. One copy, not a history: it answers "what did I
+    # just replace" and nothing else.
+    if [[ -f "$CONFIG_DIR/user-observe.json" ]]; then
+      /usr/bin/install -m 0600 \
+        "$CONFIG_DIR/user-observe.json" "$CONFIG_DIR/user-observe.json.replaced"
+    fi
     /usr/bin/install -m 0600 "$config" "$CONFIG_DIR/user-observe.json"
   fi
   /usr/bin/install -m 0644 "$PLIST_SOURCE" "$PLIST_DEST"

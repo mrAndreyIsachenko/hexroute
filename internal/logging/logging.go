@@ -87,6 +87,7 @@ const (
 	EventCodexRoute                 EventName = "codex_fallback_route_proposed"
 	EventPritunlReconnect           EventName = "pritunl_reconnect_proposed"
 	EventPritunlRescueRefused       EventName = "pritunl_rescue_refused"
+	EventPolicyAuthorityUnreadable  EventName = "policy_authority_unreadable"
 	EventSentinelEvidence           EventName = "sentinel_restart_evidence"
 	EventLocalNotification          EventName = "local_notification"
 	EventCloudAPIStarted            EventName = "cloud_api_started"
@@ -172,6 +173,13 @@ const (
 	// Both used to arrive as a bare precondition failure with nothing written.
 	ReasonMutationNotPermitted Reason = "mutation_not_permitted"
 	ReasonRequestNotTaken      Reason = "request_not_taken"
+	// A candidate configuration that would drop a setting the installed one
+	// carries. It is not malformed — that is the point — so it cannot share a
+	// reason with a file the daemon cannot parse.
+	ReasonConfigurationReduced Reason = "configuration_reduced"
+	// A store holding an authority the runtime is not configured to read. It
+	// is not the store being unavailable: the store is there and answering.
+	ReasonAuthorityUnreadable Reason = "authority_unreadable"
 	// What a runtime could not do on its own behalf, as distinct from what
 	// another refused it. Unequipped is an authority it was granted and cannot
 	// exercise; failed is an attempt that did not work.
@@ -310,7 +318,7 @@ func validEvent(value EventName) bool {
 		EventSentinelPlannerUnavailable,
 		EventObservationCycle, EventIngressRoute,
 		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect,
-		EventPritunlRescueRefused,
+		EventPritunlRescueRefused, EventPolicyAuthorityUnreadable,
 		EventSentinelEvidence, EventLocalNotification, EventCloudAPIStarted,
 		EventCloudAPIStopped, EventCloudWorkerStarted, EventCloudWorkerStopped,
 		EventCloudMigration,
@@ -357,6 +365,7 @@ func validReason(value Reason) bool {
 		ReasonSocketAbsent, ReasonSocketDenied, ReasonPeerSilent,
 		ReasonRecoveryRefused, ReasonUnsignedAuthority,
 		ReasonMutationNotPermitted, ReasonRequestNotTaken,
+		ReasonConfigurationReduced, ReasonAuthorityUnreadable,
 		ReasonOuterPathNotReady, ReasonServiceNotStale,
 		ReasonRecoveryUnequipped, ReasonRecoveryFailed,
 		ReasonCredentialsUnavailable, ReasonCodeUnavailable,

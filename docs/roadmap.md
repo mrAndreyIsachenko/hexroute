@@ -80,6 +80,23 @@ Status date: 2026-09-04.
 None. What follows is what the recent ones changed and what they left standing,
 kept because the reasons are worth more than the record of having done them.
 
+`refuse-an-install-that-drops-authority` closed on 2026-09-10. The offline
+check takes the installed configuration as a second input and refuses a
+candidate that drops any of its settings; the installers ask before they touch
+the binary or the plist and keep what they replaced; and a daemon whose store
+holds an authority its configuration cannot read says so. That last guard is
+the only one that works however the configuration arrived, including by hand.
+
+It found something wider than itself. macOS ships bash 3.2, where `set -e` does
+not fire on a failing `[[ ]]`, so an assertion written as a bare conditional
+evaluates, reports false, and lets the script continue to its success message.
+Sixty-seven such assertions stand in seventeen gates under `tests/`, and on the
+macOS runner they check nothing. The gate added here says what to do when each
+assertion fails; the rest do not, and that has no change yet.
+
+What follows is what the recent ones changed and what they left standing, kept
+because the reasons are worth more than the record of having done them.
+
 `name-the-refusal-nobody-wrote-down` closed on 2026-09-10. Two layers answered
 above the rescuer and neither could write: the dispatcher's mutation gate and
 the broker's answer when no reader takes the envelope. Both now report, and the

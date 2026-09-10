@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
+	"github.com/mrAndreyIsachenko/hexroute/internal/configreduction"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityhost"
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/heartbeat"
@@ -51,6 +52,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	observeMode := flags.Bool("observe", false, "run the observe-only control loop")
 	once := flags.Bool("once", false, "run one observe-only cycle")
 	configPath := flags.String("config", "", "observe-only configuration")
+	installedPath := flags.String(
+		"installed", "", "the configuration already installed, to judge this one against")
 	heartbeatPath := flags.String("heartbeat", "", "control-loop heartbeat")
 	socketPath := flags.String("socket", "", "typed local operator socket")
 	// Off unless a root is given. Without one the daemon runs exactly the path
@@ -94,6 +97,25 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			config, err = LoadConfig(*configPath)
 			if err != nil {
 				return rejected(errorLog, logging.ReasonInvalidConfiguration)
+			}
+		}
+		// A candidate is judged against what it would replace, not only on its
+		// own. A configuration that drops an authority is valid — that is how a
+		// stale working copy removed a signed generation from this machine on
+		// 2026-09-10 with every check in the path reporting success.
+		if *installedPath != "" {
+			if *configPath == "" {
+				return rejected(errorLog, logging.ReasonInvalidFlags)
+			}
+			lost, err := configreduction.Compare(*installedPath, *configPath)
+			if err != nil {
+				return rejected(errorLog, logging.ReasonInvalidConfiguration)
+			}
+			if len(lost) > 0 {
+				for _, setting := range lost {
+					fmt.Fprintf(stdout, "would lose %s\n", setting)
+				}
+				return reduced(errorLog)
 			}
 		}
 		if *socketPath != "" {
@@ -260,6 +282,19 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		broker, err := operator.NewBroker(runCtx, refusals)
 		if err != nil {
 			return 1
+		}
+		// A configuration with no policy control cannot read a policy, and the
+		// store may still hold one. Saying so is the only guard that works
+		// however the configuration arrived, including by hand, which no
+		// installer sees.
+		if config.PolicyControl == nil &&
+			policystore.AuthorityPresent(policystore.RootStorePath) {
+			_ = errorLog.Emit(
+				logging.LevelWarn,
+				logging.EventPolicyAuthorityUnreadable,
+				logging.ResultDegraded,
+				logging.ReasonAuthorityUnreadable,
+			)
 		}
 		handler, policyStore, err := openRootPolicyHandler(config.PolicyControl)
 		policyHandler = handler
@@ -616,4 +651,23 @@ func rejected(logger *logging.Logger, reason logging.Reason) int {
 		return 1
 	}
 	return 2
+}
+
+// reduced answers a candidate that would drop a setting the installed
+// configuration carries.
+//
+// It is a separate exit from an ordinary rejection because it is a separate
+// thing: the file is valid, and refusing it is a judgement about what is
+// already installed rather than about the file. A caller that could not tell
+// them apart would have to guess whether to fix the file or the intent.
+func reduced(logger *logging.Logger) int {
+	if err := logger.Emit(
+		logging.LevelWarn,
+		logging.EventArgumentRejected,
+		logging.ResultRejected,
+		logging.ReasonConfigurationReduced,
+	); err != nil {
+		return 1
+	}
+	return 3
 }
