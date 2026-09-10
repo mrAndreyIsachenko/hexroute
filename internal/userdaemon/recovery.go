@@ -32,8 +32,11 @@ const (
 	// exercised is a fault in the deployment and not a decision.
 	recoveryUnequipped recoveryOutcome = "unequipped"
 	recoveryDone       recoveryOutcome = "done"
-	// recoveryRefused is a refusal whose ground the other side did not give.
-	recoveryRefused recoveryOutcome = "refused"
+	// recoveryAnswererFailed is the other side not having looked at all: it
+	// answered that it failed, or answered something this cannot read. That is
+	// not a refusal, and reporting it as one sends the reader to the policy for
+	// a decision nobody made. On 2026-09-10 it did exactly that.
+	recoveryAnswererFailed recoveryOutcome = "answerer_failed"
 	// The refusals root does name. They are separate values because they send
 	// the reader somewhere different: to what signed for the act, to the
 	// generation in force, to root's own view of the path and the service, and
@@ -187,7 +190,9 @@ func refusalOutcome(code ipc.ErrorCode) recoveryOutcome {
 	case ipc.ErrorInvalidRequest:
 		return recoveryRefusedRequest
 	default:
-		return recoveryRefused
+		// Every code left is the other side failing rather than refusing:
+		// it said so, or it said something with no ground in it at all.
+		return recoveryAnswererFailed
 	}
 }
 

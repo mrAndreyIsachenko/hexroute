@@ -15,15 +15,17 @@ type Envelope struct {
 type Broker struct {
 	ctx      context.Context
 	requests chan Envelope
+	refusals RefusalReporter
 }
 
-func NewBroker(ctx context.Context) (*Broker, error) {
-	if ctx == nil {
+func NewBroker(ctx context.Context, refusals RefusalReporter) (*Broker, error) {
+	if ctx == nil || refusals == nil {
 		return nil, ErrInvalidController
 	}
 	return &Broker{
 		ctx:      ctx,
 		requests: make(chan Envelope),
+		refusals: refusals,
 	}, nil
 }
 
@@ -53,18 +55,31 @@ func (broker *Broker) HandleIPC(ctx context.Context, request ipc.Request) ipc.Re
 	select {
 	case broker.requests <- envelope:
 	case <-ctx.Done():
-		return internalResponse(request)
+		return broker.unanswered(request)
 	case <-broker.ctx.Done():
-		return internalResponse(request)
+		return broker.unanswered(request)
 	}
 	select {
 	case response := <-envelope.reply:
 		return response
 	case <-ctx.Done():
-		return internalResponse(request)
+		return broker.unanswered(request)
 	case <-broker.ctx.Done():
-		return internalResponse(request)
+		return broker.unanswered(request)
 	}
+}
+
+// unanswered records that nothing took this request up, and answers.
+//
+// It is not a refusal: nothing looked at the request and disagreed with it.
+// The distinction matters to whoever reads the answer, because a refusal sends
+// them to the policy and this sends them to whatever is keeping the reader
+// busy. The code on the wire cannot carry it, so it is written down here.
+func (broker *Broker) unanswered(request ipc.Request) ipc.Response {
+	if broker != nil && broker.refusals != nil {
+		broker.refusals.ReportRequestUnanswered()
+	}
+	return internalResponse(request)
 }
 
 func (envelope Envelope) Respond(response ipc.Response) bool {

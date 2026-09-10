@@ -34,7 +34,16 @@ func TestARefusedRecoveryCanBeWrittenDown(t *testing.T) {
 		outcome recoveryOutcome
 		result  string
 	}{
-		{name: "root refused the request", outcome: recoveryRefused, result: "rejected"},
+		{
+			name:    "root refused the request",
+			outcome: recoveryRefusedPrecondition,
+			result:  "rejected",
+		},
+		{
+			name:    "root did not take the request up",
+			outcome: recoveryAnswererFailed,
+			result:  "degraded",
+		},
 		{name: "the act failed", outcome: recoveryFailed, result: "degraded"},
 		{name: "nothing is equipped to act", outcome: recoveryUnequipped, result: "degraded"},
 		{name: "the act was performed", outcome: recoveryDone, result: "ok"},

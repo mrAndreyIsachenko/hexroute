@@ -232,7 +232,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err := validateUserSocketPath(*socketPath, *statePath, config.ExpectedUID); err != nil {
 			return rejected(errorLog, logging.ReasonInvalidConfiguration)
 		}
-		broker, err := operator.NewBroker(ctx)
+		// Where a refusal made above the act is written down. Both this
+		// daemon's broker and its dispatcher can refuse without reaching
+		// anything that would otherwise have somewhere to write.
+		refusals, err := operator.NewRefusalLogger(errorLog)
+		if err != nil {
+			return 1
+		}
+		broker, err := operator.NewBroker(ctx, refusals)
 		if err != nil {
 			return 1
 		}
@@ -250,7 +257,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		dispatcher, err := operator.NewDispatcher(
 			// The user daemon publishes facts; it never receives them, and it
 			// holds no shadow store of its own in this build.
-			controller, broker, policyHandler, nil, nil)
+			controller, broker, policyHandler, refusals, nil, nil)
 		if err != nil {
 			return 1
 		}
@@ -778,10 +785,14 @@ func outcomeReason(outcome recoveryOutcome) logging.Reason {
 		return logging.ReasonGenerationConflict
 	case recoveryRefusedRequest:
 		return logging.ReasonMalformedRequest
-	case recoveryRefused, recoveryRefusedPrecondition:
+	case recoveryRefusedPrecondition:
 		// Root's own checks were not satisfied and the code cannot say which.
 		// Its log names the one that refused, beside the same refusal.
 		return logging.ReasonRecoveryRefused
+	case recoveryAnswererFailed:
+		// Root did not look. That is root's fault to explain, and its log now
+		// names which of its own layers failed to reach the act.
+		return logging.ReasonRootInternal
 	case recoveryUnequipped:
 		// An authority this runtime was granted and cannot exercise. That is a
 		// fault in the deployment, and it is not the same as an attempt that
@@ -804,11 +815,14 @@ func outcomeResult(outcome recoveryOutcome) logging.Result {
 	switch outcome {
 	case recoveryDone:
 		return logging.ResultOK
-	case recoveryRefused, recoveryRefusedAuthority, recoveryRefusedStale,
+	case recoveryRefusedAuthority, recoveryRefusedStale,
 		recoveryRefusedPrecondition, recoveryRefusedRequest:
 		return logging.ResultRejected
 	case recoveryFailed, recoveryUnequipped, recoveryFailedCredentials,
-		recoveryFailedCode, recoveryFailedNotStarted:
+		recoveryFailedCode, recoveryFailedNotStarted,
+		// Nothing refused this. An answerer that failed is a fault in the
+		// deployment, reported the way the other faults in it are.
+		recoveryAnswererFailed:
 		return logging.ResultDegraded
 	default:
 		return logging.ResultProposed
