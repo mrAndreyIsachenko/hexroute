@@ -74,6 +74,36 @@ stop the observation loop. See [`notifications.md`](notifications.md).
 reconnect. It does not mean Hexroute performed one. Compare its timestamp with
 the existing watchdog's recovery log while that watchdog remains active.
 
+### The configuration in the working copy is not the record
+
+The installer judges what you hand it against what is already installed and
+refuses a configuration that drops a setting the live one carries. A stale
+working copy is the ordinary way this happens: on 2026-09-10 both daemons were
+installed from checkout files that had lost `policy_control`, and root's had
+also lost `pritunl_service_label`. Both files were valid. Two runtimes holding
+a signed generation stopped holding one, and every check in the path reported
+success.
+
+A refusal lists what would be lost and changes nothing:
+
+```
+would lose policy_control
+would lose policy_control.pinned_public_key
+would lose pritunl_service_label
+```
+
+Read the installed configuration, carry those settings into the file you are
+installing, and run again. When the reduction is deliberate — stepping a domain
+back to no authority is a real operation — say so:
+
+```sh
+HEXROUTE_ALLOW_REDUCED_CONFIG=1 scripts/macos/observe-user-launchd.sh install bin/hexroute-userd private/user-observe.json
+```
+
+Each install keeps the configuration it replaced beside the installed one as
+`user-observe.json.replaced`. It is one copy, not a history: it answers what was replaced
+just now.
+
 ## Rollback
 
 ```sh

@@ -623,3 +623,21 @@ func writeAll(fd int, content []byte) error {
 	}
 	return nil
 }
+
+// AuthorityPresent reports whether a store holds an active pointer.
+//
+// It reads and does not validate. A runtime asking this has no pinned key —
+// that is why it is asking — so it could not judge what it finds even if it
+// wanted to. The answer is "something is there", which is the whole of the
+// fact worth reporting: a store holding an authority beside a configuration
+// that cannot read it is how a signed generation stopped being in force on
+// 2026-09-10 without anything saying so.
+func AuthorityPresent(storePath string) bool {
+	if storePath == "" {
+		return false
+	}
+	info, err := os.Lstat(
+		filepath.Join(storePath, stateDirectory, activePointerFilename),
+	)
+	return err == nil && info.Mode().IsRegular()
+}
