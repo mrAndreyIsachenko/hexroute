@@ -226,6 +226,16 @@ say which one happened.
 
 - **WHEN** the one-time code would expire before it could be used
 - **THEN** that is recorded as a reason to wait rather than as a failure of the attempt
+
+#### Scenario: The refusal is made above the act
+
+- **WHEN** a request for the act is refused before the runtime evaluates the act itself — because the runtime's standing to act at all is not satisfied
+- **THEN** the refusing runtime records it with the ground, as it does for every refusal it reaches by evaluating
+
+#### Scenario: A request nothing answered is not a refusal
+
+- **WHEN** the answering runtime does not take up the request and answers with a failure of its own
+- **THEN** that is recorded by both runtimes as a failure of the runtime asked, and the asking runtime SHALL NOT report it as a refusal
 ### Requirement: A service that is not running is asked about
 
 The service beneath the session SHALL reach the decision that can ask root to
