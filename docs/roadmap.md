@@ -80,6 +80,33 @@ Status date: 2026-09-04.
 None. What follows is what the recent ones changed and what they left standing,
 kept because the reasons are worth more than the record of having done them.
 
+`keep-the-index-in-memory` closed on 2026-09-11. The root runtime's operator
+loop was stopping for six to thirteen seconds once a minute, against a
+fifteen-second deadline on the socket it was failing to answer. A profile of the
+live process put the time in `os.ReadDir` and the sort inside it.
+
+The archive listed its directory on every append and a cycle appends eleven
+records, so it listed 69,000 entries eleven times.
+`bound-archive-append-cost` removed the decode from that listing in September
+and left the listing; the requirement it wrote down said the cost still grows
+with how many records are stored, which is true per append and misses that a
+cycle makes many. The archive now learns its directory once and keeps it
+current, dropping it whenever a write may have half happened.
+
+Measured: eleven appends against 20,000 stored records cost 767ms listing each
+time and 109ms listing once. At the 69,000 the live archive holds that returns
+roughly 2.7 seconds per cycle.
+
+Two things are left standing, both stated in the change rather than implied.
+Observation accounts for 2.2 seconds of the pause and this for about 2.7, so
+between one and eight seconds are still unexplained and want another profile
+rather than another guess. And the stores hold 456MB across 176,000 files: the
+retention window is what admits that, and narrowing it is a decision about how
+much history is wanted, not about cost.
+
+What follows is what the recent ones changed and what they left standing, kept
+because the reasons are worth more than the record of having done them.
+
 `make-a-failed-assertion-say-so` closed on 2026-09-10. Thirty-three assertions
 in ten gates were written as bare conditionals, which the bash macOS ships does
 not fail on, and `make check` — the only job that runs the shell gates — runs on

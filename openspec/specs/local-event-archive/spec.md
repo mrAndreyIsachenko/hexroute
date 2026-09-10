@@ -167,13 +167,21 @@ to learn it.
 Appending SHALL NOT decode a stored record on the path that evicts nothing,
 beyond the one that establishes the oldest retained record's age.
 
-The cost of appending SHALL be that of listing the directory, reading each
-record's metadata, and reading that one record. It therefore still grows with how
-many records are stored, and that growth is bounded by the existing size bound:
-the archive cannot hold more records than its byte limit admits at the smallest
-record size. Stating it the stronger way would be false — the total size is what
-requires touching every entry, and the filesystem is the only thing that reports
-it.
+The cost of appending SHALL NOT include listing the directory. What the archive
+knows about its own directory SHALL be learned once and kept current as it
+publishes and evicts, so that appending costs the write and the one record whose
+age is established, and nothing that grows with how many records are stored.
+
+The previous statement of this requirement sanctioned a listing per append and
+called the growth acceptable because the size bound caps it. That was wrong in
+the way that matters: a runtime appends many records per cycle, so the cost is
+the listing multiplied by the appends, and the bound it was measured against
+doubled within two days of being written.
+
+An archive MAY discard what it knows about its directory at any time and learn it
+again, and SHALL do so whenever a write may have half happened. It SHALL NOT be
+required to notice a record added or removed by something other than itself: an
+archive has one writer, and a reader's handle cannot write.
 
 Deciding whether the age bound has been reached SHALL NOT require reading every
 retained record. Records carry a monotonic sequence and are appended in order,
@@ -198,6 +206,14 @@ once it was not — against 15 milliseconds at a thousand records. Paid twice pe
 published fact through the journal's mirror, the first of those numbers is what
 stopped a root daemon answering its socket inside a caller's deadline while
 nothing about the caller, the network or the exchange was wrong.
+
+The second number was the one this requirement then permitted, and it was the
+whole cost only for a single append. One cycle's worth of eleven appends against
+20,000 stored records cost 767 milliseconds when the directory was listed each
+time and 109 when it was listed once. On 2026-09-11 a profile of the live root
+process, taken while its operator loop had been unresponsive for six to thirteen
+seconds at a time against a fifteen-second deadline, put its time in the
+directory listing and the sort inside it.
 
 #### Scenario: A record is appended to a large archive
 
@@ -226,3 +242,13 @@ nothing about the caller, the network or the exchange was wrong.
 - **WHEN** a stored record cannot be decoded
 - **THEN** the append does not fail on it
 - **AND** it is treated as a record whose age cannot be established, so the walk continues to the next sequence rather than stopping
+
+#### Scenario: A cycle appends several records
+
+- **WHEN** a runtime appends many records to the same archive without anything else touching its directory
+- **THEN** the directory is listed at most once, however many records are appended
+
+#### Scenario: A write does not finish
+
+- **WHEN** a write leaves the directory in a state the archive did not complete
+- **THEN** the archive discards what it knew and learns it again before answering anything

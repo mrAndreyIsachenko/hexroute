@@ -46,7 +46,7 @@ func TestAppendDoesNotReadTheRecordsItIsNotUsing(t *testing.T) {
 		t.Fatalf("expected a seeded archive, found %d records", len(stored))
 	}
 	for _, sequence := range stored[1:] {
-		corruptRecord(t, root, sequence)
+		corruptRecord(t, archive, root, sequence)
 	}
 
 	if _, err := archive.Append(operational(1000)); err != nil {
@@ -99,12 +99,12 @@ func TestTheAgeWalkStopsAtTheFirstRetainedRecord(t *testing.T) {
 	retained := []uint64{}
 	for index := 1; index <= aged; index++ {
 		sequence := uint64(100 + index)
-		plantRecord(t, root, template, sequence, now.Add(-4*time.Hour))
+		plantRecord(t, archive, root, template, sequence, now.Add(-4*time.Hour))
 		expired = append(expired, sequence)
 	}
 	for index := 1; index <= fresh; index++ {
 		sequence := uint64(200 + index)
-		plantRecord(t, root, template, sequence, now.Add(-time.Minute))
+		plantRecord(t, archive, root, template, sequence, now.Add(-time.Minute))
 		retained = append(retained, sequence)
 	}
 
@@ -113,13 +113,13 @@ func TestTheAgeWalkStopsAtTheFirstRetainedRecord(t *testing.T) {
 	// that keeps reading evicts it. That is the difference between the two, and
 	// nothing else in the eviction set shows it.
 	const strandedSequence = uint64(300)
-	plantRecord(t, root, template, strandedSequence, now.Add(-4*time.Hour))
+	plantRecord(t, archive, root, template, strandedSequence, now.Add(-4*time.Hour))
 	retained = append(retained, strandedSequence)
 
 	// Everything else above the stop point is made undecodable, so reading it
 	// cannot be mistaken for reading nothing.
 	for _, sequence := range retained[1 : len(retained)-1] {
-		corruptRecord(t, root, sequence)
+		corruptRecord(t, archive, root, sequence)
 	}
 
 	if _, err := archive.Append(operational(9000)); err != nil {
@@ -165,7 +165,7 @@ func TestADamagedRecordDoesNotFailTheAppend(t *testing.T) {
 	stored := storedSequences(t, root)
 	// The oldest record is the one the age bound is read from. Damaging it is
 	// the case that would otherwise stop every future append.
-	corruptRecord(t, root, stored[0])
+	corruptRecord(t, archive, root, stored[0])
 
 	if _, err := archive.Append(operational(500)); err != nil {
 		t.Fatalf("Append() with an undecodable oldest record = %v", err)
@@ -214,8 +214,15 @@ func readRaw(t *testing.T, root string, sequence uint64) map[string]any {
 }
 
 // plantRecord writes a valid stored record with a chosen sequence and stamp.
+// plantRecord and corruptRecord act on the directory from outside the archive,
+// which is how an aged or damaged record is arranged without waiting for one.
+// A real archive has a single writer — the observing runtime opens it, and the
+// review tool opens it read-only — so it keeps what it learned about its own
+// directory rather than re-reading it per record. These helpers are the one
+// thing that makes that untrue, so they say so.
 func plantRecord(
 	t *testing.T,
+	archive *Archive,
 	root string,
 	template map[string]any,
 	sequence uint64,
@@ -244,14 +251,17 @@ func plantRecord(
 	); err != nil {
 		t.Fatalf("plant %d: %v", sequence, err)
 	}
+	archive.forgetIndex()
 }
 
-func corruptRecord(t *testing.T, root string, sequence uint64) {
+func corruptRecord(t *testing.T, archive *Archive, root string, sequence uint64) {
 	t.Helper()
 	path := filepath.Join(root, name(sequence)+stableSuffix)
 	if err := os.WriteFile(path, []byte(`{"schema":"not a record at all"}`), 0o600); err != nil {
 		t.Fatalf("corrupt %d: %v", sequence, err)
 	}
+	// The size on disk changed, so what the archive believed about it did too.
+	archive.forgetIndex()
 }
 
 func contains(sequences []uint64, wanted uint64) bool {
