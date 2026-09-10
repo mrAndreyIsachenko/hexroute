@@ -44,6 +44,13 @@ const (
 	recoveryRefusedPrecondition recoveryOutcome = "refused_precondition"
 	recoveryRefusedRequest      recoveryOutcome = "refused_request"
 	recoveryFailed              recoveryOutcome = "failed"
+	// Where an attempt stopped. Separate because they send the reader
+	// somewhere different: to the Keychain, to the client, and to this code.
+	// Until this existed all of them were the one word "failed", and on
+	// 2026-09-09 that left two explanations fitting one observation.
+	recoveryFailedCredentials recoveryOutcome = "failed_credentials"
+	recoveryFailedCode        recoveryOutcome = "failed_code"
+	recoveryFailedNotStarted  recoveryOutcome = "failed_not_started"
 )
 
 // recovery performs what the planner decided, if anything authorizes it.
@@ -99,7 +106,7 @@ func (executor *recovery) perform(
 			return recoveryUnequipped
 		}
 		if err := executor.client.Reconnect(ctx, executor.source); err != nil {
-			return recoveryFailed
+			return reconnectOutcome(err)
 		}
 		return recoveryDone
 	case pritunlplan.ActionRequestRescue:
@@ -152,6 +159,23 @@ func (executor *recovery) requestRescue(
 // The code is all that crosses the boundary, and it is enough to send the
 // reader to the right place. What it cannot separate — which of root's own
 // preconditions failed — stays in root's log beside the same refusal.
+// reconnectOutcome carries the step an attempt stopped at.
+//
+// A fault this code has not named stays the general failure. Naming it here
+// without naming it there would put a word in the log that nothing produces.
+func reconnectOutcome(err error) recoveryOutcome {
+	switch {
+	case errors.Is(err, pritunlclient.ErrCredentialsUnavailable):
+		return recoveryFailedCredentials
+	case errors.Is(err, pritunlclient.ErrOneTimeCodeUnavailable):
+		return recoveryFailedCode
+	case errors.Is(err, pritunlclient.ErrSessionNotStarted):
+		return recoveryFailedNotStarted
+	default:
+		return recoveryFailed
+	}
+}
+
 func refusalOutcome(code ipc.ErrorCode) recoveryOutcome {
 	switch code {
 	case ipc.ErrorUnauthorized:

@@ -169,15 +169,19 @@ const (
 	// What a runtime could not do on its own behalf, as distinct from what
 	// another refused it. Unequipped is an authority it was granted and cannot
 	// exercise; failed is an attempt that did not work.
-	ReasonRecoveryUnequipped    Reason = "recovery_unequipped"
-	ReasonRecoveryFailed        Reason = "recovery_failed"
-	ReasonOversizedRequest      Reason = "oversized_request"
-	ReasonUnsupportedAction     Reason = "unsupported_action"
-	ReasonUnsupportedVersion    Reason = "unsupported_version"
-	ReasonMissingGeneration     Reason = "missing_generation"
-	ReasonGenerationConflict    Reason = "generation_conflict"
-	ReasonSafetyPolicyViolation Reason = "safety_policy_violation"
-	ReasonInvalidConfiguration  Reason = "invalid_configuration"
+	ReasonRecoveryUnequipped Reason = "recovery_unequipped"
+	ReasonRecoveryFailed     Reason = "recovery_failed"
+	// Where an attempt stopped, as distinct from the fact that it did.
+	ReasonCredentialsUnavailable Reason = "recovery_credentials_unavailable"
+	ReasonCodeUnavailable        Reason = "recovery_code_unavailable"
+	ReasonSessionNotStarted      Reason = "recovery_session_not_started"
+	ReasonOversizedRequest       Reason = "oversized_request"
+	ReasonUnsupportedAction      Reason = "unsupported_action"
+	ReasonUnsupportedVersion     Reason = "unsupported_version"
+	ReasonMissingGeneration      Reason = "missing_generation"
+	ReasonGenerationConflict     Reason = "generation_conflict"
+	ReasonSafetyPolicyViolation  Reason = "safety_policy_violation"
+	ReasonInvalidConfiguration   Reason = "invalid_configuration"
 
 	// The reasons below name the subsystem a startup refused on. They exist
 	// because a daemon under KeepAlive that reports one reason for every
@@ -347,7 +351,9 @@ func validReason(value Reason) bool {
 		ReasonSocketAbsent, ReasonSocketDenied, ReasonPeerSilent,
 		ReasonRecoveryRefused, ReasonUnsignedAuthority,
 		ReasonOuterPathNotReady, ReasonServiceNotStale,
-		ReasonRecoveryUnequipped, ReasonRecoveryFailed:
+		ReasonRecoveryUnequipped, ReasonRecoveryFailed,
+		ReasonCredentialsUnavailable, ReasonCodeUnavailable,
+		ReasonSessionNotStarted:
 		return true
 	default:
 		return false
