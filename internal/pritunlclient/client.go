@@ -44,6 +44,18 @@ var (
 	// never carries the client's output: what was submitted may be echoed
 	// there, and an error is the part of a failure that reaches a log.
 	ErrReconnect = errors.New("Pritunl reconnect failed")
+	// The steps a reconnect stops at, named because they send the reader
+	// somewhere different: to the Keychain, to the client, and to this code.
+	//
+	// Reporting only that the attempt failed left two explanations fitting one
+	// observation and no way to choose between them but reading source, which
+	// cannot say which of them happened.
+	ErrCredentialsUnavailable = fmt.Errorf(
+		"%w: what it would submit could not be read", ErrReconnect)
+	ErrOneTimeCodeUnavailable = fmt.Errorf(
+		"%w: the one-time code could not be derived", ErrReconnect)
+	ErrSessionNotStarted = fmt.Errorf(
+		"%w: the client did not start the session", ErrReconnect)
 )
 
 var (
@@ -104,7 +116,7 @@ func (client *Client) Reconnect(ctx context.Context, source credentials.Source) 
 
 	pritunl, err := source.ReadPritunl(ctx)
 	if err != nil {
-		return fmt.Errorf("%w: credentials unavailable", ErrReconnect)
+		return ErrCredentialsUnavailable
 	}
 	defer pritunl.Close()
 
@@ -117,7 +129,7 @@ func (client *Client) Reconnect(ctx context.Context, source credentials.Source) 
 		submission = append(submission, pin...)
 		return nil
 	}); err != nil {
-		return fmt.Errorf("%w: PIN unavailable", ErrReconnect)
+		return ErrCredentialsUnavailable
 	}
 	if err := pritunl.UseTOTPSeed(func(encoded []byte) error {
 		seed, err := otp.DecodeSeed(encoded)
@@ -132,7 +144,7 @@ func (client *Client) Reconnect(ctx context.Context, source credentials.Source) 
 		submission = append(submission, code...)
 		return nil
 	}); err != nil {
-		return fmt.Errorf("%w: one-time code unavailable", ErrReconnect)
+		return ErrOneTimeCodeUnavailable
 	}
 	if len(submission) == 0 || len(submission) > maxSubmission {
 		return fmt.Errorf("%w: nothing to submit", ErrReconnect)
@@ -146,7 +158,7 @@ func (client *Client) Reconnect(ctx context.Context, source credentials.Source) 
 		runContext, submission, client.config.Path,
 		"start", client.config.ProfileID, "-m", client.config.Mode, "-r",
 	); err != nil {
-		return fmt.Errorf("%w: the client did not start the session", ErrReconnect)
+		return ErrSessionNotStarted
 	}
 	return nil
 }

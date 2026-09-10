@@ -789,6 +789,12 @@ func outcomeReason(outcome recoveryOutcome) logging.Reason {
 		return logging.ReasonRecoveryUnequipped
 	case recoveryFailed:
 		return logging.ReasonRecoveryFailed
+	case recoveryFailedCredentials:
+		return logging.ReasonCredentialsUnavailable
+	case recoveryFailedCode:
+		return logging.ReasonCodeUnavailable
+	case recoveryFailedNotStarted:
+		return logging.ReasonSessionNotStarted
 	default:
 		return ""
 	}
@@ -801,7 +807,8 @@ func outcomeResult(outcome recoveryOutcome) logging.Result {
 	case recoveryRefused, recoveryRefusedAuthority, recoveryRefusedStale,
 		recoveryRefusedPrecondition, recoveryRefusedRequest:
 		return logging.ResultRejected
-	case recoveryFailed, recoveryUnequipped:
+	case recoveryFailed, recoveryUnequipped, recoveryFailedCredentials,
+		recoveryFailedCode, recoveryFailedNotStarted:
 		return logging.ResultDegraded
 	default:
 		return logging.ResultProposed

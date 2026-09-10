@@ -8,8 +8,10 @@ import (
 	"net/netip"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/credentials"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlclient"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlplan"
 	"github.com/mrAndreyIsachenko/hexroute/internal/userobserve"
 )
@@ -140,4 +142,119 @@ func TestTheMissingAddressIsWhatIsOffered(t *testing.T) {
 	if got := unreachableClientAddress(carrying); got != "" {
 		t.Fatalf("evidence %q offered for a session that is carrying", got)
 	}
+}
+
+// The step a reconnect stopped at reaches the record.
+//
+// Being unable to act and acting and failing were told apart yesterday. What is
+// still one word is where the attempt stopped, and the steps send the reader to
+// different places: to the Keychain, to the client, to this code. On 2026-09-09
+// an attempt failed and two explanations fitted, with nothing in the log to
+// choose between them.
+func TestTheStepAReconnectStoppedAtReachesTheRecord(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		failure error
+		outcome recoveryOutcome
+		reason  string
+	}{
+		{
+			name:    "what it would submit could not be read",
+			failure: pritunlclient.ErrCredentialsUnavailable,
+			outcome: recoveryFailedCredentials,
+			reason:  "recovery_credentials_unavailable",
+		},
+		{
+			name:    "the client would not start the session",
+			failure: pritunlclient.ErrSessionNotStarted,
+			outcome: recoveryFailedNotStarted,
+			reason:  "recovery_session_not_started",
+		},
+		{
+			name:    "the code could not be derived",
+			failure: pritunlclient.ErrOneTimeCodeUnavailable,
+			outcome: recoveryFailedCode,
+			reason:  "recovery_code_unavailable",
+		},
+		{
+			name:    "something else went wrong",
+			failure: errors.New("a fault this code did not name"),
+			outcome: recoveryFailed,
+			reason:  "recovery_failed",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := reconnectOutcome(testCase.failure); got != testCase.outcome {
+				t.Fatalf("outcome = %q, want %q", got, testCase.outcome)
+			}
+			if got := outcomeResult(testCase.outcome); got != logging.ResultDegraded {
+				t.Fatalf("result = %q, want degraded — nothing refused this", got)
+			}
+			if got := string(outcomeReason(testCase.outcome)); got != testCase.reason {
+				t.Fatalf("reason = %q, want %q", got, testCase.reason)
+			}
+		})
+	}
+}
+
+// Through perform, because the mapping matters only if the loop records it.
+//
+// Driven through reconnectOutcome alone, replacing the call with the general
+// failure changed nothing a test could see.
+func TestPerformRecordsTheStepTheReconnectStoppedAt(t *testing.T) {
+	client, err := pritunlclient.New(pritunlclient.Config{
+		Path:      "/Applications/Example.app/Contents/Resources/example-client",
+		ProfileID: "0123456789abcdef",
+		Mode:      "wg",
+	}, refusingClientRunner{})
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	source, err := credentials.NewKeychainSource(
+		// The names are arbitrary here — the stub answers nothing whatever it
+		// is asked for. They are deliberately not shaped like the real ones:
+		// an item name in source is one someone can copy.
+		unreadableKeychain{}, credentials.KeychainConfig{
+			Account: "operator", PINService: "example-first",
+			TOTPService: "example-second",
+		})
+	if err != nil {
+		t.Fatalf("source: %v", err)
+	}
+	executor := &recovery{
+		client: client,
+		source: source,
+		authorize: func(string, uint64, string) policy.ActionAuthorizationDecision {
+			return policy.ActionAuthorizationDecision{Allowed: true}
+		},
+	}
+
+	got := executor.perform(context.Background(), reconnectPlan(), "")
+	if got != recoveryFailedCredentials {
+		t.Fatalf("outcome = %q, want %q — the step did not reach the record",
+			got, recoveryFailedCredentials)
+	}
+}
+
+// A Keychain that answers nothing, so the attempt stops at the first step.
+type unreadableKeychain struct{}
+
+func (unreadableKeychain) Output(
+	context.Context,
+	string,
+	...string,
+) ([]byte, error) {
+	return nil, errors.New("the item is not readable here")
+}
+
+// A client that would refuse if it were ever reached.
+type refusingClientRunner struct{}
+
+func (refusingClientRunner) RunWithInput(
+	context.Context,
+	[]byte,
+	string,
+	...string,
+) error {
+	return errors.New("a connect is already under way")
 }
