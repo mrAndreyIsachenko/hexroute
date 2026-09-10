@@ -62,9 +62,23 @@ const (
 // question is asked once, in one way: the reconnect it performs itself, and the
 // service restart it asks root for. It cannot restart anything itself, and root
 // cannot read what it holds.
+// reconnector is what an attempt needs of the Pritunl client, which is one
+// method.
+//
+// It is an interface because the step an attempt stops at is decided partly by
+// the wall clock: the real client refuses a one-time-code window too short to
+// use before it reads any credential. A test driving the concrete client
+// through perform therefore passed or failed by the second it ran on, which is
+// how it passed on one runner and failed on another. Where Reconnect stops is
+// settled in that package against a pinned clock; what this one does with the
+// answer is settled here.
+type reconnector interface {
+	Reconnect(context.Context, credentials.Source) error
+}
+
 type recovery struct {
 	authorize func(string, uint64, string) policy.ActionAuthorizationDecision
-	client    *pritunlclient.Client
+	client    reconnector
 	source    credentials.Source
 	roundTrip func(context.Context, ipc.Request) (ipc.Response, error)
 	requestID func() (string, error)
