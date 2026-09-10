@@ -76,7 +76,7 @@ func TestDispatcherSeparatesReadOnlyAndMutatingRequests(t *testing.T) {
 	readOnly := &countingReadHandler{}
 	mutating := &countingMutationHandler{}
 	policyHandler := &countingPolicyHandler{allowed: true}
-	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler, nil, nil)
+	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler, &recordingRefusals{}, nil, nil)
 	if err != nil {
 		t.Fatalf("NewDispatcher() error: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestDispatcherBlocksMutationsDuringPolicyMismatch(t *testing.T) {
 	readOnly := &countingReadHandler{}
 	mutating := &countingMutationHandler{}
 	policyHandler := &countingPolicyHandler{allowed: false}
-	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler, nil, nil)
+	dispatcher, err := NewDispatcher(readOnly, mutating, policyHandler, &recordingRefusals{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,8 @@ func TestDispatcherAddsMatchingPolicySnapshotToReadStatus(t *testing.T) {
 	}
 	policyHandler := &countingPolicyHandler{status: policyStatus}
 	dispatcher, err := NewDispatcher(
-		successfulReadHandler{}, &countingMutationHandler{}, policyHandler, nil, nil)
+		successfulReadHandler{}, &countingMutationHandler{}, policyHandler,
+		&recordingRefusals{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +202,7 @@ func TestShadowStatusReachesItsHandler(t *testing.T) {
 	shadow := &recordingShadowHandler{}
 	dispatcher, err := NewDispatcher(
 		successfulReadHandler{}, &countingMutationHandler{},
-		&countingPolicyHandler{}, nil, shadow)
+		&countingPolicyHandler{}, &recordingRefusals{}, nil, shadow)
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
 	}
@@ -222,7 +223,7 @@ func TestShadowStatusReachesItsHandler(t *testing.T) {
 func TestShadowStatusWithoutAStoreIsRefused(t *testing.T) {
 	dispatcher, err := NewDispatcher(
 		successfulReadHandler{}, &countingMutationHandler{},
-		&countingPolicyHandler{}, nil, nil)
+		&countingPolicyHandler{}, &recordingRefusals{}, nil, nil)
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
 	}

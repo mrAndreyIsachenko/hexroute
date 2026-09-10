@@ -11,7 +11,7 @@ import (
 func TestBrokerSerializesRequestAndResponse(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	broker, err := NewBroker(ctx)
+	broker, err := NewBroker(ctx, &recordingRefusals{})
 	if err != nil {
 		t.Fatalf("NewBroker() error: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestBrokerSerializesRequestAndResponse(t *testing.T) {
 
 func TestBrokerCancellationReturnsTypedInternalError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	broker, err := NewBroker(ctx)
+	broker, err := NewBroker(ctx, &recordingRefusals{})
 	if err != nil {
 		t.Fatalf("NewBroker() error: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestBrokerCancellationReturnsTypedInternalError(t *testing.T) {
 func TestExpiredQueuedMutationBecomesInactive(t *testing.T) {
 	daemonCtx, stopDaemon := context.WithCancel(context.Background())
 	defer stopDaemon()
-	broker, err := NewBroker(daemonCtx)
+	broker, err := NewBroker(daemonCtx, &recordingRefusals{})
 	if err != nil {
 		t.Fatalf("NewBroker() error: %v", err)
 	}

@@ -10,6 +10,7 @@ type Dispatcher struct {
 	readOnly     ReadHandler
 	mutating     MutationHandler
 	policy       PolicyHandler
+	refusals     RefusalReporter
 	connectivity ConnectivityHandler
 	shadow       ShadowHandler
 }
@@ -52,10 +53,15 @@ func NewDispatcher(
 	readOnly ReadHandler,
 	mutating MutationHandler,
 	policyHandler PolicyHandler,
+	refusals RefusalReporter,
 	connectivity ConnectivityHandler,
 	shadow ShadowHandler,
 ) (*Dispatcher, error) {
-	if readOnly == nil || mutating == nil || policyHandler == nil {
+	// The reporter is required rather than optional. A dispatcher without one
+	// can refuse a request and leave nothing behind, which is the fault this
+	// argument exists to make unbuildable.
+	if readOnly == nil || mutating == nil || policyHandler == nil ||
+		refusals == nil {
 		return nil, ErrInvalidController
 	}
 	// connectivity may be absent: the read model is behind a gate, and a root
@@ -64,6 +70,7 @@ func NewDispatcher(
 		readOnly:     readOnly,
 		mutating:     mutating,
 		policy:       policyHandler,
+		refusals:     refusals,
 		connectivity: connectivity,
 		shadow:       shadow,
 	}, nil
@@ -97,6 +104,10 @@ func (dispatcher *Dispatcher) HandleIPC(
 		return dispatcher.connectivity.Publish(ctx, request)
 	case ipc.ActionResumeTarget, ipc.ActionRescuePritunlService:
 		if !dispatcher.policy.MutationAllowed() {
+			// Above the act and before anything evaluates it. The code the
+			// caller gets is the same one a genuine precondition failure
+			// carries, so this is the only place the difference can be kept.
+			dispatcher.refusals.ReportMutationRefused()
 			return ipc.Response{
 				Version: ipc.ProtocolVersion, RequestID: request.RequestID,
 				Error: ipc.ErrorPrecondition,

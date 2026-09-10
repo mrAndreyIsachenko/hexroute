@@ -166,6 +166,12 @@ const (
 	ReasonUnsignedAuthority Reason = "unsigned_authority"
 	ReasonOuterPathNotReady Reason = "outer_path_not_ready"
 	ReasonServiceNotStale   Reason = "service_not_stale"
+	// Refused above the act, by layers no evaluation reaches. A runtime that
+	// may not mutate at all never gets to the act's own checks, and a request
+	// no reader took up was never refused by anything — it was not answered.
+	// Both used to arrive as a bare precondition failure with nothing written.
+	ReasonMutationNotPermitted Reason = "mutation_not_permitted"
+	ReasonRequestNotTaken      Reason = "request_not_taken"
 	// What a runtime could not do on its own behalf, as distinct from what
 	// another refused it. Unequipped is an authority it was granted and cannot
 	// exercise; failed is an attempt that did not work.
@@ -350,6 +356,7 @@ func validReason(value Reason) bool {
 		ReasonRootInternal, ReasonPublicationTimeout,
 		ReasonSocketAbsent, ReasonSocketDenied, ReasonPeerSilent,
 		ReasonRecoveryRefused, ReasonUnsignedAuthority,
+		ReasonMutationNotPermitted, ReasonRequestNotTaken,
 		ReasonOuterPathNotReady, ReasonServiceNotStale,
 		ReasonRecoveryUnequipped, ReasonRecoveryFailed,
 		ReasonCredentialsUnavailable, ReasonCodeUnavailable,

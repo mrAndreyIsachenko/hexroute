@@ -250,7 +250,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err := ensureRootSocketDirectory(filepath.Dir(*socketPath)); err != nil {
 			return rejected(errorLog, logging.ReasonSocketUnavailable)
 		}
-		broker, err := operator.NewBroker(runCtx)
+		// Where a refusal made above the act is written down. The mutation
+		// gate and an envelope no reader took both answer before anything
+		// that reports a reason is reached.
+		refusals, err := operator.NewRefusalLogger(errorLog)
+		if err != nil {
+			return 1
+		}
+		broker, err := operator.NewBroker(runCtx, refusals)
 		if err != nil {
 			return 1
 		}
@@ -266,7 +273,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		dispatcher, err := operator.NewDispatcher(
-			controller, broker, policyHandler,
+			controller, broker, policyHandler, refusals,
 			connectivityPublisher{reader: reader}, shadowHandler(shadowStore))
 		if err != nil {
 			return 1
