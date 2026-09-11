@@ -77,6 +77,14 @@ type Spool struct {
 	maxBytes    int64
 	metadata    *metadata.Generator
 	quarantined []uint64
+	// indexed is what the spool last learned about its own directory, held
+	// under mu with everything else that touches it. Nil means it does not
+	// know and the next question pays for a listing.
+	indexed []stableRecord
+	// scans counts the listings taken. The defect this replaces was invisible
+	// without it: one listing is cheap and the fault was in how many of them a
+	// cycle asked for.
+	scans int
 }
 
 var (
@@ -148,7 +156,7 @@ func (spool *Spool) Append(encodedEvent []byte) (uint64, error) {
 	if err := spool.reportQuarantineLocked(); err != nil {
 		return 0, err
 	}
-	records, err := spool.scanIndex()
+	records, err := spool.index()
 	if err != nil {
 		return 0, err
 	}
@@ -279,7 +287,7 @@ func (spool *Spool) EntriesBySequenceRanges(
 func (spool *Spool) Size() (int64, error) {
 	spool.mu.Lock()
 	defer spool.mu.Unlock()
-	records, err := spool.scanIndex()
+	records, err := spool.index()
 	if err != nil {
 		return 0, err
 	}
@@ -287,6 +295,10 @@ func (spool *Spool) Size() (int64, error) {
 }
 
 func (spool *Spool) Acknowledge(eventIDs []metadata.UUID) (int, error) {
+	// Acknowledging removes stable records. It is rare beside appending, so
+	// the listing is dropped rather than amended.
+	defer spool.forgetIndex()
+
 	acknowledged := make(map[metadata.UUID]struct{}, len(eventIDs))
 	for _, eventID := range eventIDs {
 		if _, err := metadata.ParseUUID(string(eventID)); err != nil {
@@ -430,6 +442,9 @@ func (spool *Spool) recordOverflow(entries []Entry) error {
 // itself — so the fact travels the path every other event travels, to the
 // archive and to telemetry, instead of needing a channel of its own.
 func (spool *Spool) quarantineEntry(count int) (Entry, error) {
+	// Quarantine moves a stable record out from under the listing.
+	defer spool.forgetIndex()
+
 	eventMetadata, err := spool.metadata.Next()
 	if err != nil {
 		return Entry{}, err
@@ -533,6 +548,7 @@ func (spool *Spool) stage(entry Entry) error {
 func (spool *Spool) commit(staged []Entry, evictions []Entry) error {
 	for _, entry := range evictions {
 		if err := os.Remove(spool.stablePath(entry.Sequence)); err != nil {
+			spool.forgetIndex()
 			return fmt.Errorf("evict spool record: %w", err)
 		}
 	}
@@ -541,10 +557,16 @@ func (spool *Spool) commit(staged []Entry, evictions []Entry) error {
 			spool.pendingPath(entry.Sequence),
 			spool.stablePath(entry.Sequence),
 		); err != nil {
+			spool.forgetIndex()
 			return fmt.Errorf("commit spool record: %w", err)
 		}
 	}
-	return syncDirectory(spool.path)
+	if err := syncDirectory(spool.path); err != nil {
+		spool.forgetIndex()
+		return err
+	}
+	spool.noteCommitted(staged, evictions)
+	return nil
 }
 
 func (spool *Spool) scanStable() ([]Entry, error) {
