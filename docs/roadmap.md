@@ -77,8 +77,23 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None. What follows is what the recent ones changed and what they left standing,
-kept because the reasons are worth more than the record of having done them.
+`take-the-probes-together` is open. What remains of root's cycle pause is the
+observation itself — about 2.5 seconds, of which 2.09 is three endpoint probes
+taken one after another at about 0.7 seconds each. They wait on a network and
+say nothing to each other, so the cycle now starts them together and waits once.
+
+Only the waiting changes. Every answer lands at its configured index and the
+fold walks them in that order, so the summary is the one sequence produced,
+including which failure is recorded when more than one fails. That last part is
+asserted rather than assumed: a probe that fails late in configuration order is
+made to finish last, and the recorded failure must still be its.
+
+The regression asserts the property rather than a duration. Each probe announces
+itself and waits for the others: taken together they all arrive, taken in turn
+the first waits alone and the test says so.
+
+What follows is what the recent ones changed and what they left standing, kept
+because the reasons are worth more than the record of having done them.
 
 `keep-the-spool-index-in-memory` closed on 2026-09-11, and with it the pause in
 root's operator loop is accounted for end to end.

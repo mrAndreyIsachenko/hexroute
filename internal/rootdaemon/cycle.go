@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/netip"
 	"strings"
+	"sync"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityhost"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
@@ -156,8 +157,33 @@ func (cycle *Cycle) Observe(ctx context.Context) Summary {
 	codex := routeplan.CodexState{}
 	outerCount := uint32(0)
 	outerReady := uint32(0)
-	for _, configuredEndpoint := range cycle.config.Endpoints {
-		observation, endpointErr := cycle.readiness.Endpoint(ctx, configuredEndpoint.Endpoint)
+	// The probes wait on a network and say nothing to each other, so they are
+	// started together and waited for once. Taken in turn they cost their sum,
+	// and this cycle holds the operator socket until it finishes: on
+	// 2026-09-11 three of them at about 0.7 seconds each were the whole of what
+	// a caller waited for after the archive and the spool stopped listing their
+	// directories.
+	//
+	// Only the waiting changes. Every answer lands at its configured index and
+	// the fold below walks them in that order, so the summary is the one
+	// sequence produced — including which failure is the one recorded when more
+	// than one fails.
+	probes := make([]endpointProbe, len(cycle.config.Endpoints))
+	var probing sync.WaitGroup
+	for index, configuredEndpoint := range cycle.config.Endpoints {
+		probing.Add(1)
+		go func(index int, endpoint observe.Endpoint) {
+			defer probing.Done()
+			observation, endpointErr := cycle.readiness.Endpoint(ctx, endpoint)
+			probes[index] = endpointProbe{
+				observation: observation, err: endpointErr,
+			}
+		}(index, configuredEndpoint.Endpoint)
+	}
+	probing.Wait()
+
+	for index, configuredEndpoint := range cycle.config.Endpoints {
+		observation, endpointErr := probes[index].observation, probes[index].err
 		if endpointErr != nil {
 			summary.Observed.ReadinessError = endpointErr
 			summary.Failures++
@@ -228,4 +254,12 @@ func routeMatchesTarget(
 	default:
 		return false
 	}
+}
+
+// endpointProbe is one probe's answer, held at its configured index until every
+// probe has answered. It exists so that concurrency changes when the cycle
+// waits and not what it concludes.
+type endpointProbe struct {
+	observation observe.ReadinessObservation
+	err         error
 }
