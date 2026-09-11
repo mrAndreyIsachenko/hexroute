@@ -18,14 +18,27 @@ them.
 
 No operation SHALL recompute a value the filesystem already reports.
 
-The cost of appending SHALL be that of listing the directory and reading each
-record's metadata, and SHALL NOT include opening or decoding any stored record.
-It therefore still grows with how many records are stored, and that growth is
-bounded by the existing size bound: a spool cannot hold more records than its
-byte limit admits at the smallest record size. Measured on this repository's
-records, an append costs about eleven milliseconds at a thousand stored records
-and a hundred and ninety at sixty thousand, against roughly one and a half
-seconds when every record was decoded.
+The cost of appending SHALL NOT include listing the directory, and SHALL NOT
+include opening or decoding any stored record. What the spool knows about its
+own directory SHALL be learned once and kept current as it publishes and evicts,
+so that appending costs the write and nothing that grows with how many records
+are stored.
+
+The previous statement of this requirement sanctioned a listing per append and
+called the growth acceptable because the size bound caps it. That is true of one
+append. A runtime appends eleven records per cycle, so the cost is the listing
+multiplied by the appends, and no bound in this system caps the second factor.
+
+A spool MAY discard what it knows about its directory at any time and learn it
+again, and SHALL do so whenever a write may have half happened and whenever
+anything other than publishing or evicting moves a stable record. It SHALL NOT
+be required to notice a record added or removed by something other than itself.
+
+Measured on this repository's records, an append costs about eleven milliseconds
+at a thousand stored records and a hundred and ninety at sixty thousand, against
+roughly one and a half seconds when every record was decoded. One cycle's eleven
+appends against twenty thousand stored records cost 775 milliseconds listing each
+time and 97 listing once.
 
 #### Scenario: A record is appended to a full spool
 
@@ -43,6 +56,15 @@ seconds when every record was decoded.
 - **WHEN** an operation returns stored records to a caller
 - **THEN** each returned record is decoded and proved before it is handed out
 
+#### Scenario: A cycle appends several records
+
+- **WHEN** a runtime appends many records to the same spool without anything else moving its stable records
+- **THEN** the directory is listed at most once, however many records are appended
+
+#### Scenario: Something other than an append moves a record
+
+- **WHEN** an upload is acknowledged, a record is quarantined, or a write does not finish
+- **THEN** the spool discards what it knew and learns it again before answering anything
 ### Requirement: A damaged record stops only its own use
 
 A record that cannot be proved SHALL be set aside and reported, and SHALL NOT

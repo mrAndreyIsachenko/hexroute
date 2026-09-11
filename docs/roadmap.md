@@ -77,25 +77,37 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`keep-the-spool-index-in-memory` is open. `keep-the-index-in-memory` returned
-about 2.7 seconds of a pause of six to thirteen and said the rest wanted another
-profile rather than another guess. The profile already taken had it: read as a
-call tree rather than a leaf histogram, it names `spool.scanIndex` beside the
-archive's frames.
+None. What follows is what the recent ones changed and what they left standing,
+kept because the reasons are worth more than the record of having done them.
 
-It is the same defect in the sibling store. The spool lists its directory on
-every append, it lives inside the connectivity state directory that holds
-107,600 files, and the connectivity journal mirrors every published fact into
-both stores — which is the "paid twice per published fact" the archive's own
-requirement already mentioned.
+`keep-the-spool-index-in-memory` closed on 2026-09-11, and with it the pause in
+root's operator loop is accounted for end to end.
 
-Measured: one cycle's eleven appends against twenty thousand stored records cost
-775ms listing each time and 97ms listing once, against the archive's 767 and 109
-for the same shape.
+It was the same defect as the archive's, in the store beside it: the spool lists
+its directory on every append, it lives inside the connectivity state directory
+holding 107,600 files, and the journal mirrors every published fact into both.
+The profile taken for the archive already named it — read as a call tree rather
+than a leaf histogram, `spool.scanIndex` stands beside `eventarchive`'s frames.
 
-What remains of the pause is not predicted here. It was measured from outside by
-timing requests the runtime cannot act on, and it will be measured the same way
-once both fixes are installed.
+Measured on the machine with both fixes installed, the same way the pause was
+first measured:
+
+| | before | after |
+|---|---|---|
+| pause | 6.6 to 13.1s | 2.4 to 4.6s |
+| typical | about 9.8s | about 2.5s |
+| period | about 70s | about 63s |
+
+What remains is the observation itself — 2.2 seconds measured separately, of
+which 2.09 is three endpoint probes taken one after another. The residual and
+that number agree, so nothing is left unexplained.
+
+Two things stand, neither a leftover of this. The probes are sequential and
+taking them together would return about 1.4 seconds; that is worth proposing on
+its own terms, and the loop now answers inside its fifteen-second deadline with
+eleven to spare. And the stores hold 456MB across 176,000 files: the retention
+window admits that, and narrowing it is a decision about how much history is
+wanted rather than about cost.
 
 What follows is what the recent ones changed and what they left standing, kept
 because the reasons are worth more than the record of having done them.
