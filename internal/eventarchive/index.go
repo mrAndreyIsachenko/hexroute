@@ -5,14 +5,18 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/mrAndreyIsachenko/hexroute/internal/diskusage"
 	"strings"
 )
 
 // stableEntry is what the archive can learn about a stored record without
-// opening it: which sequence it holds, and how many bytes it occupies.
+// opening it: which sequence it holds, and how much room it takes.
 //
-// Both come from the directory. The sequence is the filename and the size is
-// what the filesystem reports, so neither needs the record to be decoded.
+// Both come from the directory. The sequence is the filename and the room is
+// what the filesystem charges rather than what the record contains — a record
+// of 1.25 kilobytes occupies four, and a bound counting the smaller number
+// promises something the disk does not honour.
 type stableEntry struct {
 	Sequence uint64
 	Size     int64
@@ -135,7 +139,7 @@ func (archive *Archive) walk() ([]stableEntry, error) {
 		}
 		seen[sequence] = struct{}{}
 		entries = append(entries, stableEntry{
-			Sequence: sequence, Size: info.Size(),
+			Sequence: sequence, Size: diskusage.Occupied(info),
 		})
 	}
 	sort.Slice(entries, func(one, other int) bool {

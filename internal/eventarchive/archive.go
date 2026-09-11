@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/diskusage"
 	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 )
@@ -43,7 +44,7 @@ const (
 	DefaultMaxBytes int64 = 256 * 1024 * 1024
 	// DefaultMaxAge bounds how far back the archive answers for. It is the
 	// window an incident review actually asks about.
-	DefaultMaxAge = 30 * 24 * time.Hour
+	DefaultMaxAge = 7 * 24 * time.Hour
 
 	stableSuffix  = ".event"
 	pendingSuffix = ".pending"
@@ -147,10 +148,12 @@ type Archive struct {
 	mu       sync.Mutex
 	path     string
 	maxBytes int64
-	maxAge   time.Duration
-	clock    metadata.Clock
-	metadata *metadata.Generator
-	faults   map[Boundary]struct{}
+	// allocationUnit is what the filesystem under this archive charges in.
+	allocationUnit int64
+	maxAge         time.Duration
+	clock          metadata.Clock
+	metadata       *metadata.Generator
+	faults         map[Boundary]struct{}
 	// indexed is what the archive last learned about its own directory, kept
 	// under mu with everything else that touches it. Nil means it does not
 	// know and the next question pays for a walk.
@@ -202,7 +205,8 @@ func Open(path string, options Options) (*Archive, error) {
 	}
 	archive := &Archive{
 		path: path, maxBytes: maxBytes, maxAge: maxAge, clock: clock,
-		faults: faults,
+		allocationUnit: diskusage.AllocationUnit(path),
+		faults:         faults,
 	}
 	if err := archive.discardStaged(); err != nil {
 		return nil, err
@@ -235,7 +239,8 @@ func OpenForReading(path string) (*Archive, error) {
 	}
 	return &Archive{
 		path: path, maxBytes: DefaultMaxBytes, maxAge: DefaultMaxAge,
-		clock: metadata.NewSystemClock(), readOnly: true,
+		allocationUnit: diskusage.AllocationUnit(path),
+		clock:          metadata.NewSystemClock(), readOnly: true,
 		faults: map[Boundary]struct{}{},
 	}, nil
 }
@@ -300,11 +305,15 @@ func (archive *Archive) Append(encoded []byte) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if incoming.Size > archive.maxBytes {
+	// What the record will take once written, not what it contains. Counting
+	// the contents would admit one record more than the bound meant to on
+	// every append.
+	incomingOccupies := diskusage.WillOccupy(incoming.Size, archive.allocationUnit)
+	if incomingOccupies > archive.maxBytes {
 		return 0, ErrRecordTooLarge
 	}
 
-	excess := indexTotalSize(kept) + incoming.Size - archive.maxBytes
+	excess := indexTotalSize(kept) + incomingOccupies - archive.maxBytes
 	if excess > 0 {
 		// Only here. Eviction chooses by priority, and priority is a property
 		// of the record rather than of the directory, so this is the one path
@@ -664,7 +673,7 @@ func (archive *Archive) commit(record Record, evictions []Record) error {
 		return fmt.Errorf("%w: inspect published record: %v", ErrArchive, err)
 	}
 	archive.noteAppended(stableEntry{
-		Sequence: record.Sequence, Size: info.Size(),
+		Sequence: record.Sequence, Size: diskusage.Occupied(info),
 	})
 	return nil
 }

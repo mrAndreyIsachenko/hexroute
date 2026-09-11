@@ -77,8 +77,27 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None. What follows is what the recent ones changed and what they left standing,
-kept because the reasons are worth more than the record of having done them.
+`bound-the-archive-by-what-the-disk-charges` is open. The stores occupy 778
+megabytes and contain 238. Records average 1.25 kilobytes and take a
+four-kilobyte block each, so the disk charges more than three times what the
+bounds count: an archive bounded at 256 megabytes held 96.7 and occupied 315,
+over a bound it had not reached.
+
+The age bound never applied either. Thirty days was configured; at twelve
+megabytes a day the byte bound arrives in about twenty-one, so the window an
+operator reads off the configuration was a number nothing ever used.
+
+The archive now counts what the filesystem charges, reports the same number it
+counts, and its window is seven days — short enough to be the one that bites. On
+installation it trims from 315 megabytes and eight days to 256 and seven, which
+is about fifteen thousand of the oldest records.
+
+The spool and the journals carry the same defect and are not corrected here.
+Their accounting is the one that was left alone deliberately, and restating every
+size assertion in their tests is mechanical work that is not safe to do quickly.
+
+What follows is what the recent ones changed and what they left standing, kept
+because the reasons are worth more than the record of having done them.
 
 `take-the-probes-together` closed on 2026-09-11. The cycle starts its endpoint
 probes together and waits once; only the waiting changed, because every answer

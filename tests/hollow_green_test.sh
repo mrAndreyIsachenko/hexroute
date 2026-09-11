@@ -48,6 +48,7 @@ ENVIRONMENTAL = {
     "PostgreSQL integration DSNs are not set",
     "HEXROUTE_TEST_POSTGRES_ADMIN_DSN is not set",
     "no continuous clock on this platform",
+    "this platform does not report allocation",
     "no continuous clock: %v",
     "sing-box is not installed",
     "running as root cannot demonstrate a foreign owner",

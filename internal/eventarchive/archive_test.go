@@ -271,19 +271,33 @@ func TestSizeEvictionRemovesDiagnosticsBeforeOperational(t *testing.T) {
 		t.Fatalf("size: %v", err)
 	}
 
-	// Room for three records and no more, so the fourth must evict one.
-	archive := openArchive(t, root, clock, Options{MaxBytes: measured * 7 / 2})
+	// The bound is stated in whole records because that is what it now counts:
+	// a record of about 1.25 kilobytes takes a four-kilobyte block, so what the
+	// archive occupies moves in blocks rather than in payload lengths.
+	//
+	// How many records fit is left to the archive rather than computed here.
+	// Block arithmetic depends on the filesystem, and a test that predicted it
+	// would be measuring this machine. So diagnostics go in first, operational
+	// records follow until the archive says it evicted something for size, and
+	// what it evicted is the assertion.
+	archive := openArchive(t, root, clock, Options{MaxBytes: measured * 12})
 	if _, err := archive.Append(diagnostic(1)); err != nil {
 		t.Fatalf("append diagnostic: %v", err)
 	}
-	if _, err := archive.Append(operational(1)); err != nil {
-		t.Fatalf("append operational: %v", err)
+	evicted := false
+	for index := 1; index <= 200 && !evicted; index++ {
+		if _, err := archive.Append(operational(index)); err != nil {
+			t.Fatalf("append operational %d: %v", index, err)
+		}
+		for _, overflow := range archiveOverflows(t, archive) {
+			if overflow.Reason == event.ArchiveOverflowSize {
+				evicted = true
+				break
+			}
+		}
 	}
-	if _, err := archive.Append(operational(2)); err != nil {
-		t.Fatalf("append operational: %v", err)
-	}
-	if _, err := archive.Append(operational(3)); err != nil {
-		t.Fatalf("append that must evict: %v", err)
+	if !evicted {
+		t.Fatal("two hundred records went in and none was evicted for size")
 	}
 
 	for _, overflow := range archiveOverflows(t, archive) {

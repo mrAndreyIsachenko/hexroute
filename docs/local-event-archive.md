@@ -24,8 +24,22 @@ exported method appears.
 
 | Bound | Default | What it means |
 | --- | --- | --- |
-| age | 30 days | how far back a review can ask |
-| size | 256 MiB | how much disk the answer may cost |
+| age | 7 days | how far back a review can ask |
+| size | 256 MiB | how much disk the answer costs |
+
+The size bound counts what the filesystem charges for the records, not what the
+records contain. The archive keeps one file per record at about 1.25 kilobytes
+against a four-kilobyte allocation unit, so counting contents promised about a
+third of the room actually taken: on 2026-09-11 an archive bounded at 256 MiB
+held 96.7 MiB of records and occupied 315 MiB of disk. What the archive reports
+as its size is the number it counts against the bound, so the two cannot drift
+apart again.
+
+The window was thirty days and never applied. At about twelve megabytes a day
+the byte bound arrives in roughly three weeks, so the age an operator read off
+the configuration was a number nothing ever used. Seven days is short enough to
+be the one that bites, and at the current rate the two bounds now arrive
+together.
 
 Age eviction ignores priority: a record outside the window goes, critical or
 not, because a stale answer is not made truer by having been important. Size
