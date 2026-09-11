@@ -77,20 +77,32 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`take-the-probes-together` is open. What remains of root's cycle pause is the
-observation itself — about 2.5 seconds, of which 2.09 is three endpoint probes
-taken one after another at about 0.7 seconds each. They wait on a network and
-say nothing to each other, so the cycle now starts them together and waits once.
+None. What follows is what the recent ones changed and what they left standing,
+kept because the reasons are worth more than the record of having done them.
 
-Only the waiting changes. Every answer lands at its configured index and the
-fold walks them in that order, so the summary is the one sequence produced,
-including which failure is recorded when more than one fails. That last part is
-asserted rather than assumed: a probe that fails late in configuration order is
-made to finish last, and the recorded failure must still be its.
+`take-the-probes-together` closed on 2026-09-11. The cycle starts its endpoint
+probes together and waits once; only the waiting changed, because every answer
+lands at its configured index and the fold walks them in that order. Which
+failure is recorded when more than one fails is asserted rather than assumed.
 
-The regression asserts the property rather than a duration. Each probe announces
-itself and waits for the others: taken together they all arrive, taken in turn
-the first waits alone and the test says so.
+Measured on the machine the same way the pause has been measured throughout,
+twenty-five minutes and 24 samples: median 1.21 seconds, mean 1.37, one sample
+of 24 above two seconds. About 1.3 seconds returned against a prediction of
+about 1.4.
+
+The arc, each step measured the same way: **9.8 seconds** typical before any of
+it, **2.5** after the archive and the spool stopped listing their directories,
+**1.21** now — against a fifteen-second deadline on the socket that was being
+missed. What is left agrees with the parts: the slowest probe at about 0.7
+seconds, the rest of the observation at 0.08, the durable writes at about 0.2,
+the listings at about 0.2.
+
+One thing is recorded rather than explained: a single sample of 24 reached 4.3
+seconds. One outlier is not a pattern, and chasing it would mean profiling for a
+shape that may not recur.
+
+The retention window still stands untouched: 456MB across 176,000 files, which
+is a decision about how much history is wanted rather than about cost.
 
 What follows is what the recent ones changed and what they left standing, kept
 because the reasons are worth more than the record of having done them.
