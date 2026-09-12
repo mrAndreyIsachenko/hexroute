@@ -39,7 +39,11 @@ type EndpointObserver interface {
 }
 
 type Summary struct {
-	State          CycleState
+	State CycleState
+	// Complete says the cycle reached the end rather than stopping at an
+	// observation it could not take. Eight of them can end it early, and the
+	// decision below is reached either way — but not from what was never seen.
+	Complete       bool
 	SingBoxRunning bool
 	OuterReady     bool
 	Failures       uint32
@@ -103,7 +107,22 @@ func NewCycle(
 	return cycle, nil
 }
 
+// Observe watches the host and reaches what a tunnel owner would decide.
+//
+// The decision is reached on every cycle, including the ones that stopped
+// early. Eight observations can end a cycle before it finishes, and the tunnel
+// being in trouble is exactly when several of them do — so a decision that only
+// happened on complete cycles would be absent at the moments it exists for.
+// What an incomplete cycle did not see, it does not decide from.
 func (cycle *Cycle) Observe(ctx context.Context) Summary {
+	summary := cycle.observe(ctx)
+	// It performs nothing: another runtime owns the tunnel, and the decision
+	// exists to be compared against what that runtime did.
+	cycle.decideTunnel(ctx, &summary)
+	return summary
+}
+
+func (cycle *Cycle) observe(ctx context.Context) Summary {
 	summary := Summary{State: CycleDegraded}
 
 	power, err := cycle.network.Power(ctx)
@@ -262,10 +281,7 @@ func (cycle *Cycle) Observe(ctx context.Context) Summary {
 	if summary.Failures == 0 && len(plan.Operations) == 0 {
 		summary.State = CycleHealthy
 	}
-	// Last, because it reads what the rest of the cycle concluded. It performs
-	// nothing: another runtime owns the tunnel, and the decision exists to be
-	// compared against what that runtime did.
-	cycle.decideTunnel(ctx, &summary)
+	summary.Complete = true
 	return summary
 }
 
@@ -361,6 +377,7 @@ func (cycle *Cycle) decideTunnel(
 			ProcessRunning: summary.SingBoxRunning,
 			SincePrevious:  since,
 			Carrier:        tunnelplan.NewSignature(carried),
+			Complete:       summary.Complete,
 			LinkPresent:    summary.OuterReady,
 			PayloadOK:      payloadOK,
 			RoutesDrifted:  len(summary.Plan.Operations) > 0,

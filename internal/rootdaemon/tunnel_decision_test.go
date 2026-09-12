@@ -2,6 +2,7 @@ package rootdaemon
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -133,3 +134,53 @@ func TestAPayloadThatDoesNotTraverseBecomesACause(t *testing.T) {
 			summary.Tunnel.Causes, tunnelplan.CausePayloadFailed)
 	}
 }
+
+// The decision has to happen on a cycle that stopped early, because the tunnel
+// being in trouble is exactly when a cycle does. A decision reached only on
+// complete cycles would be absent at the moments it exists for — which is what
+// the first soak check found, before any cause had been induced.
+func TestAnIncompleteCycleStillDecides(t *testing.T) {
+	config, network, processes, endpoints := healthyCycleFixtures(t)
+	config.TunnelSupervision = &RuntimeTunnelSupervision{
+		Policy: tunnelplan.Policy{
+			WakeThreshold: 90 * time.Second, PayloadFailures: 2,
+		},
+		Payload: observe.PayloadEndpoint{
+			Name: "payload", URL: "http://198.51.100.1/", Timeout: time.Second,
+		},
+	}
+	store, err := newTunnelStateStore(filepath.Join(t.TempDir(), "tunnel.json"))
+	if err != nil {
+		t.Fatalf("newTunnelStateStore: %v", err)
+	}
+	// A cycle that cannot read the host's power state stops at the first
+	// observation it takes, which is the earliest of the eight exits.
+	cycle, err := NewCycle(config, refusingNetwork{NetworkObserver: network},
+		processes, endpoints,
+		WithPayloadObserver(traversingPayload{traversed: true}),
+		WithTunnelState(store))
+	if err != nil {
+		t.Fatalf("NewCycle: %v", err)
+	}
+	summary := cycle.Observe(context.Background())
+	if summary.Complete {
+		t.Fatal("the cycle was supposed to stop early")
+	}
+	if summary.Tunnel.Action == "" {
+		t.Fatal("a cycle that stopped early reached no decision at all")
+	}
+	for _, cause := range summary.Tunnel.Causes {
+		if cause == tunnelplan.CauseCarrierChanged {
+			t.Fatal("a cycle that saw no routes decided the carrier had changed")
+		}
+	}
+}
+
+// refusingNetwork cannot answer the first observation a cycle takes.
+type refusingNetwork struct{ NetworkObserver }
+
+func (refusingNetwork) Power(context.Context) (observe.PowerObservation, error) {
+	return observe.PowerObservation{}, errPowerUnreadable
+}
+
+var errPowerUnreadable = errors.New("power state is unreadable")

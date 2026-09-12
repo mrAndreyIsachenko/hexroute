@@ -76,6 +76,7 @@ func TestAnUnknownMemoryDoesNotBecomeACause(t *testing.T) {
 		tunnelplan.Policy{WakeThreshold: 90_000_000_000, PayloadFailures: 2},
 		store.Load(),
 		tunnelplan.Observed{
+			Complete:       true,
 			ProcessRunning: true,
 			Carrier:        tunnelplan.Signature("203.0.113.20=en0"),
 			LinkPresent:    true,

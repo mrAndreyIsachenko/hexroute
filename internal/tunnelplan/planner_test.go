@@ -17,6 +17,7 @@ func steady() (State, Observed) {
 	})
 	return State{Known: true, Carrier: carrier, LinkPresent: true},
 		Observed{
+			Complete:       true,
 			ProcessRunning: true,
 			SincePrevious:  10 * time.Second,
 			Carrier:        carrier,
@@ -211,5 +212,57 @@ func TestAPolicyThatCannotDecideIsRefused(t *testing.T) {
 		if _, _, err := Decide(broken, State{}, observed); err == nil {
 			t.Fatalf("Decide() accepted %+v", broken)
 		}
+	}
+}
+
+// A cycle that stopped before it saw the routes has no carrier signature, and
+// an empty one is not a changed one. Deciding a carrier change out of that
+// would rebuild the tunnel every time an observation failed — which is when the
+// tunnel is already in trouble and the rebuild would be for the wrong reason.
+func TestAnIncompleteCycleDecidesOnlyFromWhatItSaw(t *testing.T) {
+	previous, observed := steady()
+	observed.Complete = false
+	observed.Carrier = ""
+	observed.LinkPresent = false
+	observed.ProcessRunning = false
+
+	plan, next, err := Decide(policy(), previous, observed)
+	if err != nil {
+		t.Fatalf("Decide() error: %v", err)
+	}
+	held := causes(plan)
+	if !held[CauseProcessGone] {
+		t.Fatalf("an incomplete cycle lost the one cause it could see: %v",
+			plan.Causes)
+	}
+	if held[CauseCarrierChanged] {
+		t.Fatal("an incomplete cycle read a carrier change out of what it did not see")
+	}
+	if next.Carrier != previous.Carrier {
+		t.Fatalf("what it could not see was overwritten: %q became %q",
+			previous.Carrier, next.Carrier)
+	}
+	if next.LinkPresent != previous.LinkPresent {
+		t.Fatal("what it could not see about the link was overwritten")
+	}
+}
+
+// The same on the way back: a complete cycle after an incomplete one compares
+// against the last cycle that actually saw something.
+func TestACompleteCycleComparesAgainstTheLastOneThatSaw(t *testing.T) {
+	previous, observed := steady()
+	blind := observed
+	blind.Complete = false
+	blind.Carrier = ""
+	_, afterBlind, err := Decide(policy(), previous, blind)
+	if err != nil {
+		t.Fatalf("Decide() error: %v", err)
+	}
+	plan, _, err := Decide(policy(), afterBlind, observed)
+	if err != nil {
+		t.Fatalf("Decide() error: %v", err)
+	}
+	if causes(plan)[CauseCarrierChanged] {
+		t.Fatal("a blind cycle in between manufactured a carrier change")
 	}
 }

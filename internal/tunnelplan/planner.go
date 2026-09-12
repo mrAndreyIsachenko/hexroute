@@ -93,6 +93,14 @@ type Policy struct {
 
 // Observed is what one cycle saw.
 type Observed struct {
+	// Complete says whether the cycle got far enough to see everything here.
+	//
+	// A cycle that stopped early has no routes and no endpoint readings, and an
+	// empty carrier signature is not a changed one. Deciding a carrier change
+	// out of an incomplete cycle would rebuild the tunnel every time an
+	// observation failed — which is exactly when the tunnel is already in
+	// trouble and the rebuild would be decided for the wrong reason.
+	Complete       bool
 	ProcessRunning bool
 	// SincePrevious is the interval between this cycle and the one before it.
 	SincePrevious time.Duration
@@ -144,6 +152,16 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 		LinkPresent:     observed.LinkPresent,
 		PayloadFailures: previous.PayloadFailures,
 	}
+	if !observed.Complete {
+		// What it could not see, it does not overwrite. Carrying an empty
+		// signature forward would make the next complete cycle read a carrier
+		// change out of this one's blindness.
+		next.Carrier = previous.Carrier
+		next.LinkPresent = previous.LinkPresent
+		if !previous.Known {
+			next.Known = false
+		}
+	}
 	if observed.PayloadOK {
 		next.PayloadFailures = 0
 	} else {
@@ -162,10 +180,11 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 	// Both of these compare against a previous cycle. Without one there is
 	// nothing to differ from, and inventing a difference would rebuild the
 	// tunnel on every restart.
-	if previous.Known && observed.Carrier != previous.Carrier {
+	if observed.Complete && previous.Known && observed.Carrier != previous.Carrier {
 		causes = append(causes, CauseCarrierChanged)
 	}
-	if previous.Known && !previous.LinkPresent && observed.LinkPresent {
+	if observed.Complete && previous.Known &&
+		!previous.LinkPresent && observed.LinkPresent {
 		causes = append(causes, CauseLinkReturned)
 	}
 	if next.PayloadFailures >= policy.PayloadFailures {

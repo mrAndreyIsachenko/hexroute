@@ -18,6 +18,8 @@
 		<string>/Library/Application Support/Hexroute/observe-root/state/connectivity</string>
 		<string>--connectivity-event-archive</string>
 		<string>/Library/Application Support/Hexroute/observe-root/state/event-archive</string>
+		<string>--tunnel-state</string>
+		<string>/Library/Application Support/Hexroute/observe-root/state/tunnel-state.json</string>
 	</array>
 	<key>WorkingDirectory</key>
 	<string>/Library/Application Support/Hexroute/observe-root/state</string>
