@@ -85,6 +85,10 @@ type Spool struct {
 	// without it: one listing is cheap and the fault was in how many of them a
 	// cycle asked for.
 	scans int
+	// opens counts the stored records read. The same defect twice over: reading
+	// one record is cheap, and the fault was reading all of them on every
+	// append to a spool that had reached its bound.
+	opens int
 }
 
 var (
@@ -190,12 +194,16 @@ func (spool *Spool) Append(encodedEvent []byte) (uint64, error) {
 		return sequence, nil
 	}
 
-	entries, err := spool.scanStable()
+	// At the bound, and so something must go. What eviction needs is which
+	// records exist, how much each occupies and which class each belongs to —
+	// not what any of them says.
+	candidates, err := spool.evictable()
 	if err != nil {
 		return 0, err
 	}
-	required := excessBytes(totalSize(entries)+incoming.Size, spool.maxBytes)
-	evictions, covered := chooseEvictions(entries, required, false)
+	stored = indexTotalSize(candidates)
+	required := excessBytes(stored+incoming.Size, spool.maxBytes)
+	evictions, covered := chooseEvictions(candidates, required, false)
 	if covered {
 		if err := spool.commit([]Entry{incoming}, evictions); err != nil {
 			return 0, err
@@ -205,7 +213,7 @@ func (spool *Spool) Append(encodedEvent []byte) (uint64, error) {
 
 	if record.Priority != event.PriorityCritical {
 		_ = os.Remove(spool.pendingPath(sequence))
-		if err := spool.recordOverflow(entries); err != nil {
+		if err := spool.recordOverflow(candidates); err != nil {
 			return 0, errors.Join(ErrSpoolFull, err)
 		}
 		return 0, ErrSpoolFull
@@ -225,10 +233,10 @@ func (spool *Spool) Append(encodedEvent []byte) (uint64, error) {
 	}
 
 	required = excessBytes(
-		totalSize(entries)+incoming.Size+overflow.Size,
+		stored+incoming.Size+overflow.Size,
 		spool.maxBytes,
 	)
-	evictions, covered = chooseEvictions(entries, required, true)
+	evictions, covered = chooseEvictions(candidates, required, true)
 	if !covered {
 		_ = os.Remove(spool.pendingPath(sequence))
 		_ = os.Remove(spool.pendingPath(overflow.Sequence))
@@ -267,6 +275,7 @@ func (spool *Spool) EntriesBySequenceRanges(
 			if len(entries) == maxEntries {
 				return nil, false, ErrCorruptSpool
 			}
+			spool.opens++
 			entry, err := readEntry(spool.stablePath(sequence))
 			if errors.Is(err, os.ErrNotExist) {
 				complete = false
@@ -385,13 +394,16 @@ func (spool *Spool) recover() error {
 			return fmt.Errorf("inspect stable spool record: %w", err)
 		}
 
-		entries, err := spool.scanStable()
+		candidates, err := spool.evictable()
 		if err != nil {
 			return err
 		}
-		required := excessBytes(totalSize(entries)+pending.Size, spool.maxBytes)
+		required := excessBytes(
+			indexTotalSize(candidates)+pending.Size,
+			spool.maxBytes,
+		)
 		evictions, covered := chooseEvictions(
-			entries,
+			candidates,
 			required,
 			pending.Priority == event.PriorityCritical,
 		)
@@ -416,7 +428,7 @@ func (spool *Spool) recover() error {
 	return nil
 }
 
-func (spool *Spool) recordOverflow(entries []Entry) error {
+func (spool *Spool) recordOverflow(candidates []stableRecord) error {
 	overflow, err := spool.overflowEntry()
 	if err != nil {
 		return err
@@ -427,8 +439,11 @@ func (spool *Spool) recordOverflow(entries []Entry) error {
 	if err := spool.stage(overflow); err != nil {
 		return err
 	}
-	required := excessBytes(totalSize(entries)+overflow.Size, spool.maxBytes)
-	evictions, covered := chooseEvictions(entries, required, true)
+	required := excessBytes(
+		indexTotalSize(candidates)+overflow.Size,
+		spool.maxBytes,
+	)
+	evictions, covered := chooseEvictions(candidates, required, true)
 	if !covered {
 		_ = os.Remove(spool.pendingPath(overflow.Sequence))
 		return ErrRecordTooLarge
@@ -545,7 +560,7 @@ func (spool *Spool) stage(entry Entry) error {
 	return nil
 }
 
-func (spool *Spool) commit(staged []Entry, evictions []Entry) error {
+func (spool *Spool) commit(staged []Entry, evictions []stableRecord) error {
 	for _, entry := range evictions {
 		if err := os.Remove(spool.stablePath(entry.Sequence)); err != nil {
 			spool.forgetIndex()
@@ -592,6 +607,7 @@ func (spool *Spool) scanStable() ([]Entry, error) {
 			// one record damaged. Nothing here can be trusted.
 			return nil, ErrCorruptSpool
 		}
+		spool.opens++
 		entry, err := readEntry(filepath.Join(spool.path, name))
 		if err != nil || entry.Sequence != sequence {
 			if err := spool.quarantineLocked(sequence); err != nil {
@@ -690,7 +706,17 @@ func decodeStrict(data []byte, destination any) error {
 	return nil
 }
 
-func chooseEvictions(entries []Entry, required int64, includeCritical bool) ([]Entry, bool) {
+// chooseEvictions picks what goes, lowest class first and oldest first within a
+// class.
+//
+// It takes listed records rather than decoded entries because those three fields
+// are all it ever used. The entries it used to receive were the residue of
+// having decoded them for nothing.
+func chooseEvictions(
+	candidates []stableRecord,
+	required int64,
+	includeCritical bool,
+) ([]stableRecord, bool) {
 	if required <= 0 {
 		return nil, true
 	}
@@ -703,28 +729,20 @@ func chooseEvictions(entries []Entry, required int64, includeCritical bool) ([]E
 	}
 
 	var reclaimed int64
-	evictions := make([]Entry, 0)
+	evictions := make([]stableRecord, 0)
 	for _, priority := range priorities {
-		for _, entry := range entries {
-			if entry.Priority != priority {
+		for _, candidate := range candidates {
+			if candidate.Priority != priority {
 				continue
 			}
-			evictions = append(evictions, entry)
-			reclaimed += entry.Size
+			evictions = append(evictions, candidate)
+			reclaimed += candidate.Size
 			if reclaimed >= required {
 				return evictions, true
 			}
 		}
 	}
 	return evictions, false
-}
-
-func totalSize(entries []Entry) int64 {
-	var total int64
-	for _, entry := range entries {
-		total += entry.Size
-	}
-	return total
 }
 
 func excessBytes(size, maximum int64) int64 {

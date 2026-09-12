@@ -77,6 +77,22 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
+`pay-for-eviction-not-for-being-full` is open, and it is open because the
+runtime stopped. The root daemon came up at 17:32:58 on 2026-09-12, wrote its
+last heartbeat at 17:35:54, and four hours later was still running with a core
+busy in `jsoncanonicalizer` under `spool.scanStable`, reached from
+`spool.Append`. The `user` journal's spool stood at 104,858,244 bytes against a
+bound of 104,857,600 — over it — holding 84,067 records, and every append
+decoded all of them to learn one fact per record that eviction needs and the
+directory cannot report. Nothing recorded the stall, because the append that
+would have recorded it was the one that hung.
+
+This is the defect named below as left standing on 2026-09-12, and the sentence
+below was wrong about it in one way that mattered: it called the spool's
+accounting a size question. It is a cost question, and the reason it was safe to
+defer that morning was that the spool was not yet full. Nothing drains it, so
+being full was not a risk but a schedule.
+
 `decide-what-a-tunnel-owner-would-do` is open. It is the second of four changes
 the grill of item 8 settled, and the first in this repository: the Codex
 fallback was lifted out of the supervisor in `twilight` first, because an escape
@@ -117,13 +133,13 @@ against a prediction of fifteen thousand — the prediction assumed the byte bou
 would bite and it was the age window that did, harder. Thirty-five overflow
 records stand in the archive naming what went.
 
-The spool and the journals carry the same defect and are not corrected. Their
-accounting was left alone deliberately, and restating every size assertion in
-their tests is mechanical work that was not safe to do quickly. They hold 463
-megabytes of disk for 141 of records.
-
-What follows is what the recent ones changed and what they left standing, kept
-because the reasons are worth more than the record of having done them.
+The spool and the journals carry the same accounting defect and are not
+corrected. Their accounting was left alone deliberately, and restating every
+size assertion in their tests is mechanical work that was not safe to do
+quickly. They hold 463 megabytes of disk for 141 of records. What that deferral
+did not weigh is that the spool's byte bound decides when the expensive path is
+taken, and a logical bound reaches a real disk long before it reaches its own
+number — which is the stall `pay-for-eviction-not-for-being-full` opened for.
 
 What follows is what the recent ones changed and what they left standing, kept
 because the reasons are worth more than the record of having done them.
