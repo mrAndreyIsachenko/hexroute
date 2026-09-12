@@ -28,6 +28,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityruntime"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityview"
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/eventarchive"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
@@ -120,6 +121,11 @@ func continuousTick() (control.Tick, error) {
 // Reader owns the host's read model for the observe loop.
 type Reader struct {
 	recorder *Recorder
+	// archive is the retention store the journals mirror into. It is held so
+	// that a tunnel decision can be recorded through the one handle that owns
+	// it: the archive keeps what it learned about its own directory, and a
+	// second writer would be reasoning about a directory it does not control.
+	archive  *eventarchive.Archive
 	runtime  *connectivityruntime.Runtime
 	sources  map[connectivity.SourceID]*connectivitycollect.Collector
 	owners   map[connectivity.Component]connectivity.SourceID
@@ -221,6 +227,7 @@ func Open(
 		return nil, fmt.Errorf("%w: checkpoints: %v", ErrStore, err)
 	}
 	var mirror connectivityjournal.Sink
+	var retention *eventarchive.Archive
 	var archiveErr error
 	if archiveRoot != "" {
 		archive, err := eventarchive.Open(archiveRoot, eventarchive.Options{
@@ -233,6 +240,7 @@ func Open(
 			archiveErr = err
 		} else {
 			mirror = archive
+			retention = archive
 		}
 	}
 	rootJournal, err := connectivityjournal.Open(
@@ -273,6 +281,7 @@ func Open(
 		return nil, err
 	}
 	reader := &Reader{
+		archive:     retention,
 		archiveErr:  archiveErr,
 		recorder:    recorder,
 		runtime:     runtime,
@@ -678,4 +687,27 @@ type Report struct {
 type StreamPosition struct {
 	Source       connectivity.SourceID
 	LastSequence uint64
+}
+
+// RecordTunnelDecision keeps one cycle's answer to what a tunnel owner would
+// have done.
+//
+// It is narrow on purpose. The archive is the one durable store here with
+// bounds and priorities already in it, and a general way to append to it would
+// become a back door around the journals that own everything else in it.
+//
+// An archive that will not take the record is reported and dropped. A runtime
+// that stopped observing because a comparison could not be written down would
+// have traded the thing that matters for the thing that helps later, which is
+// the same judgement the archive's own absence already gets here.
+func (reader *Reader) RecordTunnelDecision(decision event.TunnelDecision) error {
+	if reader == nil || reader.archive == nil {
+		return nil
+	}
+	encoded, err := event.Encode(event.SchemaTunnelDecision, decision)
+	if err != nil {
+		return err
+	}
+	_, err = reader.archive.Append(encoded)
+	return err
 }

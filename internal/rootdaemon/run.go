@@ -15,6 +15,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/configreduction"
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityhost"
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/heartbeat"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
@@ -25,6 +26,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
 	"github.com/mrAndreyIsachenko/hexroute/internal/reconciler"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelplan"
 )
 
 type Cycler interface {
@@ -55,6 +57,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	installedPath := flags.String(
 		"installed", "", "the configuration already installed, to judge this one against")
 	heartbeatPath := flags.String("heartbeat", "", "control-loop heartbeat")
+	tunnelStatePath := flags.String(
+		"tunnel-state", "",
+		"what one cycle leaves for the next about the tunnel it does not own")
 	socketPath := flags.String("socket", "", "typed local operator socket")
 	// Off unless a root is given. Without one the daemon runs exactly the path
 	// it ran before the read model existed.
@@ -178,7 +183,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return 1
 	}
-	cycle, err := NewCycle(config, network, processes, readiness)
+	// What the tunnel owner's decision needs beyond the observations. Absent
+	// from the configuration, the cycle observes exactly as it did and decides
+	// nothing — the runtime that owns the tunnel is unaffected either way.
+	tunnelState, err := newTunnelStateStore(*tunnelStatePath)
+	if err != nil {
+		return rejected(errorLog, logging.ReasonInvalidConfiguration)
+	}
+	cycle, err := NewCycle(config, network, processes, readiness,
+		WithPayloadObserver(observe.NewPayloadProber()),
+		WithTunnelState(tunnelState))
 	if err != nil {
 		return 1
 	}
@@ -491,6 +505,20 @@ func observeLoop(
 		if err := publisher.Publish(at); err != nil {
 			return err
 		}
+		// Every cycle's decision, including the cycles that decided nothing: a
+		// decision that agreed and a decision never reached look the same in an
+		// empty record, and the comparison against the runtime that owns the
+		// tunnel is the whole reason for deciding without acting.
+		if err := recordTunnelDecision(reader, summary.Tunnel); err != nil {
+			if emitErr := logger.Emit(
+				logging.LevelWarn,
+				logging.EventConnectivitySnapshot,
+				logging.ResultDegraded,
+				"",
+			); emitErr != nil {
+				return emitErr
+			}
+		}
 		operatorSnapshot = nextRootOperatorSnapshot(operatorSnapshot, summary, at)
 		// What this runtime last saw of itself, for the one request it answers
 		// by acting rather than by reporting.
@@ -670,4 +698,37 @@ func reduced(logger *logging.Logger) int {
 		return 1
 	}
 	return 3
+}
+
+// recordTunnelDecision writes down what a tunnel owner would have done.
+//
+// A cycle with no tunnel supervision configured reaches no decision, and an
+// absent decision is not recorded as a decision to do nothing: those are
+// different, and a reader comparing records needs to tell a runtime that
+// decided from one that was never asked.
+func recordTunnelDecision(
+	reader *connectivityhost.Reader,
+	plan tunnelplan.Plan,
+) error {
+	if reader == nil || !decided(plan) {
+		return nil
+	}
+	causes := make([]string, 0, len(plan.Causes))
+	for _, cause := range plan.Causes {
+		causes = append(causes, string(cause))
+	}
+	return reader.RecordTunnelDecision(event.TunnelDecision{
+		Action: string(plan.Action),
+		Causes: causes,
+	})
+}
+
+// decided says whether a cycle reached a decision at all.
+//
+// A cycle with no tunnel supervision configured is not a cycle that decided to
+// do nothing: those are different, and a reader comparing records months later
+// needs to tell a runtime that was asked and declined from one that was never
+// asked.
+func decided(plan tunnelplan.Plan) bool {
+	return plan.Action != ""
 }
