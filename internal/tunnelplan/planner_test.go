@@ -6,7 +6,9 @@ import (
 )
 
 func policy() Policy {
-	return Policy{WakeThreshold: 90 * time.Second, PayloadFailures: 2}
+	return Policy{
+		WakeThreshold: 90 * time.Second, PayloadFailures: 2, LinkFailures: 2,
+	}
 }
 
 // A cycle with a previous one behind it and nothing wrong with the machine.
@@ -205,9 +207,10 @@ func TestAFirstCycleDoesNotInventAChange(t *testing.T) {
 func TestAPolicyThatCannotDecideIsRefused(t *testing.T) {
 	_, observed := steady()
 	for _, broken := range []Policy{
-		{WakeThreshold: 0, PayloadFailures: 2},
-		{WakeThreshold: 90 * time.Second, PayloadFailures: 0},
-		{WakeThreshold: -time.Second, PayloadFailures: 2},
+		{WakeThreshold: 0, PayloadFailures: 2, LinkFailures: 2},
+		{WakeThreshold: 90 * time.Second, PayloadFailures: 0, LinkFailures: 2},
+		{WakeThreshold: 90 * time.Second, PayloadFailures: 2, LinkFailures: 0},
+		{WakeThreshold: -time.Second, PayloadFailures: 2, LinkFailures: 2},
 	} {
 		if _, _, err := Decide(broken, State{}, observed); err == nil {
 			t.Fatalf("Decide() accepted %+v", broken)
@@ -265,4 +268,108 @@ func TestACompleteCycleComparesAgainstTheLastOneThatSaw(t *testing.T) {
 	if causes(plan)[CauseCarrierChanged] {
 		t.Fatal("a blind cycle in between manufactured a carrier change")
 	}
+}
+
+// A single failed probe is not the link going away.
+//
+// This is the regression for a live disagreement. Over seven days on the
+// machine that owns this tunnel, the outer probe failed on 25 of 3,117 cycles
+// and never twice in a row. Without a threshold each isolated failure set the
+// link absent and the next cycle called it returned: six of those returns fell
+// in one half hour on 2026-09-12, each one asking for a tunnel rebuild, while
+// the runtime that actually owns the tunnel did nothing at all in that window —
+// it declares the outer path down on the second consecutive failure.
+//
+// The failure is driven through a run of cycles rather than one call, because
+// the defect is in what one cycle leaves for the next.
+func TestOneFailedProbeIsNotTheLinkReturning(t *testing.T) {
+	previous, observed := steady()
+	blink := observed
+	blink.LinkPresent = false
+
+	after, state := run(t, previous, []Observed{blink, observed})
+	if causes(after[0])[CauseLinkReturned] || causes(after[1])[CauseLinkReturned] {
+		t.Fatalf("a single failed probe was read as the link returning: %v, %v",
+			after[0].Causes, after[1].Causes)
+	}
+	if !state.LinkPresent {
+		t.Fatal("the rule still believes the link is gone after it answered")
+	}
+	for _, plan := range after {
+		if plan.Action == ActionRebuildTunnel {
+			t.Fatalf("a blink asked for a rebuild: %v", plan.Causes)
+		}
+	}
+}
+
+// A link that stays gone is gone, and its return is a cause.
+func TestALinkGoneTwiceOverReturns(t *testing.T) {
+	previous, observed := steady()
+	gone := observed
+	gone.LinkPresent = false
+
+	after, state := run(t, previous, []Observed{gone, gone, observed})
+	if causes(after[0])[CauseLinkReturned] || causes(after[1])[CauseLinkReturned] {
+		t.Fatalf("the link returned while it was still gone: %v, %v",
+			after[0].Causes, after[1].Causes)
+	}
+	if !causes(after[2])[CauseLinkReturned] {
+		t.Fatalf("the link came back and nothing said so: %v", after[2].Causes)
+	}
+	if after[2].Action != ActionRebuildTunnel {
+		t.Fatalf("action = %q, want a rebuild", after[2].Action)
+	}
+	if state.LinkFailures != 0 {
+		t.Fatalf("the count stands at %d after the link answered", state.LinkFailures)
+	}
+}
+
+// A cycle that never reached the probes did not fail them.
+func TestAnIncompleteCycleDoesNotCountAgainstTheLink(t *testing.T) {
+	previous, observed := steady()
+	gone := observed
+	gone.LinkPresent = false
+	blind := observed
+	blind.Complete = false
+	blind.LinkPresent = false
+
+	// One real failure, then a run of blind cycles, then another real failure.
+	// If blindness counted, the link would have been declared gone in between.
+	after, _ := run(t, previous, []Observed{gone, blind, blind, blind, observed})
+	for index, plan := range after {
+		if causes(plan)[CauseLinkReturned] {
+			t.Fatalf("cycle %d read a return out of a blind cycle: %v",
+				index, plan.Causes)
+		}
+	}
+}
+
+// A start that has seen nothing does not call the first answer a return.
+func TestAStartDoesNotReadTheFirstProbeAsAReturn(t *testing.T) {
+	_, observed := steady()
+	gone := observed
+	gone.LinkPresent = false
+
+	after, _ := run(t, State{}, []Observed{gone, observed})
+	for index, plan := range after {
+		if causes(plan)[CauseLinkReturned] {
+			t.Fatalf("cycle %d of a fresh start claimed a return: %v",
+				index, plan.Causes)
+		}
+	}
+}
+
+// run drives a sequence of cycles, carrying the state the way a runtime does.
+func run(t *testing.T, previous State, cycles []Observed) ([]Plan, State) {
+	t.Helper()
+	plans := make([]Plan, 0, len(cycles))
+	for index, observed := range cycles {
+		plan, next, err := Decide(policy(), previous, observed)
+		if err != nil {
+			t.Fatalf("cycle %d: %v", index, err)
+		}
+		plans = append(plans, plan)
+		previous = next
+	}
+	return plans, previous
 }

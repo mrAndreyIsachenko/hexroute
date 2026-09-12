@@ -129,8 +129,43 @@
 - [ ] 6.3 Each of the six causes agrees at least once: the carrier and the wake
       by waiting, the process, the returned link and the payload path by
       inducing them.
-- [ ] 6.4 Record every disagreement, including the ones where Twilight acted and
+
+      Five of the six have now been reached by waiting, over the archive this
+      runtime has written: routes drifted on every cycle, twelve wake gaps, six
+      carrier changes, five returned links and one payload failure. Only the
+      process exiting has never been reached, which is what the replay said as
+      well, and it is the one that has to be induced.
+- [x] 6.4 Record every disagreement, including the ones where Twilight acted and
       said nothing.
+
+      The first disagreement is large and it is hexroute's. In the hour after
+      the daemon came up on 2026-09-12 it reached 55 decisions and seven of them
+      said rebuild the tunnel. Twilight, in the same hour, made no state
+      transition at all. Six of the seven named a returned link.
+
+      The record could not say why, because a decision record carries the action
+      and the causes and not what they were decided from. The connectivity
+      archive could: every cycle writes a relay_ingress observation carrying how
+      many outer endpoints were configured and how many answered. One is
+      configured, and it failed on 25 of 3,117 cycles over seven days — never
+      twice in a row. Each of the six returns is the cycle immediately after one
+      of those failures, sixty to sixty-three seconds later, six for six.
+
+      So the cause had no threshold. Its neighbour, the payload path, has one —
+      two consecutive failures — and the link had none, although both rest on a
+      single network probe and there is no second endpoint to form a quorum.
+      The supervisor that owns this tunnel declares the outer path down on the
+      second consecutive failure and up on the first success; both halves are in
+      its source and one of them was missing here.
+
+      Two is therefore not a chosen number. It is the smallest the measurement
+      supports, and over those seven days it would have declared the link absent
+      exactly as often as Twilight did, which is never.
+
+      What this leaves standing: a decision record that cannot be diagnosed on
+      its own. Reading it required the connectivity archive beside it, and that
+      only worked because both are written by the same runtime into the same
+      store.
 
 ## 7. Close
 

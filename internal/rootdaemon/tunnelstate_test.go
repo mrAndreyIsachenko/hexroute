@@ -21,6 +21,7 @@ func TestWhatACycleLeavesSurvivesARestart(t *testing.T) {
 		Carrier:         tunnelplan.Signature("203.0.113.20=en0"),
 		LinkPresent:     true,
 		PayloadFailures: 1,
+		LinkFailures:    1,
 	}
 	if err := store.Save(left); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -73,7 +74,9 @@ func TestAnUnknownMemoryDoesNotBecomeACause(t *testing.T) {
 		t.Fatalf("newTunnelStateStore: %v", err)
 	}
 	plan, next, err := tunnelplan.Decide(
-		tunnelplan.Policy{WakeThreshold: 90_000_000_000, PayloadFailures: 2},
+		tunnelplan.Policy{
+			WakeThreshold: 90_000_000_000, PayloadFailures: 2, LinkFailures: 2,
+		},
 		store.Load(),
 		tunnelplan.Observed{
 			Complete:       true,

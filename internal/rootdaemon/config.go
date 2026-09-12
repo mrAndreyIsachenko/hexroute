@@ -318,6 +318,10 @@ type TunnelSupervisionConfig struct {
 	// PayloadFailures is how many consecutive cycles the payload path must fail
 	// before it is a cause. One failure is a network; several are a path.
 	PayloadFailures uint32 `json:"payload_failures"`
+	// LinkFailures is how many consecutive cycles the outer path must be
+	// unreachable before the link counts as gone. One failed probe is a
+	// network; the link is gone when it stays gone.
+	LinkFailures uint32 `json:"link_failures"`
 	// Payload is the path exercised to prove traffic traverses the tunnel. A
 	// completed connection is not that proof, which is why this is a request
 	// rather than a dial.
@@ -343,7 +347,8 @@ type RuntimeTunnelSupervision struct {
 }
 
 func (config TunnelSupervisionConfig) runtime() (*RuntimeTunnelSupervision, error) {
-	if config.WakeThresholdSeconds == 0 || config.PayloadFailures == 0 {
+	if config.WakeThresholdSeconds == 0 || config.PayloadFailures == 0 ||
+		config.LinkFailures == 0 {
 		return nil, ErrInvalidConfig
 	}
 	endpoint := observe.PayloadEndpoint{
@@ -366,6 +371,7 @@ func (config TunnelSupervisionConfig) runtime() (*RuntimeTunnelSupervision, erro
 		Policy: tunnelplan.Policy{
 			WakeThreshold:   time.Duration(config.WakeThresholdSeconds) * time.Second,
 			PayloadFailures: config.PayloadFailures,
+			LinkFailures:    config.LinkFailures,
 		},
 		Payload: endpoint,
 	}, nil
