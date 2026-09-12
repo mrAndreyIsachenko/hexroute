@@ -77,8 +77,32 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None. What follows is what the recent ones changed and what they left standing,
-kept because the reasons are worth more than the record of having done them.
+`decide-what-a-tunnel-owner-would-do` is open. It is the second of four changes
+the grill of item 8 settled, and the first in this repository: the Codex
+fallback was lifted out of the supervisor in `twilight` first, because an escape
+hatch must not belong to the experiment it exists to escape.
+
+The grill settled that the build and the switch are separate changes in that
+order. The alternative makes booting the supervisor out the first occasion on
+which the decision rule was ever applied to a live machine, and if it is wrong
+about a wake or a carrier change, that is learned without a network.
+
+Six causes, measured from the supervisor's own log over sixty-one days rather
+than derived from its source: nineteen carrier changes, eleven wake gaps, two
+payload failures, the routes reapplied every tick, and two that did not occur at
+all — the process exiting and the link returning. Both are kept. The process
+exiting is the only thing between this machine and no network.
+
+This runtime already observed five of the six. The sixth needed a probe that
+fails when traffic does not traverse, because a completed connection proves only
+that something accepted a socket — and that same distinction is what item 8
+requires as the evidence completing the switch.
+
+Nothing executes. The safety allowlist already names `restart sing_box`, and no
+policy grants it: the capability that would is the change after this one.
+
+What follows is what the recent ones changed and what they left standing, kept
+because the reasons are worth more than the record of having done them.
 
 `bound-the-archive-by-what-the-disk-charges` closed on 2026-09-12. Records
 average 1.25 kilobytes and take a four-kilobyte block, so a bound counting

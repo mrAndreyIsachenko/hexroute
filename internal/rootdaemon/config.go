@@ -16,6 +16,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/policycontrol"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelplan"
 )
 
 const (
@@ -43,7 +44,11 @@ type Config struct {
 	// PritunlServiceLabel names the one system service this runtime may
 	// restart. Absent, it may restart nothing: the capability is the named
 	// service, not the act.
-	PritunlServiceLabel   string                      `json:"pritunl_service_label,omitempty"`
+	PritunlServiceLabel string `json:"pritunl_service_label,omitempty"`
+	// TunnelSupervision is what this runtime would decide if it owned the
+	// tunnel. Absent, it decides nothing and says so — the causes that need a
+	// payload probe or a wake threshold simply do not hold.
+	TunnelSupervision     *TunnelSupervisionConfig    `json:"tunnel_supervision,omitempty"`
 	PhysicalInterface     string                      `json:"physical_interface"`
 	ManagedTUNAddress     string                      `json:"managed_tun_address"`
 	UpstreamProbeAddress  string                      `json:"upstream_probe_address,omitempty"`
@@ -82,6 +87,7 @@ type RuntimeConfig struct {
 	Targets               []routeplan.Target
 	Endpoints             []RuntimeEndpoint
 	PolicyControl         *policycontrol.RuntimeConfig
+	TunnelSupervision     *RuntimeTunnelSupervision
 }
 
 type RuntimeEndpoint struct {
@@ -284,6 +290,13 @@ func (config Config) runtime() (RuntimeConfig, error) {
 	if _, err := routeplan.Build(validationInput); err != nil {
 		return RuntimeConfig{}, ErrInvalidConfig
 	}
+	if config.TunnelSupervision != nil {
+		supervision, err := config.TunnelSupervision.runtime()
+		if err != nil {
+			return RuntimeConfig{}, ErrInvalidConfig
+		}
+		runtime.TunnelSupervision = supervision
+	}
 	return runtime, nil
 }
 
@@ -294,4 +307,66 @@ func validPurpose(purpose EndpointPurpose) bool {
 	default:
 		return false
 	}
+}
+
+// TunnelSupervisionConfig is what the tunnel owner's decision needs beyond what
+// the cycle already observes.
+type TunnelSupervisionConfig struct {
+	// WakeThresholdSeconds is the interval between cycles beyond which the gap
+	// is a sleep rather than a slow cycle.
+	WakeThresholdSeconds uint32 `json:"wake_threshold_seconds"`
+	// PayloadFailures is how many consecutive cycles the payload path must fail
+	// before it is a cause. One failure is a network; several are a path.
+	PayloadFailures uint32 `json:"payload_failures"`
+	// Payload is the path exercised to prove traffic traverses the tunnel. A
+	// completed connection is not that proof, which is why this is a request
+	// rather than a dial.
+	Payload PayloadProbeConfig `json:"payload"`
+}
+
+type PayloadProbeConfig struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+	// ProxyAddress selects the path: the same URL through a different proxy is
+	// a different path.
+	ProxyAddress string `json:"proxy_address,omitempty"`
+	// InsecureSkipVerify matches the production probe. The evidence is that a
+	// response traversed, not that a certificate chained.
+	InsecureSkipVerify bool   `json:"insecure_skip_verify,omitempty"`
+	TimeoutSeconds     uint32 `json:"timeout_seconds"`
+}
+
+// RuntimeTunnelSupervision is the validated form.
+type RuntimeTunnelSupervision struct {
+	Policy  tunnelplan.Policy
+	Payload observe.PayloadEndpoint
+}
+
+func (config TunnelSupervisionConfig) runtime() (*RuntimeTunnelSupervision, error) {
+	if config.WakeThresholdSeconds == 0 || config.PayloadFailures == 0 {
+		return nil, ErrInvalidConfig
+	}
+	endpoint := observe.PayloadEndpoint{
+		Name:               config.Payload.Name,
+		URL:                config.Payload.URL,
+		InsecureSkipVerify: config.Payload.InsecureSkipVerify,
+		Timeout:            time.Duration(config.Payload.TimeoutSeconds) * time.Second,
+	}
+	if config.Payload.ProxyAddress != "" {
+		proxyAddress, err := netip.ParseAddrPort(config.Payload.ProxyAddress)
+		if err != nil {
+			return nil, ErrInvalidConfig
+		}
+		endpoint.ProxyAddress = proxyAddress
+	}
+	if err := endpoint.Validate(); err != nil {
+		return nil, ErrInvalidConfig
+	}
+	return &RuntimeTunnelSupervision{
+		Policy: tunnelplan.Policy{
+			WakeThreshold:   time.Duration(config.WakeThresholdSeconds) * time.Second,
+			PayloadFailures: config.PayloadFailures,
+		},
+		Payload: endpoint,
+	}, nil
 }

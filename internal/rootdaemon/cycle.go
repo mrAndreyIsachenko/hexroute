@@ -6,11 +6,13 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityhost"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelplan"
 )
 
 type CycleState string
@@ -47,6 +49,20 @@ type Summary struct {
 	// time. The cycle gathers all of it either way; keeping it was the only
 	// thing missing.
 	Observed connectivityhost.Evidence
+	// Tunnel is what this runtime would do if it owned the tunnel. It performs
+	// none of it: another runtime owns it, and the point of deciding anyway is
+	// that the decision can be compared against what that runtime did.
+	Tunnel tunnelplan.Plan
+}
+
+// PayloadObserver exercises a path and reports whether traffic traversed it.
+//
+// It is separate from EndpointObserver because it answers a different question.
+// A completed connection proves something accepted a socket; this proves a
+// request reached a server and a response came back, which is the only thing
+// that tells a tunnel that works from one that answers.
+type PayloadObserver interface {
+	Payload(context.Context, observe.PayloadEndpoint) (observe.PayloadObservation, error)
 }
 
 type Cycle struct {
@@ -54,6 +70,14 @@ type Cycle struct {
 	network   NetworkObserver
 	processes SingBoxObserver
 	readiness EndpointObserver
+	payload   PayloadObserver
+	tunnel    *tunnelStateStore
+	now       func() time.Time
+	// lastObserved is when the previous cycle ran, for the wake gap. It is not
+	// durable on purpose: across a restart there is no previous cycle of this
+	// process to have slept through, and inventing a gap from a file would
+	// rebuild the tunnel every time the runtime is installed.
+	lastObserved time.Time
 }
 
 func NewCycle(
@@ -61,16 +85,22 @@ func NewCycle(
 	network NetworkObserver,
 	processes SingBoxObserver,
 	readiness EndpointObserver,
+	options ...CycleOption,
 ) (*Cycle, error) {
 	if network == nil || processes == nil || readiness == nil {
 		return nil, errors.New("all observation adapters are required")
 	}
-	return &Cycle{
+	cycle := &Cycle{
 		config:    config,
 		network:   network,
 		processes: processes,
 		readiness: readiness,
-	}, nil
+		now:       time.Now,
+	}
+	for _, option := range options {
+		option(cycle)
+	}
+	return cycle, nil
 }
 
 func (cycle *Cycle) Observe(ctx context.Context) Summary {
@@ -232,6 +262,10 @@ func (cycle *Cycle) Observe(ctx context.Context) Summary {
 	if summary.Failures == 0 && len(plan.Operations) == 0 {
 		summary.State = CycleHealthy
 	}
+	// Last, because it reads what the rest of the cycle concluded. It performs
+	// nothing: another runtime owns the tunnel, and the decision exists to be
+	// compared against what that runtime did.
+	cycle.decideTunnel(ctx, &summary)
 	return summary
 }
 
@@ -262,4 +296,81 @@ func routeMatchesTarget(
 type endpointProbe struct {
 	observation observe.ReadinessObservation
 	err         error
+}
+
+// CycleOption supplies what the tunnel owner's decision needs beyond the
+// observations. They are options because a cycle without them still observes:
+// the decision is the new thing here, and a runtime that could not make it
+// should still watch the host.
+type CycleOption func(*Cycle)
+
+func WithPayloadObserver(payload PayloadObserver) CycleOption {
+	return func(cycle *Cycle) { cycle.payload = payload }
+}
+
+func WithTunnelState(store *tunnelStateStore) CycleOption {
+	return func(cycle *Cycle) { cycle.tunnel = store }
+}
+
+func WithCycleClock(now func() time.Time) CycleOption {
+	return func(cycle *Cycle) {
+		if now != nil {
+			cycle.now = now
+		}
+	}
+}
+
+// decideTunnel reaches what a tunnel owner would do and records the memory the
+// next cycle needs. It performs nothing.
+func (cycle *Cycle) decideTunnel(
+	ctx context.Context,
+	summary *Summary,
+) {
+	if cycle.config.TunnelSupervision == nil {
+		return
+	}
+	at := cycle.now()
+	since := time.Duration(0)
+	if !cycle.lastObserved.IsZero() && at.After(cycle.lastObserved) {
+		since = at.Sub(cycle.lastObserved)
+	}
+	cycle.lastObserved = at
+
+	carried := make([]tunnelplan.CarriedDestination, 0, len(summary.Observed.Routes))
+	for _, route := range summary.Observed.Routes {
+		carried = append(carried, tunnelplan.CarriedDestination{
+			Destination: route.Destination.String(),
+			Interface:   route.Interface,
+		})
+	}
+
+	// A path that cannot be exercised is not a failed path. Without a probe the
+	// cause simply does not hold, rather than holding on every cycle.
+	payloadOK := true
+	if cycle.payload != nil {
+		observation, err := cycle.payload.Payload(
+			ctx, cycle.config.TunnelSupervision.Payload)
+		payloadOK = err == nil && observation.Traversed
+	}
+
+	previous := cycle.tunnel.Load()
+	plan, next, err := tunnelplan.Decide(
+		cycle.config.TunnelSupervision.Policy,
+		previous,
+		tunnelplan.Observed{
+			ProcessRunning: summary.SingBoxRunning,
+			SincePrevious:  since,
+			Carrier:        tunnelplan.NewSignature(carried),
+			LinkPresent:    summary.OuterReady,
+			PayloadOK:      payloadOK,
+			RoutesDrifted:  len(summary.Plan.Operations) > 0,
+		})
+	if err != nil {
+		return
+	}
+	summary.Tunnel = plan
+	// The memory failing to save is not a reason to stop observing. The next
+	// cycle then has no previous one, which costs the three causes that compare
+	// against it and none of the three that do not.
+	_ = cycle.tunnel.Save(next)
 }

@@ -31,7 +31,12 @@ const (
 	SchemaConfigVersion Schema = "config.lifecycle"
 	SchemaDiagnostic    Schema = "runtime.diagnostic"
 	SchemaSleep         Schema = "node.sleep"
-	SchemaPolicy        Schema = "policy.lifecycle"
+	// SchemaTunnelDecision is what a tunnel owner would have done. It is
+	// recorded while another runtime owns the tunnel, so that the decision can
+	// be compared against what that runtime actually did — a decision that
+	// agreed and a decision never reached look the same in an empty log.
+	SchemaTunnelDecision Schema = "tunnel.decision"
+	SchemaPolicy         Schema = "policy.lifecycle"
 
 	// A baseline restates a component in full and is what clears a gap, so
 	// it is retained ahead of ordinary observations.
@@ -245,6 +250,16 @@ const (
 	SleepReasonFullWake    SleepReason = "full_wake"
 )
 
+// TunnelDecision is one cycle's answer to what a tunnel owner would do.
+//
+// Every cause that held is named, because the runtime this is compared against
+// reports one reason: recording only the first would make an honest
+// disagreement look like a wrong decision.
+type TunnelDecision struct {
+	Action string   `json:"action"`
+	Causes []string `json:"causes,omitempty"`
+}
+
 type Sleep struct {
 	Phase  SleepPhase  `json:"phase"`
 	Reason SleepReason `json:"reason"`
@@ -281,6 +296,12 @@ func DefinitionFor(schema Schema) (Definition, bool) {
 		SchemaConfigVersion, SchemaSleep, SchemaPolicy, SchemaConnectivityBaseline,
 		SchemaArchiveOverflow:
 		priority = PriorityCritical
+	case SchemaTunnelDecision:
+		// Operational rather than critical: it is a record of what this runtime
+		// would have done while it owns nothing, and losing the oldest of them
+		// to the archive's bound costs a comparison rather than an account of
+		// something that happened.
+		priority = PriorityOperational
 	default:
 		return Definition{}, false
 	}
@@ -397,6 +418,8 @@ func newPayload(schema Schema) any {
 		return &Diagnostic{}
 	case SchemaSleep:
 		return &Sleep{}
+	case SchemaTunnelDecision:
+		return &TunnelDecision{}
 	case SchemaPolicy:
 		return &PolicyLifecycle{}
 	case SchemaConnectivityBaseline, SchemaConnectivityObservation:
@@ -469,6 +492,11 @@ func validatePayload(schema Schema, payload any) error {
 	case SchemaSleep:
 		value, ok := asSleep(payload)
 		if !ok || !validSleep(value) {
+			return ErrInvalidField
+		}
+	case SchemaTunnelDecision:
+		value, ok := asTunnelDecision(payload)
+		if !ok || !validTunnelDecision(value) {
 			return ErrInvalidField
 		}
 	case SchemaPolicy:
@@ -792,4 +820,49 @@ func asSleep(payload any) (Sleep, bool) {
 	default:
 	}
 	return Sleep{}, false
+}
+
+func asTunnelDecision(payload any) (TunnelDecision, bool) {
+	switch value := payload.(type) {
+	case TunnelDecision:
+		return value, true
+	case *TunnelDecision:
+		if value == nil {
+			return TunnelDecision{}, false
+		}
+		return *value, true
+	default:
+		return TunnelDecision{}, false
+	}
+}
+
+// validTunnelDecision keeps the vocabulary closed. The actions and causes are a
+// fixed set decided by a planner, and free text here would carry whatever a
+// future planner happened to name something.
+func validTunnelDecision(value TunnelDecision) bool {
+	switch value.Action {
+	case "none", "rebuild_tunnel", "reapply_routes":
+	default:
+		return false
+	}
+	if len(value.Causes) > 6 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(value.Causes))
+	for _, cause := range value.Causes {
+		switch cause {
+		case "process_gone", "wake_gap", "carrier_changed",
+			"link_returned", "payload_failed", "routes_drifted":
+		default:
+			return false
+		}
+		if _, duplicate := seen[cause]; duplicate {
+			return false
+		}
+		seen[cause] = struct{}{}
+	}
+	if value.Action == "none" && len(value.Causes) > 0 {
+		return false
+	}
+	return true
 }
