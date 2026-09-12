@@ -77,26 +77,69 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`decide-what-a-tunnel-owner-would-do` is open. It is the second of four changes
-the grill of item 8 settled, and the first in this repository: the Codex
-fallback was lifted out of the supervisor in `twilight` first, because an escape
-hatch must not belong to the experiment it exists to escape.
+None.
 
-The grill settled that the build and the switch are separate changes in that
-order. The alternative makes booting the supervisor out the first occasion on
-which the decision rule was ever applied to a live machine, and if it is wrong
-about a wake or a carrier change, that is learned without a network.
+`decide-what-a-tunnel-owner-would-do` closed on 2026-09-13. It is the second of
+four changes the grill of item 8 settled, and the first in this repository: the
+Codex fallback was lifted out of the supervisor in `twilight` first, because an
+escape hatch must not belong to the experiment it exists to escape. The build
+and the switch are separate changes in that order, so that a rule wrong about a
+wake or a carrier change is learned without a network.
 
 Six causes, measured from the supervisor's own log over sixty-one days rather
-than derived from its source: nineteen carrier changes, eleven wake gaps, two
-payload failures, the routes reapplied every tick, and two that did not occur at
-all — the process exiting and the link returning. Both are kept. The process
-exiting is the only thing between this machine and no network.
+than derived from its source. Five were reached by waiting. The sixth, the
+process exiting, was induced on 2026-09-12: sing-box killed at 22:04:13Z,
+hexroute named it at 22:04:16 and the supervisor that owns the tunnel named it
+at 22:05:02 — three seconds against forty-nine. Restoring it took fifty-seven,
+against a prediction of fifteen taken from the supervisor's health interval; the
+prediction had read the interval and not the work.
 
-This runtime already observed five of the six. The sixth needed a probe that
-fails when traffic does not traverse, because a completed connection proves only
-that something accepted a socket — and that same distinction is what item 8
-requires as the evidence completing the switch.
+The soak found three defects and all three were in what the rule decided, never
+in what it did, which is the argument for deciding before being allowed to act.
+
+The first two were found by checking that the machinery recorded anything before
+trying to make it record something particular. The decision ran only on complete
+cycles, so the tunnel being in trouble was exactly when the decision was absent.
+The carrier signature was keyed by the route that answered rather than the
+address asked about, so a live signature of twenty entries held one default
+prefix repeated seven times and four entries that were not addresses at all. A
+signature like that can change without the carrier changing and stand still when
+it does. The test fixture had hidden it by setting the route's own destination
+equal to the address asked about, which the machine never does.
+
+The third was found by comparison and is the reason the comparison exists. In
+its first hour the runtime reached fifty-five decisions and seven of them said
+rebuild the tunnel, while Twilight made no state transition at all. Six named a
+returned link. The connectivity archive said why: one outer endpoint is
+configured, it failed on 25 of 3,117 cycles over seven days and never twice in a
+row, and each return was the cycle immediately after one of those failures. The
+cause had no threshold where its neighbour, the payload path, has one. It has
+one now, and two is not a chosen number: it is the smallest the measurement
+supports, it is what Twilight uses, and over those seven days it would have
+declared the link absent exactly as often as Twilight did, which is never.
+
+Two corrections are owed before any of this is granted authority, and both are
+about the runtime rather than the rule.
+
+The wake gap is measured as the interval between this runtime's own
+observations, so a runtime that is slow reports a machine that slept. Measured:
+the first fold after a reinstall took 32.4 seconds, the loop then slept its
+interval, and ninety-three seconds passed between two observations against a
+threshold of ninety. A restart manufactures a rebuild on the cycle after it —
+with authority, installing the daemon would tear down the tunnel it was
+installed to watch.
+
+And the loop sleeps a fixed interval after work of unbounded length rather than
+aiming at a period, so every slow cycle pushes the next observation out by
+however long it took. The daemon also runs for about three minutes before it
+logs `daemon_started` — 21:59:40 to 22:02:30 on this install — and observes
+nothing in that window.
+
+A third thing is recorded rather than owed: a decision record cannot be
+diagnosed on its own. It carries the action and the causes and not what they
+were decided from, and reading the link disagreement took the connectivity
+archive beside it. That worked only because one runtime writes both into one
+store, and a comparison against a runtime that does not will not have it.
 
 Nothing executes. The safety allowlist already names `restart sing_box`, and no
 policy grants it: the capability that would is the change after this one.

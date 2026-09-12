@@ -72,7 +72,7 @@
 
 ## 6. The soak
 
-- [ ] 6.1 Install and run beside Twilight. Nothing is performed.
+- [x] 6.1 Install and run beside Twilight. Nothing is performed.
 
       The first install recorded nothing at all, and the reason was a defect in
       this change rather than in the installation. The decision was reached at
@@ -111,6 +111,11 @@
       does, so a mutation keying by the wrong one changed nothing. The mapping
       is its own function now and is tested against the shape the machine
       actually produced.
+
+      It has run beside Twilight since, through a reinstall, a killed sing-box
+      and a tunnel rebuilt by its owner, and has performed nothing. The three
+      defects the soak found are in what it decided, never in what it did, which
+      is the whole argument for deciding before being allowed to act.
 - [x] 6.2 Replay the rule against the supervisor's recorded restarts and record
       where it disagrees.
 
@@ -126,15 +131,35 @@
       What this shows is that the vocabulary is complete for what actually
       happened. What it does not show is that this runtime would have acted at
       the same moments, which only the live comparison can say.
-- [ ] 6.3 Each of the six causes agrees at least once: the carrier and the wake
+- [x] 6.3 Each of the six causes agrees at least once: the carrier and the wake
       by waiting, the process, the returned link and the payload path by
       inducing them.
 
-      Five of the six have now been reached by waiting, over the archive this
-      runtime has written: routes drifted on every cycle, twelve wake gaps, six
-      carrier changes, five returned links and one payload failure. Only the
-      process exiting has never been reached, which is what the replay said as
-      well, and it is the one that has to be induced.
+      Five were reached by waiting, over the archive this runtime has written:
+      routes drifted on every cycle, twelve wake gaps, six carrier changes, five
+      returned links and one payload failure. The sixth had to be induced, which
+      is what the replay said as well: sing-box has not exited by itself in
+      sixty-one days.
+
+      Inducing it needed the timing to be worked out rather than guessed. The
+      process is sampled at the start of a cycle and the heartbeat is written at
+      the end, so the next sample falls about sixty seconds after the last
+      heartbeat, and the kill was timed at that. It landed first time.
+
+      2026-09-12, kill at 22:04:13Z:
+
+          22:04:16Z  hexroute  rebuild_tunnel  process_gone
+          22:05:02Z  twilight  HEALTHY -> SINGBOX_EXITED  process_missing
+          22:05:10Z  twilight  SINGBOX_EXITED -> STARTING  singbox_started
+
+      They agree on the cause and disagree on the latency: three seconds against
+      forty-nine. Restoring it took fifty-seven, which is four times the fifteen
+      seconds predicted before the kill from the supervisor's health interval —
+      the prediction read the interval and not the work.
+
+      The link threshold held through it. While the process was gone the cycle
+      stopped early and reported no configured endpoints, and no return was
+      manufactured out of that.
 - [x] 6.4 Record every disagreement, including the ones where Twilight acted and
       said nothing.
 
@@ -167,6 +192,35 @@
       only worked because both are written by the same runtime into the same
       store.
 
+      The second disagreement is also hexroute's, and it is about itself. The
+      cycle that saw the process gone also named a wake gap, and the machine had
+      not slept. Three marks from the daemon's own log for one cycle:
+
+          22:02:43.391  observation_cycle       the observation finished
+          22:03:15.796  connectivity_snapshot   the fold finished, 32.4s later
+          22:03:15.809  the decision recorded
+
+      That was the first cycle after the daemon was reinstalled, and its first
+      fold cost 32.4 seconds. The loop then slept its interval and observed
+      again at 22:04:16, so ninety-three seconds passed between two
+      observations against a threshold of ninety.
+
+      The cause is therefore true and its subject is wrong. It is measured as
+      the interval between this runtime's own observations, so a runtime that is
+      slow reports a sleeping machine. A restart manufactures a rebuild on the
+      cycle after it: with authority, installing this daemon would tear down the
+      tunnel it was installed to watch. Twilight recorded no gap in that window;
+      its own tick is cheap enough that the question never arose.
+
+      Two things are owed and neither is done here. The wake gap should be
+      measured from something that says the machine slept rather than from the
+      observer's own diligence. And the loop should aim at a period rather than
+      sleep a fixed interval after work of unbounded length, or every slow fold
+      pushes the next observation out by however long it took.
+
 ## 7. Close
 
-- [ ] 7.1 Sync the delta into the baseline and archive.
+- [x] 7.1 Sync the delta into the baseline and archive.
+
+      The capability is new, so the baseline is the delta with a purpose in
+      front of it rather than a merge into something that existed.
