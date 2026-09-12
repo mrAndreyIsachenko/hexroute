@@ -28,8 +28,8 @@
 
 - [x] 5.1 Mutate the classifying step and the eviction order; confirm the named tests fail.
 - [x] 5.2 `make check` green.
-- [ ] 5.3 Install the root daemon, confirm the cycle completes against the full `user` spool, and record the cycle duration.
+- [x] 5.3 Install the root daemon, confirm the cycle completes against the full `user` spool, and record the cycle duration.
 
 ## 6. Close
 
-- [ ] 6.1 Sync the delta into the baseline, validate, archive.
+- [x] 6.1 Sync the delta into the baseline, validate, archive.
