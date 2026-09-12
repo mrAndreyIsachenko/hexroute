@@ -73,8 +73,40 @@
 ## 6. The soak
 
 - [ ] 6.1 Install and run beside Twilight. Nothing is performed.
-- [ ] 6.2 Replay the rule against the supervisor's 64 recorded restarts and
-      record where it disagrees.
+
+      The first install recorded nothing at all, and the reason was a defect in
+      this change rather than in the installation. The decision was reached at
+      the end of the cycle, and eight observations can end a cycle before it
+      gets there — so no decision happened on any cycle that stopped early.
+
+      That is the wrong way round. The tunnel being in trouble is exactly when
+      those observations fail, so the decision was absent at the moments it
+      exists for, and `process_gone` could never have been reached at all.
+
+      The cycle now decides on every pass. What an incomplete cycle did not see
+      it does not decide from: the carrier and the link are compared only when
+      the cycle saw them, and what it could not see is carried forward rather
+      than overwritten — an empty signature is not a changed one, and treating
+      it as one would rebuild the tunnel every time an observation failed.
+
+      Found by the soak's first check, before any cause had been induced, which
+      is the argument for checking that the machinery records anything before
+      trying to make it record something particular.
+- [x] 6.2 Replay the rule against the supervisor's recorded restarts and record
+      where it disagrees.
+
+      Thirty-three restarts over sixty-one days, and every one of them has a
+      cause this planner knows: nineteen carrier changes, twelve wake gaps, two
+      payload failures. Nothing unmapped.
+
+      The number is thirty-three rather than the sixty-four stated earlier. That
+      count included thirty-one `restart: waiting` lines, which are a step
+      inside a restart rather than a restart, and the correction is recorded
+      rather than quietly adopted.
+
+      What this shows is that the vocabulary is complete for what actually
+      happened. What it does not show is that this runtime would have acted at
+      the same moments, which only the live comparison can say.
 - [ ] 6.3 Each of the six causes agrees at least once: the carrier and the wake
       by waiting, the process, the returned link and the payload path by
       inducing them.
