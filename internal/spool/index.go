@@ -1,10 +1,13 @@
 package spool
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 )
 
 // stableRecord is what the spool can learn about a stored record without
@@ -16,6 +19,15 @@ import (
 type stableRecord struct {
 	Sequence uint64
 	Size     int64
+	// Priority is the class eviction would place this record in, and is empty
+	// until something needs to evict.
+	//
+	// It is the one thing eviction needs that the directory cannot report, and
+	// a spool below its bound never asks for it. Holding it here rather than in
+	// a store of its own means it is dropped exactly when the listing is
+	// dropped, so nothing has to reason about a remembered class belonging to a
+	// record that has gone.
+	Priority event.Priority
 }
 
 // scanIndex lists the stable records without reading any of them.
@@ -60,13 +72,13 @@ func (spool *Spool) forgetIndex() {
 
 // noteCommitted amends the listing with what was just published and without
 // what was just evicted.
-func (spool *Spool) noteCommitted(staged, evictions []Entry) {
+func (spool *Spool) noteCommitted(staged []Entry, evictions []stableRecord) {
 	if spool.indexed == nil {
 		return
 	}
 	gone := make(map[uint64]struct{}, len(evictions))
-	for _, entry := range evictions {
-		gone[entry.Sequence] = struct{}{}
+	for _, record := range evictions {
+		gone[record.Sequence] = struct{}{}
 	}
 	kept := spool.indexed[:0]
 	for _, record := range spool.indexed {
@@ -83,14 +95,104 @@ func (spool *Spool) noteCommitted(staged, evictions []Entry) {
 			spool.indexed = nil
 			return
 		}
+		// A record the spool published carries its class from the append that
+		// wrote it, so eviction never opens what this process stored.
 		kept = append(kept, stableRecord{
-			Sequence: entry.Sequence, Size: info.Size(),
+			Sequence: entry.Sequence,
+			Size:     info.Size(),
+			Priority: entry.Priority,
 		})
 	}
 	sort.Slice(kept, func(one, other int) bool {
 		return kept[one].Sequence < kept[other].Sequence
 	})
 	spool.indexed = kept
+}
+
+// evictable answers what eviction may choose among: the listing, plus the class
+// of every record in it.
+//
+// The class cannot come from the directory, so a record already on disk when the
+// listing was taken has to be opened. It is opened once. The listing is kept
+// across appends and amended as records are published and evicted, so the
+// reading is paid per record rather than per append.
+//
+// That distinction is the whole of this change. A spool nothing drains reaches
+// its byte bound and stays there, and the path this replaces decoded every
+// stored record on every append. On 2026-09-12 the live root runtime met it: the
+// user journal's spool stood at 104,858,244 bytes against a bound of
+// 104,857,600, holding 84,067 records, and the daemon spent four hours in
+// canonicalisation without completing one append or recording that it had
+// stopped.
+func (spool *Spool) evictable() ([]stableRecord, error) {
+	// Each pass sets aside at least one record and adds none, so the directory
+	// strictly shrinks and this terminates.
+	for {
+		records, err := spool.index()
+		if err != nil {
+			return nil, err
+		}
+		unclassified := make([]uint64, 0)
+		for position := range records {
+			if records[position].Priority != "" {
+				continue
+			}
+			priority, err := spool.readPriority(records[position].Sequence)
+			if err != nil {
+				unclassified = append(unclassified, records[position].Sequence)
+				continue
+			}
+			records[position].Priority = priority
+		}
+		if len(unclassified) == 0 {
+			return records, nil
+		}
+		// Eviction cannot place a record it cannot classify, and refusing the
+		// append would lose a new observation to an old damaged one.
+		for _, sequence := range unclassified {
+			if err := spool.quarantineLocked(sequence); err != nil {
+				return nil, err
+			}
+		}
+		spool.forgetIndex()
+	}
+}
+
+// readPriority answers which class a stored record belongs to, and reads
+// nothing else.
+//
+// It decodes the envelope and stops: no canonicalisation, no re-marshalling,
+// and no look at the event the record carries. Eviction does not use the event,
+// and proving it here is the payment that wedged the runtime.
+//
+// The listing already refused anything that is not a plain, tightly permissioned
+// file, so this does not restate that. What it does check is that the record
+// agrees with the name it is filed under, because a record answering for a
+// sequence that is not its own would be evicted in the wrong order.
+func (spool *Spool) readPriority(sequence uint64) (event.Priority, error) {
+	spool.opens++
+	data, err := os.ReadFile(spool.stablePath(sequence))
+	if err != nil {
+		return "", err
+	}
+	var envelope struct {
+		Schema   string         `json:"schema"`
+		Sequence uint64         `json:"sequence"`
+		Priority event.Priority `json:"priority"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return "", ErrCorruptSpool
+	}
+	if envelope.Schema != entrySchema || envelope.Sequence != sequence {
+		return "", ErrCorruptSpool
+	}
+	switch envelope.Priority {
+	case event.PriorityCritical,
+		event.PriorityOperational,
+		event.PriorityDiagnostic:
+		return envelope.Priority, nil
+	}
+	return "", ErrCorruptSpool
 }
 
 func (spool *Spool) scanIndex() ([]stableRecord, error) {
