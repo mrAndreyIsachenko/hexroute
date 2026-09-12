@@ -57,6 +57,10 @@ type Summary struct {
 	// none of it: another runtime owns it, and the point of deciding anyway is
 	// that the decision can be compared against what that runtime did.
 	Tunnel tunnelplan.Plan
+	// Carrier is which interface carried each configured destination this
+	// cycle. It is what a carrier change is a change in, so a reader comparing
+	// two decisions can see what differed rather than only that something did.
+	Carrier tunnelplan.Signature
 }
 
 // PayloadObserver exercises a path and reports whether traffic traversed it.
@@ -352,13 +356,8 @@ func (cycle *Cycle) decideTunnel(
 	}
 	cycle.lastObserved = at
 
-	carried := make([]tunnelplan.CarriedDestination, 0, len(summary.Observed.Routes))
-	for _, route := range summary.Observed.Routes {
-		carried = append(carried, tunnelplan.CarriedDestination{
-			Destination: route.Destination.String(),
-			Interface:   route.Interface,
-		})
-	}
+	carried := carriedDestinations(summary.Observed.Routes)
+	summary.Carrier = tunnelplan.NewSignature(carried)
 
 	// A path that cannot be exercised is not a failed path. Without a probe the
 	// cause simply does not hold, rather than holding on every cycle.
@@ -376,7 +375,7 @@ func (cycle *Cycle) decideTunnel(
 		tunnelplan.Observed{
 			ProcessRunning: summary.SingBoxRunning,
 			SincePrevious:  since,
-			Carrier:        tunnelplan.NewSignature(carried),
+			Carrier:        summary.Carrier,
 			Complete:       summary.Complete,
 			LinkPresent:    summary.OuterReady,
 			PayloadOK:      payloadOK,
@@ -390,4 +389,30 @@ func (cycle *Cycle) decideTunnel(
 	// cycle then has no previous one, which costs the three causes that compare
 	// against it and none of the three that do not.
 	_ = cycle.tunnel.Save(next)
+}
+
+// carriedDestinations says which interface carries each destination this
+// runtime asked about.
+//
+// Keyed by the address asked about, not by the route that answered. A route
+// observation carries both: the route's own destination is the prefix that
+// matched, often the half a tunnel claims, so many configured destinations
+// share one and a route with none leaves it empty. Keyed that way the live
+// signature had seven identical entries and four reading "invalid IP" — a
+// signature that can change without the carrier changing and stay still when
+// it does.
+func carriedDestinations(
+	routes []observe.RouteObservation,
+) []tunnelplan.CarriedDestination {
+	carried := make([]tunnelplan.CarriedDestination, 0, len(routes))
+	for _, route := range routes {
+		if !route.Requested.IsValid() {
+			continue
+		}
+		carried = append(carried, tunnelplan.CarriedDestination{
+			Destination: route.Requested.String(),
+			Interface:   route.Interface,
+		})
+	}
+	return carried
 }

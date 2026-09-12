@@ -92,6 +92,25 @@
       Found by the soak's first check, before any cause had been induced, which
       is the argument for checking that the machinery records anything before
       trying to make it record something particular.
+
+      The second check found a second defect, and this one was only visible on
+      the machine. The carrier signature was keyed by the route that answered
+      rather than by the address asked about. A route observation carries both,
+      and the route's own destination is the prefix that matched — so the live
+      signature read:
+
+          128.0.0.0=utun4   seven times
+          invalid IP=utun4  four times
+
+      Seven identical keys and four that are not addresses. A signature like
+      that can change without the carrier changing and stay still when it does.
+
+      It is keyed by the address asked about now, and addresses that are not
+      addresses are left out. The test fixture had hidden it: it set a route's
+      own destination equal to the address asked about, which the machine never
+      does, so a mutation keying by the wrong one changed nothing. The mapping
+      is its own function now and is tested against the shape the machine
+      actually produced.
 - [x] 6.2 Replay the rule against the supervisor's recorded restarts and record
       where it disagrees.
 
