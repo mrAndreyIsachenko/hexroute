@@ -77,22 +77,6 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`pay-for-eviction-not-for-being-full` is open, and it is open because the
-runtime stopped. The root daemon came up at 17:32:58 on 2026-09-12, wrote its
-last heartbeat at 17:35:54, and four hours later was still running with a core
-busy in `jsoncanonicalizer` under `spool.scanStable`, reached from
-`spool.Append`. The `user` journal's spool stood at 104,858,244 bytes against a
-bound of 104,857,600 — over it — holding 84,067 records, and every append
-decoded all of them to learn one fact per record that eviction needs and the
-directory cannot report. Nothing recorded the stall, because the append that
-would have recorded it was the one that hung.
-
-This is the defect named below as left standing on 2026-09-12, and the sentence
-below was wrong about it in one way that mattered: it called the spool's
-accounting a size question. It is a cost question, and the reason it was safe to
-defer that morning was that the spool was not yet full. Nothing drains it, so
-being full was not a risk but a schedule.
-
 `decide-what-a-tunnel-owner-would-do` is open. It is the second of four changes
 the grill of item 8 settled, and the first in this repository: the Codex
 fallback was lifted out of the supervisor in `twilight` first, because an escape
@@ -120,6 +104,48 @@ policy grants it: the capability that would is the change after this one.
 What follows is what the recent ones changed and what they left standing, kept
 because the reasons are worth more than the record of having done them.
 
+`pay-for-eviction-not-for-being-full` closed on 2026-09-13. The root daemon came
+up at 17:32:58 on 2026-09-12, wrote its last heartbeat at 17:35:54, and four
+hours later was still running with a core busy in `jsoncanonicalizer` under
+`spool.scanStable`, reached from `spool.Append`. The `user` journal's spool stood
+at 104,858,244 bytes against a bound of 104,857,600 — over it — holding 84,067
+records, and every append decoded all of them to learn one fact per record that
+eviction needs and the directory cannot report: the priority class. Nothing
+recorded the stall, because the append that would have recorded it was the one
+that hung.
+
+The class now sits beside the kept listing. A record this process published
+carries it from the append that wrote it; a record already on disk is opened
+once, by a reader that decodes the envelope and stops. The listing outlives the
+append, so the reading is paid per record rather than per append.
+
+This is the defect the entry below called left standing on 2026-09-12, and that
+entry was wrong in one way that mattered: it called the spool's accounting a size
+question. It is a cost question, and what made deferring it look safe that
+morning was that the spool was not yet full. Nothing drains it, so being full was
+not a risk but a schedule, and the schedule came due the same day.
+
+Measured after installing, with the spool held at its bound so that every append
+evicts: four samples two minutes apart held 84,063 files and 104,857,291 bytes
+against a bound of 104,857,600, sequences climbing about seven a minute, nothing
+set aside, and the heartbeat at 62 to 64 seconds for forty minutes without a
+pause. A `status` round trip took 45 to 81 milliseconds.
+
+Two things the measurement corrected rather than confirmed. The first reading of
+it was taken with `hexroutectl` under `sudo`, and the daemon authorises the
+operator uid rather than root: `available: false` and the 24-millisecond replies
+were `unauthorized_peer`, not a dead cycle. The second is that these round trips
+are not comparable to the 9.8 and 1.21 seconds recorded for `take-the-probes-
+together`, which timed a different command; the heartbeat cadence is the
+comparable evidence and it is the one quoted here.
+
+One cost stands unexplained and unaddressed. The daemon's process appears three
+minutes before it logs `daemon_started` — 23:33:36 to 23:36:41 on this install,
+and 17:32:58 to 17:35:52 on the one before it, so the three minutes predate this
+change and are not a regression. Opening two spools and an archive over 130,000
+files is the obvious suspect and it has not been measured. Nothing observes
+during those three minutes.
+
 `bound-the-archive-by-what-the-disk-charges` closed on 2026-09-12. Records
 average 1.25 kilobytes and take a four-kilobyte block, so a bound counting
 contents promised about a third of the room taken: an archive bounded at 256
@@ -138,8 +164,8 @@ corrected. Their accounting was left alone deliberately, and restating every
 size assertion in their tests is mechanical work that was not safe to do
 quickly. They hold 463 megabytes of disk for 141 of records. What that deferral
 did not weigh is that the spool's byte bound decides when the expensive path is
-taken, and a logical bound reaches a real disk long before it reaches its own
-number — which is the stall `pay-for-eviction-not-for-being-full` opened for.
+taken — which is the stall `pay-for-eviction-not-for-being-full` answered, above.
+The accounting itself is still logical and still uncorrected.
 
 What follows is what the recent ones changed and what they left standing, kept
 because the reasons are worth more than the record of having done them.
