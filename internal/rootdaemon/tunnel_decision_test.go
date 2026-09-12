@@ -30,7 +30,7 @@ func supervisedCycle(t *testing.T, traversed bool) *Cycle {
 	config, network, processes, endpoints := healthyCycleFixtures(t)
 	config.TunnelSupervision = &RuntimeTunnelSupervision{
 		Policy: tunnelplan.Policy{
-			WakeThreshold: 90 * time.Second, PayloadFailures: 2,
+			WakeThreshold: 90 * time.Second, PayloadFailures: 2, LinkFailures: 2,
 		},
 		Payload: observe.PayloadEndpoint{
 			Name: "payload", URL: "http://198.51.100.1/", Timeout: time.Second,
@@ -145,7 +145,7 @@ func TestAnIncompleteCycleStillDecides(t *testing.T) {
 	config, network, processes, endpoints := healthyCycleFixtures(t)
 	config.TunnelSupervision = &RuntimeTunnelSupervision{
 		Policy: tunnelplan.Policy{
-			WakeThreshold: 90 * time.Second, PayloadFailures: 2,
+			WakeThreshold: 90 * time.Second, PayloadFailures: 2, LinkFailures: 2,
 		},
 		Payload: observe.PayloadEndpoint{
 			Name: "payload", URL: "http://198.51.100.1/", Timeout: time.Second,

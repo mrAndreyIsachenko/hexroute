@@ -25,9 +25,25 @@ it would act.
 The runtime SHALL reach a decision to rebuild the tunnel when the sing-box
 process is gone, when the interval since the previous cycle exceeds the wake
 threshold, when the set of interfaces carrying the configured destinations has
-changed, when connectivity has returned after being absent, or when the payload
-path has failed past its threshold. It SHALL reach a decision to reapply routes
-when the observed routes differ from the planned ones.
+changed, when connectivity has returned after being absent past its threshold,
+or when the payload path has failed past its threshold. It SHALL reach a
+decision to reapply routes when the observed routes differ from the planned
+ones.
+
+Absence SHALL be counted rather than observed. Connectivity counts as absent
+only once the outer path has been unreachable for a configured number of
+consecutive complete cycles, and as present again on the first cycle that
+reaches it. A cycle that did not reach the probes SHALL neither add to the count
+nor reset it, and a runtime that has not yet decided anything SHALL treat the
+link as present rather than absent, so that its first successful probe is not a
+return.
+
+The threshold is not decoration. Measured on this machine over seven days, the
+outer probe failed on 25 of 3,117 cycles and never twice in a row; without a
+threshold every one of those was an absence and every following cycle was a
+return. Six of them fell in one half hour on 2026-09-12, each asking for a
+rebuild of a tunnel that was working, while the runtime that owns that tunnel
+did nothing at all in the same window.
 
 These are the six the production supervisor acts on, measured from its own log
 rather than derived from its source. Two of them have not occurred in
@@ -52,8 +68,18 @@ back from a dead link.
 
 #### Scenario: Connectivity returned
 
-- **WHEN** connectivity was absent on the previous cycle and is present now
+- **WHEN** the outer path has been unreachable for the configured number of consecutive cycles and is then reached
 - **THEN** the decision is to rebuild, naming the return
+
+#### Scenario: A single probe fails and the next succeeds
+
+- **WHEN** the outer path is unreachable on one cycle and reachable on the next, below the threshold
+- **THEN** no cause is named and no rebuild is decided
+
+#### Scenario: A cycle stops before the probes while the link is absent
+
+- **WHEN** a cycle does not complete
+- **THEN** it neither adds to the count of consecutive failures nor resets it
 
 #### Scenario: The payload path failed
 
