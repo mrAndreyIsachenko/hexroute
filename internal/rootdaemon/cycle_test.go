@@ -42,6 +42,10 @@ func (observer *fakeNetworkObserver) Route(
 	if !exists {
 		return observe.RouteObservation{}, errors.New("not observed")
 	}
+	// The real observer records what it was asked about, and the signature is
+	// keyed by that rather than by the route that answered. A fixture that left
+	// it empty let a test pass over a signature the machine could not build.
+	route.Requested = address
 	return route, nil
 }
 

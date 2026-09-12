@@ -3,7 +3,9 @@ package rootdaemon
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,3 +186,102 @@ func (refusingNetwork) Power(context.Context) (observe.PowerObservation, error) 
 }
 
 var errPowerUnreadable = errors.New("power state is unreadable")
+
+// The signature is keyed by the address asked about, not by the route that
+// answered.
+//
+// A route observation carries both, and the route's own destination is the
+// prefix that matched — often the half a tunnel claims, shared by many
+// configured destinations, and empty for routes that have none. On the machine
+// that produced a signature with seven identical keys and four invalid ones:
+// one that can change without the carrier changing, and stay still when it
+// does.
+func TestTheSignatureIsKeyedByWhatWasAsked(t *testing.T) {
+	cycle := supervisedCycle(t, true)
+	summary := cycle.Observe(context.Background())
+	if len(summary.Observed.Routes) < 2 {
+		t.Fatalf("the fixture observed %d routes; this proves nothing below two",
+			len(summary.Observed.Routes))
+	}
+
+	carried := map[string]struct{}{}
+	for _, route := range summary.Observed.Routes {
+		if !route.Requested.IsValid() {
+			t.Fatalf("a route observation has no address it was asked about: %+v",
+				route)
+		}
+		if _, duplicate := carried[route.Requested.String()]; duplicate {
+			t.Fatalf("%s was asked about twice; the signature would count it twice",
+				route.Requested)
+		}
+		carried[route.Requested.String()] = struct{}{}
+	}
+
+	// The signature the cycle actually built, not the observations it built it
+	// from. Keyed by the route that answered rather than by the address asked
+	// about, it had seven identical keys and four invalid ones on the machine.
+	for destination := range carried {
+		if !strings.Contains(string(summary.Carrier), destination+"=") {
+			t.Fatalf("the signature %q does not key %s, which was asked about",
+				summary.Carrier, destination)
+		}
+	}
+	if strings.Contains(string(summary.Carrier), "invalid IP") {
+		t.Fatalf("the signature carries an address that is not one: %q",
+			summary.Carrier)
+	}
+	entries := strings.Fields(string(summary.Carrier))
+	if len(entries) != len(carried) {
+		t.Fatalf("the signature has %d entries for %d destinations asked about: %q",
+			len(entries), len(carried), summary.Carrier)
+	}
+}
+
+// The shape the machine actually produced, which the shared fixture does not:
+// route observations whose own destination is the prefix that matched rather
+// than the address asked about, and some with no destination at all.
+func TestTheSignatureSurvivesRoutesThatSharedAPrefix(t *testing.T) {
+	shared := netip.MustParseAddr("128.0.0.0")
+	routes := []observe.RouteObservation{
+		{
+			Requested:   netip.MustParseAddr("203.0.113.20"),
+			Destination: shared,
+			Interface:   "utun4",
+		},
+		{
+			Requested:   netip.MustParseAddr("198.51.100.20"),
+			Destination: shared,
+			Interface:   "utun4",
+		},
+		{
+			Requested: netip.MustParseAddr("192.0.2.20"),
+			Interface: "en0",
+		},
+		{
+			Destination: shared,
+			Interface:   "utun4",
+		},
+	}
+	carried := carriedDestinations(routes)
+	if len(carried) != 3 {
+		t.Fatalf("carried %d destinations, want 3 — the one with no address "+
+			"asked about is not a destination this runtime cares about",
+			len(carried))
+	}
+	signature := string(tunnelplan.NewSignature(carried))
+	for _, want := range []string{
+		"203.0.113.20=utun4", "198.51.100.20=utun4", "192.0.2.20=en0",
+	} {
+		if !strings.Contains(signature, want) {
+			t.Errorf("signature %q does not carry %q", signature, want)
+		}
+	}
+	if strings.Contains(signature, "128.0.0.0") {
+		t.Fatalf("the signature is keyed by the route that answered: %q",
+			signature)
+	}
+	if strings.Contains(signature, "invalid IP") {
+		t.Fatalf("the signature carries an address that is not one: %q",
+			signature)
+	}
+}
