@@ -9,6 +9,37 @@ already lost cannot cost the observation still being made.
 
 ## Requirements
 
+### Requirement: A caller may read one record without reading the rest
+
+A spool SHALL say which sequences it holds without opening any record, and SHALL
+hand back a single record named by its sequence, proved the way any returned
+record is proved.
+
+Without these the only way to reach a record is to ask for all of them. A caller
+that wanted the newest few therefore decoded the whole spool, which is how a
+daemon came to spend 152 seconds of every start finding four records among
+136,397.
+
+Asking for a sequence the spool does not hold SHALL be an ordinary answer rather
+than an error. Records leave by eviction and by acknowledgement, so a caller
+holding a listing from a moment ago is asking a reasonable question about a
+record that has since gone.
+
+#### Scenario: A caller asks which sequences are held
+
+- **WHEN** a caller asks what the spool holds
+- **THEN** it receives the sequences without any stored record being opened
+
+#### Scenario: A caller asks for one record
+
+- **WHEN** a caller names a sequence the spool holds
+- **THEN** that record is decoded and proved, and no other record is opened
+
+#### Scenario: A caller asks for a record that has gone
+
+- **WHEN** a caller names a sequence that has been evicted or acknowledged
+- **THEN** the spool says it does not hold it, and this is not an error
+
 ### Requirement: A spool operation costs what it uses
 
 A spool operation SHALL read and decode only the records it hands out. An
@@ -43,6 +74,13 @@ permanent one. It cost a live runtime four hours of observation: the daemon
 decoded eighty-four thousand records on an append, never returned, and recorded
 nothing about it, because the append that would have recorded it was the one
 that hung.
+
+Opening SHALL walk the directory once. Recovery already lists it to find what a
+half-finished write left behind, and opening needs the highest sequence, which
+that listing holds — so asking again is a second stat for every file stored.
+Measured on 2026-09-13: opening the user journal cost 10.2 seconds of a window
+in which the daemon observes nothing, while listing its directory costs 360
+milliseconds.
 
 A spool MAY discard what it knows about its directory at any time and learn it
 again, and SHALL do so whenever a write may have half happened and whenever
@@ -86,6 +124,12 @@ time and 97 listing once.
 
 - **WHEN** a runtime appends many records to the same spool without anything else moving its stable records
 - **THEN** the directory is listed at most once, however many records are appended
+
+#### Scenario: A spool is opened
+
+- **WHEN** a spool is opened over a directory holding tens of thousands of records
+- **THEN** every stored record is inspected at most once
+- **AND** the first append after opening does not inspect them again
 
 #### Scenario: Something other than an append moves a record
 

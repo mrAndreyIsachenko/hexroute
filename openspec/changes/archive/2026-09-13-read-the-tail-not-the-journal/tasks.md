@@ -67,8 +67,16 @@
       Open takes the highest sequence from the listing the filenames carry.
       Mutations: decode every record for the maximum, and take the first
       sequence rather than the last. Both fail named tests.
-- [ ] 5.5 Install again and measure what the archive's correction returned.
+- [x] 5.5 Install again and measure what the archive's correction returned.
+
+      The archive's open went 3.873 seconds to 2.320 once the spool stopped
+      walking its directory twice, and the replay this change is named for went
+      3.016 to 0.108 for the same reason: the listing kept at open is the one the
+      backwards walk asks for, so it costs nothing by the time it is wanted.
+
+      The arc of the daemon's own work, measured at each step rather than
+      predicted: about 152 seconds, then 33, then 20.1, then 7.0.
 
 ## 6. Close
 
-- [ ] 6.1 Sync the deltas into the baselines, validate, archive.
+- [x] 6.1 Sync the deltas into the baselines, validate, archive.
