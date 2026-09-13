@@ -211,12 +211,17 @@ func Open(path string, options Options) (*Archive, error) {
 	if err := archive.discardStaged(); err != nil {
 		return nil, err
 	}
-	records, err := archive.scan()
+	// The listing, not the records. Opening needs one number — the highest
+	// sequence — and the filenames carry it, while reading every record to
+	// take a maximum cost a daemon about seventeen seconds of every start,
+	// measured on 2026-09-13 over forty-three thousand records. It is the same
+	// defect the journals had, one store over.
+	entries, err := archive.index()
 	if err != nil {
 		return nil, err
 	}
 	generator, err := metadata.NewGenerator(
-		options.NodeID, highest(records), clock, options.Random)
+		options.NodeID, highestStable(entries), clock, options.Random)
 	if err != nil {
 		return nil, err
 	}
@@ -789,14 +794,13 @@ func name(sequence uint64) string {
 	return fmt.Sprintf("%0*s", nameWidth, strconv.FormatUint(sequence, 10))
 }
 
-func highest(records []Record) uint64 {
-	var top uint64
-	for _, record := range records {
-		if record.Sequence > top {
-			top = record.Sequence
-		}
+// highestStable is the last sequence the directory shows, which is the last
+// entry of a listing already sorted by sequence.
+func highestStable(entries []stableEntry) uint64 {
+	if len(entries) == 0 {
+		return 0
 	}
-	return top
+	return entries[len(entries)-1].Sequence
 }
 
 func syncDirectory(path string) error {

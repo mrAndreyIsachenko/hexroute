@@ -1,6 +1,9 @@
 package eventarchive
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -100,5 +103,60 @@ func TestWhatTheArchiveKeepsSurvivesEviction(t *testing.T) {
 	}
 	if len(fresh) == 200 {
 		t.Fatal("nothing was evicted, so this proves nothing about eviction")
+	}
+}
+
+// Opening an archive reads its directory, not its records.
+//
+// Open needs one number, the highest sequence, and the filenames carry it. It
+// used to take that maximum by reading and decoding every record, which cost a
+// daemon about seventeen seconds of every start over forty-three thousand of
+// them — while it observed nothing, because it had not finished opening.
+//
+// The assertion is behaviour rather than a counter: every stored record is made
+// undecodable, and an open that read one would fail on it.
+func TestOpeningReadsTheDirectoryRatherThanTheRecords(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "archive")
+	archive, err := Open(path, Options{NodeID: testNodeID})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	for index := 1; index <= 40; index++ {
+		if _, err := archive.Append(operational(index)); err != nil {
+			t.Fatalf("append %d: %v", index, err)
+		}
+	}
+	names, err := os.ReadDir(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	damaged := 0
+	for _, name := range names {
+		if name.IsDir() || strings.HasPrefix(name.Name(), ".") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(path, name.Name()),
+			[]byte(`{"schema":"not a record"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		damaged++
+	}
+	if damaged == 0 {
+		t.Fatal("nothing was stored to damage; the fixture proves nothing")
+	}
+
+	reopened, err := Open(path, Options{NodeID: testNodeID})
+	if err != nil {
+		t.Fatalf("Open() over %d undecodable records = %v; opening reads them",
+			damaged, err)
+	}
+	// And it still knows where the sequences got to, because the names say so.
+	sequence, err := reopened.Append(operational(41))
+	if err != nil {
+		t.Fatalf("append after reopening: %v", err)
+	}
+	if sequence <= uint64(damaged) {
+		t.Fatalf("the reopened archive issued sequence %d, at or below the %d "+
+			"it already holds", sequence, damaged)
 	}
 }
