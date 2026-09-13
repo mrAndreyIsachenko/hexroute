@@ -24,10 +24,12 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
+	"github.com/mrAndreyIsachenko/hexroute/internal/configversion"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/rootdaemon"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelclaim"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelhandover"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelstart"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -42,8 +44,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	proofs := flags.Int("proofs", 2, "consecutive proofs of traversal that complete it")
 	deadline := flags.Duration("deadline", 120*time.Second, "how long the whole attempt may take")
 	between := flags.Duration("between", 5*time.Second, "wait between proofs")
+	versionPath := flags.String("version", "", "the signed tunnel configuration version")
+	targetKey := flags.String("target-key", "", "what this host is, for the version's target")
+	singBox := flags.String("sing-box", "", "the tunnel binary")
+	contentPath := flags.String("content", "", "where the verified configuration is written")
 	if flags.Parse(args) != nil || flags.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] rehearse|abort")
+		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] begin|rehearse|abort")
 		return 2
 	}
 	if *showVersion {
@@ -70,6 +76,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch flags.Arg(0) {
+	case "begin":
+		prover, err := payloadProver(*configPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 2
+		}
+		starter, err := tunnelStarter(
+			*configPath, *versionPath, *targetKey, *singBox, *contentPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 2
+		}
+		transaction.Prover = prover
+		transaction.Tunnel = starter
+		outcome, err := transaction.Run(context.Background(), transactionID(), false)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		return report(stdout, outcome)
 	case "abort":
 		outcome, err := transaction.Abort()
 		if err != nil {
@@ -91,9 +117,42 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return report(stdout, outcome)
 	default:
-		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] rehearse|abort")
+		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] begin|rehearse|abort")
 		return 2
 	}
+}
+
+// tunnelStarter verifies the signed version at every start and runs the tunnel
+// from what the signature covers.
+//
+// The key is the one this host already pins for policy — deliberately the same,
+// because signing a configuration a host will run is the same authority as
+// signing a policy generation, and a second key would be a second thing to keep
+// safe for no gain.
+func tunnelStarter(
+	configPath, versionPath, targetKey, binary, contentPath string,
+) (*tunnelstart.Starter, error) {
+	if versionPath == "" || targetKey == "" || binary == "" || contentPath == "" {
+		return nil, errors.New(
+			"--version, --target-key, --sing-box and --content are required to begin")
+	}
+	config, err := rootdaemon.LoadConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+	if config.PolicyControl == nil || len(config.PolicyControl.PinnedPublicKey) == 0 {
+		return nil, errors.New("this host pins no operator key to verify a version against")
+	}
+	return &tunnelstart.Starter{
+		ArtifactPath: versionPath,
+		PublicKey:    config.PolicyControl.PinnedPublicKey,
+		Target: configversion.Target{
+			Kind: configversion.TargetNode, Key: targetKey,
+		},
+		ContentPath: contentPath,
+		Binary:      binary,
+		Runner:      tunnelstart.ExecRunner{},
+	}, nil
 }
 
 func report(stdout io.Writer, outcome tunnelhandover.Outcome) int {
