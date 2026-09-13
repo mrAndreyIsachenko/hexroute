@@ -55,8 +55,30 @@
       itself rather than of the arithmetic that uses it, and that assertion is
       what the fourth mutation fails.
 - [x] 5.2 `make check` green.
-- [ ] 5.3 Install, restart the daemon deliberately, and confirm the cycle after the restart names no wake gap.
+- [x] 5.3 Install, restart the daemon deliberately, and confirm the cycle after the restart names no wake gap.
+
+      Installed 2026-09-13. The daemon stopped at 12:44:23.732 and started at
+      12:47:09.670, so the open cost 165.9 seconds, and the cycles after it
+      named no wake gap at all. That is the case this change exists for: under
+      the previous code the same restart produced one.
+
+      The period fix has a before and after from the same machine a quarter of an
+      hour apart, and the network happened to be in trouble for both. The outer
+      probe failed on every cycle from 12:35:18 to 12:48:22, so every cycle paid
+      its timeouts. The old loop ran them 73 seconds apart — the 61 second
+      interval plus the work. The new loop ran them 60.0 seconds apart with the
+      same timeouts.
+
+      Thirteen seconds is not the point. The point is which direction they moved
+      the interval: the old loop stretched toward a ninety second threshold
+      exactly while the network was failing, which is when a rebuild decided for
+      the wrong reason would cost the most.
+
+      The link threshold was exercised by the same outage rather than by a
+      contrivance. Thirteen minutes of consecutive failures, then a success at
+      12:49:10, then one `link_returned` — a real return, distinguished from the
+      isolated blips that used to produce one every time.
 
 ## 6. Close
 
-- [ ] 6.1 Sync the delta into the baseline, validate, archive.
+- [x] 6.1 Sync the delta into the baseline, validate, archive.

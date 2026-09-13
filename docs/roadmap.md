@@ -77,94 +77,54 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`tell-a-sleeping-machine-from-a-slow-observer` is open. It is the third defect
-the tunnel decision's soak found and the only one that fires on a machine that
-is behaving.
+None.
 
-The wake gap is measured as the interval between this runtime's own
-observations, so a runtime that is slow reports a machine that slept. On
-2026-09-12 the first fold after a reinstall cost 32.4 seconds, the loop then
-waited its interval, and ninety-three seconds passed between two observations
-against a threshold of ninety. With authority that decision rebuilds a working
-tunnel every time this daemon is installed.
+`tell-a-sleeping-machine-from-a-slow-observer` closed on 2026-09-13. It was the
+third defect the tunnel decision's soak found and the only one that fired on a
+machine that was behaving.
 
-It is measured directly instead. On this platform the monotonic clock is
-`mach_absolute_time`, which the kernel suspends across sleep, and the wall clock
-is not — so the difference between them is the sleep and nothing else. Read from
-the toolchain this repository builds with rather than recalled, and to be
-confirmed against a real sleep on the machine before the change closes.
+The wake gap was the interval between this runtime's own observations, so a
+runtime that was slow reported a machine that slept. On 2026-09-12 the first
+fold after a reinstall cost 32.4 seconds, the loop then waited its interval, and
+ninety-three seconds passed between two observations against a threshold of
+ninety. With authority that decision rebuilds a working tunnel every time this
+daemon is installed.
 
-The loop is corrected with it, because the two compound: it starts its timer
-after the work rather than aiming at a period, so a 32-second fold becomes a
-93-second gap. It will schedule from when an observation began.
+The sleep is measured now. macOS suspends the monotonic clock across sleep and
+does not suspend the wall clock, so the difference between them is the sleep and
+nothing else, and a runtime that was merely busy advances both.
 
-Both are owed before the next change, which is the first to grant this rule any
-authority at all.
+That was verified on the machine rather than read from the toolchain. With
+`pmset sleepnow` the Mac slept 2 minutes 29.4 seconds and the monotonic clock
+advanced one second across it, after which the divergence held rather than
+continuing to grow. An earlier attempt closed the lid and proved nothing,
+because the machine did not sleep; it did measure the two clocks separating at
+about 0.34 milliseconds a second while awake, which over one interval is twenty
+milliseconds against a ninety second threshold.
 
-`decide-what-a-tunnel-owner-would-do` closed on 2026-09-13. It is the second of
-four changes the grill of item 8 settled, and the first in this repository: the
-Codex fallback was lifted out of the supervisor in `twilight` first, because an
-escape hatch must not belong to the experiment it exists to escape. The build
-and the switch are separate changes in that order, so that a rule wrong about a
-wake or a carrier change is learned without a network.
+The loop was corrected with it, because the two compounded: it started its timer
+after the work rather than aiming at a period. Measured on the same machine a
+quarter of an hour apart, while the outer probe was failing on every cycle and
+every cycle paid its timeouts — the old loop ran them 73 seconds apart, the new
+loop 60.0. The direction is the point rather than the thirteen seconds: the old
+loop stretched toward the threshold exactly while the network was failing.
 
-Six causes, measured from the supervisor's own log over sixty-one days rather
-than derived from its source. Five were reached by waiting. The sixth, the
-process exiting, was induced on 2026-09-12: sing-box killed at 22:04:13Z,
-hexroute named it at 22:04:16 and the supervisor that owns the tunnel named it
-at 22:05:02 — three seconds against forty-nine. Restoring it took fifty-seven,
-against a prediction of fifteen taken from the supervisor's health interval; the
-prediction had read the interval and not the work.
+Confirmed after installing: the daemon stopped at 12:44:23.732 and started at
+12:47:09.670, an open costing 165.9 seconds, and the cycles after it named no
+wake gap at all.
 
-The soak found three defects and all three were in what the rule decided, never
-in what it did, which is the argument for deciding before being allowed to act.
+One mutation is recorded as untestable rather than as caught. Stripping the
+monotonic reading inside the decision changes nothing under test, because a
+fabricated clock has none to strip, while in production it would zero the
+divergence permanently and the cause would never hold however long the machine
+slept. The property is asserted of the wall clock itself instead.
 
-The first two were found by checking that the machinery recorded anything before
-trying to make it record something particular. The decision ran only on complete
-cycles, so the tunnel being in trouble was exactly when the decision was absent.
-The carrier signature was keyed by the route that answered rather than the
-address asked about, so a live signature of twenty entries held one default
-prefix repeated seven times and four entries that were not addresses at all. A
-signature like that can change without the carrier changing and stand still when
-it does. The test fixture had hidden it by setting the route's own destination
-equal to the address asked about, which the machine never does.
-
-The third was found by comparison and is the reason the comparison exists. In
-its first hour the runtime reached fifty-five decisions and seven of them said
-rebuild the tunnel, while Twilight made no state transition at all. Six named a
-returned link. The connectivity archive said why: one outer endpoint is
-configured, it failed on 25 of 3,117 cycles over seven days and never twice in a
-row, and each return was the cycle immediately after one of those failures. The
-cause had no threshold where its neighbour, the payload path, has one. It has
-one now, and two is not a chosen number: it is the smallest the measurement
-supports, it is what Twilight uses, and over those seven days it would have
-declared the link absent exactly as often as Twilight did, which is never.
-
-Two corrections are owed before any of this is granted authority, and both are
-about the runtime rather than the rule.
-
-The wake gap is measured as the interval between this runtime's own
-observations, so a runtime that is slow reports a machine that slept. Measured:
-the first fold after a reinstall took 32.4 seconds, the loop then slept its
-interval, and ninety-three seconds passed between two observations against a
-threshold of ninety. A restart manufactures a rebuild on the cycle after it —
-with authority, installing the daemon would tear down the tunnel it was
-installed to watch.
-
-And the loop sleeps a fixed interval after work of unbounded length rather than
-aiming at a period, so every slow cycle pushes the next observation out by
-however long it took. The daemon also runs for about three minutes before it
-logs `daemon_started` — 21:59:40 to 22:02:30 on this install — and observes
-nothing in that window.
-
-A third thing is recorded rather than owed: a decision record cannot be
-diagnosed on its own. It carries the action and the causes and not what they
-were decided from, and reading the link disagreement took the connectivity
-archive beside it. That worked only because one runtime writes both into one
-store, and a comparison against a runtime that does not will not have it.
-
-Nothing executes. The safety allowlist already names `restart sing_box`, and no
-policy grants it: the capability that would is the change after this one.
+Two things stand, both measured and neither corrected. The daemon runs about
+three minutes before it logs `daemon_started` and observes nothing in that
+window; 165.9 seconds this time, 169.9 the time before. And a decision record
+still cannot be diagnosed on its own: it carries the action and the causes and
+not what they were decided from, and reading the link disagreement took the
+connectivity archive beside it.
 
 What follows is what the recent ones changed and what they left standing, kept
 because the reasons are worth more than the record of having done them.
