@@ -139,6 +139,14 @@ run again with HEXROUTE_ALLOW_REDUCED_CONFIG=1."
     "$ROOT_DIR" "$BIN_DIR" "$CONFIG_DIR" "$STATE_DIR" "$LOG_DIR"
   /usr/bin/install -d -o root -g wheel -m 0711 "$SOCKET_DIR"
   /usr/bin/install -o root -g wheel -m 0755 "$binary" "$BIN_DIR/hexrouted"
+  # The handover command lives beside the daemon because it needs the same
+  # authority: it writes the claim under /Library and starts the tunnel. It is
+  # not a daemon and launchd does not know about it — an operator runs it, in
+  # the foreground, and it ends when the handover does.
+  if [[ -x "$(dirname "$binary")/hexroute-handover" ]]; then
+    /usr/bin/install -o root -g wheel -m 0755 \
+      "$(dirname "$binary")/hexroute-handover" "$BIN_DIR/hexroute-handover"
+  fi
   # Reinstalling a daemon whose configuration is already in place is an
   # ordinary operation — a new binary, or a plist that gained an argument, with
   # the configuration untouched. `install` refuses to copy a file onto itself
