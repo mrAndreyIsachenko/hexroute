@@ -77,6 +77,20 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
+`make-the-daemon-time-its-own-start` is open. The root daemon takes tens of
+seconds to open, observes nothing while it does, and cannot say where the time
+goes — so every answer about it has come from sampling the process from outside,
+and three attributions taken that way in one session were wrong. Seventeen
+seconds were assigned to a store that cost about seven; thirteen to listings
+that take 951 milliseconds; and the latest sample shows this repository's frames
+holding about one percent of the window, so the daemon is waiting rather than
+working and nothing outside it can say on what.
+
+The instrument was wrong three times because the machine has no way to be right:
+its log records carry a level, an event, a result and a reason, and no number.
+That is the same shape as a tunnel decision record carrying an action and its
+causes and nothing they were decided from.
+
 `read-the-tail-not-the-journal` is open. The root daemon runs about two and a
 half minutes after launchd starts it before it reports starting, and observes
 nothing in that window. It was measured three times — 169.9, 165.9 and 152.1

@@ -194,45 +194,87 @@ func (reader *Reader) ArchiveMisses() uint64 {
 // not fill its disk remembering. An empty archiveRoot keeps no archive, and a
 // host that cannot open one is told rather than stopped: losing the copy costs
 // a later review, and losing the read model costs the network.
+// OpenTimings is how long each durable store took to open.
+//
+// Opening is the window in which the daemon is not yet observing, and nothing
+// outside the process can attribute it: three attempts to do so from sample
+// trees in one session were wrong, because a frame's presence there is not its
+// weight. So the work reports its own cost, and the caller — which owns the
+// logging vocabulary — writes it down.
+type OpenTimings struct {
+	Checkpoints  time.Duration
+	EventArchive time.Duration
+	RootJournal  time.Duration
+	UserJournal  time.Duration
+	Replay       time.Duration
+	Total        time.Duration
+}
+
 func Open(
 	root string,
 	bootID string,
 	archiveRoot string,
 ) (*Reader, error) {
+	reader, _, err := OpenTimed(root, bootID, archiveRoot)
+	return reader, err
+}
+
+// OpenTimed opens the host and says what each store cost.
+func OpenTimed(
+	root string,
+	bootID string,
+	archiveRoot string,
+) (*Reader, OpenTimings, error) {
+	reader, timings, err := openHost(root, bootID, archiveRoot)
+	return reader, timings, err
+}
+
+func openHost(
+	root string,
+	bootID string,
+	archiveRoot string,
+) (*Reader, OpenTimings, error) {
+	var timings OpenTimings
+	openedAt := time.Now()
+	defer func() { timings.Total = time.Since(openedAt) }()
 	if root == "" {
-		return nil, nil
+		return nil, timings, nil
 	}
 	if _, err := continuousTick(); err != nil {
-		return nil, fmt.Errorf("%w: no continuous clock on this platform",
+		return nil, timings, fmt.Errorf("%w: no continuous clock on this platform",
 			ErrStore)
 	}
 	// A boot this daemon cannot name is a boot whose freshness deadlines it
 	// cannot compare, so it refuses rather than inventing one.
 	if bootID == "" {
-		return nil, fmt.Errorf("%w: the boot session has no identity",
+		return nil, timings, fmt.Errorf("%w: the boot session has no identity",
 			ErrStore)
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
-		return nil, fmt.Errorf("%w: root: %v", ErrStore, err)
+		return nil, timings, fmt.Errorf("%w: root: %v", ErrStore, err)
 	}
 	nodeID, err := nodeIdentity(root)
 	if err != nil {
-		return nil, err
+		return nil, timings, err
 	}
 	journalClock := metadata.NewSystemClock()
 	collectorClock := readModelClock{}
+	checkpointsAt := time.Now()
 	checkpoints, err := connectivitycheckpoint.Open(
 		filepath.Join(root, "readmodel"), connectivitycheckpoint.Options{})
+	timings.Checkpoints = time.Since(checkpointsAt)
 	if err != nil {
-		return nil, fmt.Errorf("%w: checkpoints: %v", ErrStore, err)
+		return nil, timings, fmt.Errorf("%w: checkpoints: %v", ErrStore, err)
 	}
 	var mirror connectivityjournal.Sink
 	var retention *eventarchive.Archive
 	var archiveErr error
 	if archiveRoot != "" {
+		archiveAt := time.Now()
 		archive, err := eventarchive.Open(archiveRoot, eventarchive.Options{
 			NodeID: nodeID, Clock: journalClock,
 		})
+		timings.EventArchive = time.Since(archiveAt)
 		if err != nil {
 			// Recorded, not fatal. A host that stopped watching its own
 			// network because a retention store would not open would have
@@ -243,21 +285,26 @@ func Open(
 			retention = archive
 		}
 	}
+	rootAt := time.Now()
 	rootJournal, err := connectivityjournal.Open(
 		filepath.Join(root, "root"), policy.DomainRoot,
 		connectivityjournal.Options{
 			NodeID: nodeID, Clock: journalClock, Mirror: mirror})
+	timings.RootJournal = time.Since(rootAt)
 	if err != nil {
-		return nil, fmt.Errorf("%w: root journal: %v", ErrStore, err)
+		return nil, timings, fmt.Errorf("%w: root journal: %v", ErrStore, err)
 	}
+	userAt := time.Now()
 	userJournal, err := connectivityjournal.Open(
 		filepath.Join(root, "user"), policy.DomainUser,
 		connectivityjournal.Options{
 			NodeID: nodeID, Clock: journalClock, Mirror: mirror})
+	timings.UserJournal = time.Since(userAt)
 	if err != nil {
-		return nil, fmt.Errorf("%w: user journal: %v", ErrStore, err)
+		return nil, timings, fmt.Errorf("%w: user journal: %v", ErrStore, err)
 	}
 
+	replayAt := time.Now()
 	runtime, err := connectivityruntime.New(connectivityruntime.Options{
 		Enabled: true,
 		BootID:  bootID,
@@ -272,13 +319,14 @@ func Open(
 		RootJournal: rootJournal,
 		UserJournal: userJournal,
 	})
+	timings.Replay = time.Since(replayAt)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrStore, err)
+		return nil, timings, fmt.Errorf("%w: %v", ErrStore, err)
 	}
 
 	recorder, err := OpenRecorder(filepath.Join(root, "shadow"))
 	if err != nil {
-		return nil, err
+		return nil, timings, err
 	}
 	reader := &Reader{
 		archive:     retention,
@@ -309,7 +357,7 @@ func Open(
 	for _, component := range rootComponents() {
 		declaration, owned := safety.ConnectivityAuthority(component)
 		if !owned || declaration.Domain != policy.DomainRoot {
-			return nil, fmt.Errorf("%w: %s is not root-owned",
+			return nil, timings, fmt.Errorf("%w: %s is not root-owned",
 				ErrStore, component)
 		}
 		reader.owners[component] = declaration.Source
@@ -325,12 +373,12 @@ func Open(
 			Sequence: resumed[declaration.Source],
 		})
 		if collectErr != nil {
-			return nil, fmt.Errorf("%w: collector %s: %v",
+			return nil, timings, fmt.Errorf("%w: collector %s: %v",
 				ErrStore, declaration.Source, collectErr)
 		}
 		reader.sources[declaration.Source] = collector
 	}
-	return reader, nil
+	return reader, timings, nil
 }
 
 // nodeIdentity returns this store's node identity, minting one on first use.
