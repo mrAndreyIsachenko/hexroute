@@ -64,6 +64,24 @@
 - [ ] 1.4 Read the day's watch and decide whether the inherited destinations stay.
 - [ ] 1.2 Publish the first signed configuration version from the bytes running today, and prove it is byte for byte identical.
 
+      The sequence is written down at `docs/macos/tunnel-configuration-version.md`.
+      It is the operator's to run: the key requires user presence in their own
+      session, and a signer that did not would be a key anything running as root
+      could use.
+
+      One exposure is named there rather than left to be discovered. The
+      configuration lives under root and carries the tunnel's identities;
+      signing needs those bytes in the session that can reach the Keychain item.
+      So they are readable by the operator's account between the copy and its
+      removal, in a `0600` file in the operator's own storage, and by nothing
+      else.
+
+      The proof is a digest comparison rather than a diff, so the bytes stay off
+      the terminal: the content the signature covers must equal the file the
+      supervisor still runs. Anything but identical means the first version is
+      not what the machine runs, and the handover would be changing two things
+      at once.
+
 ## 2. The claim
 
 - [x] 2.1 Write the claim: its shape, where it lives, who may write it.

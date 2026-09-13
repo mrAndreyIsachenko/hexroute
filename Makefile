@@ -10,6 +10,7 @@ build:
 build-observe-root:
 	mkdir -p bin
 	go build -o bin/hexrouted ./cmd/hexrouted
+	go build -o bin/hexroute-handover ./cmd/hexroute-handover
 
 build-observe-user:
 	mkdir -p bin
