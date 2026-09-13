@@ -233,8 +233,12 @@ func openHost(
 	root string,
 	bootID string,
 	archiveRoot string,
-) (*Reader, OpenTimings, error) {
-	var timings OpenTimings
+) (reader *Reader, timings OpenTimings, err error) {
+	// Named returns, because the deferred total below must reach the value the
+	// caller receives. With unnamed returns it did not: the copy left before
+	// the defer ran, every total was reported as under a millisecond beside
+	// seventeen seconds of parts, and the first reading of this instrument
+	// caught it.
 	openedAt := time.Now()
 	defer func() { timings.Total = time.Since(openedAt) }()
 	if root == "" {
@@ -328,7 +332,7 @@ func openHost(
 	if err != nil {
 		return nil, timings, err
 	}
-	reader := &Reader{
+	reader = &Reader{
 		archive:     retention,
 		archiveErr:  archiveErr,
 		recorder:    recorder,

@@ -250,12 +250,17 @@ const (
 	StepCheckpoints  Step = "checkpoints"
 	StepReplay       Step = "replay"
 	StepStoresTotal  Step = "stores_total"
+	// StepStartupTotal is everything this process did before it reported
+	// starting. What lies between it and the previous daemon_stopped belongs to
+	// launchd rather than to this runtime, and saying so is the difference
+	// between a slow daemon and a throttled restart.
+	StepStartupTotal Step = "startup_total"
 )
 
 func validStep(value Step) bool {
 	switch value {
 	case StepReadModel, StepEventArchive, StepRootJournal, StepUserJournal,
-		StepCheckpoints, StepReplay, StepStoresTotal:
+		StepCheckpoints, StepReplay, StepStoresTotal, StepStartupTotal:
 		return true
 	default:
 		return false

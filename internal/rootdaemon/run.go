@@ -409,6 +409,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			)
 		},
 	)
+	// Everything this process did before it reports starting, so the window it
+	// is blind for is attributed rather than assumed. What lies between this
+	// and the previous daemon_stopped is launchd's, and reading that as the
+	// daemon's own slowness is a mistake this record exists to stop.
+	if err := infoLog.EmitTimed(
+		logging.LevelInfo, logging.EventStoreOpened, logging.ResultOK,
+		logging.StepStartupTotal, time.Since(started),
+	); err != nil {
+		return 1
+	}
 	if err := observeLoop(
 		runCtx,
 		config.Interval,
