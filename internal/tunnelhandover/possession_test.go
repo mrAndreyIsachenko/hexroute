@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The tunnel is taken from its holder before a second one is started.
@@ -205,6 +206,54 @@ func TestAPossessionBoundIsRequired(t *testing.T) {
 	handover.Policy.Possession = 0
 
 	if _, err := handover.Run(context.Background(), "handover-unbounded", false); !errors.Is(err, ErrInvalidPolicy) {
+		t.Fatalf("Run = %v, want ErrInvalidPolicy", err)
+	}
+}
+
+// An interrupted transaction stops proving instead of running to its deadline.
+//
+// The operator holds this in the foreground; interrupting the terminal is how
+// they take it back. The check was inside the branch that waits between proofs,
+// so a policy with no wait could not be interrupted at all — found because the
+// mutation that removed the deadline hung for ten minutes instead of failing,
+// which is a test passing for the wrong reason.
+func TestAnInterruptedTransactionStopsProving(t *testing.T) {
+	claim, tunnel := &recordingClaim{}, &recordingTunnel{}
+	// Always traverses but never twice in a row, so nothing but the deadline or
+	// the interruption ends the loop.
+	handover := transaction(t, claim, tunnel, &answers{sequence: []bool{true, false}})
+	handover.Policy.Deadline = time.Hour
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	began := time.Now()
+	outcome, err := handover.Run(ctx, "handover-interrupted", false)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if outcome.Completed {
+		t.Fatalf("an interrupted transaction completed: %+v", outcome)
+	}
+	if elapsed := time.Since(began); elapsed > 10*time.Second {
+		t.Fatalf("it took %s to notice the interruption", elapsed)
+	}
+	if !strings.Contains(outcome.Reason, "interrupted") {
+		t.Fatalf("the reason does not say it was interrupted: %q", outcome.Reason)
+	}
+}
+
+// A policy with no wait between readings is refused.
+//
+// Both loops poll. A zero wait turns proving into a spin that takes its proofs
+// as fast as the probe will answer, which is two readings of the same moment
+// rather than two moments — exactly what the consecutive rule exists to stop.
+func TestAWaitBetweenReadingsIsRequired(t *testing.T) {
+	claim, tunnel := &recordingClaim{}, &recordingTunnel{}
+	handover := transaction(t, claim, tunnel, &answers{sequence: []bool{true, true}})
+	handover.Policy.Between = 0
+
+	if _, err := handover.Run(context.Background(), "handover-spin", false); !errors.Is(err, ErrInvalidPolicy) {
 		t.Fatalf("Run = %v, want ErrInvalidPolicy", err)
 	}
 }

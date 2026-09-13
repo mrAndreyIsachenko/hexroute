@@ -40,7 +40,9 @@ type Policy struct {
 	// incumbent was measured taking to restart its own tunnel.
 	Deadline time.Duration
 	// Between is the wait between proofs, and between the readings that watch
-	// the previous holder go.
+	// the previous holder go. Required to be positive: both loops poll, and a
+	// zero wait turns either into a spin that takes a proof as fast as the
+	// probe will answer.
 	Between time.Duration
 	// Possession bounds the wait for the previous holder to be gone. The
 	// incumbent's own tunnel restart was measured at fifty-seven seconds end to
@@ -83,7 +85,7 @@ type Transaction struct {
 // record mentions, and the abort that came later would not undo it.
 func (transaction *Transaction) Run(ctx context.Context, id string, rehearsal bool) (Outcome, error) {
 	if transaction.Policy.Proofs < 1 || transaction.Policy.Deadline <= 0 ||
-		transaction.Policy.Possession <= 0 {
+		transaction.Policy.Possession <= 0 || transaction.Policy.Between <= 0 {
 		return Outcome{}, ErrInvalidPolicy
 	}
 	if !rehearsal && transaction.Tunnel == nil {
@@ -189,12 +191,14 @@ func (transaction *Transaction) prove(ctx context.Context, now func() time.Time)
 		} else {
 			consecutive = 0
 		}
-		if transaction.Policy.Between > 0 {
-			select {
-			case <-ctx.Done():
-				return consecutive, "the transaction was interrupted"
-			case <-time.After(transaction.Policy.Between):
-			}
+		// Unconditional, where it used to be skipped when there was no wait to
+		// interrupt. The operator holds this transaction in the foreground, and
+		// a policy with no wait could not be interrupted at all — which is why
+		// the wait is now required to be positive rather than defaulted.
+		select {
+		case <-ctx.Done():
+			return consecutive, "the transaction was interrupted"
+		case <-time.After(transaction.Policy.Between):
 		}
 	}
 	return consecutive, ""

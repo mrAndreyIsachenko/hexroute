@@ -266,7 +266,13 @@
       after signing, not a version at all, and absent. In every case nothing is
       started and nothing is written for a process to read, so a refusal leaves
       no half-prepared configuration behind for the next attempt to find.
-- [ ] 4.3 Publish the first version from the bytes running today, and prove it byte for byte. Signed with the operator's key; the one step nobody else can take.
+- [x] 4.3 Publish the first version from the bytes running today, and prove it byte for byte. Signed with the operator's key; the one step nobody else can take.
+
+      The same act as 1.2, written twice because it belongs to both the ground
+      and the starting. Done on 2026-09-13; ticking 1.2 left this one saying it
+      was outstanding for a day. A task list that records one act in two places
+      will go out of step with itself, and the half that is stale is the half
+      somebody reads.
 
 ## 5. The rehearsal
 
@@ -284,7 +290,7 @@
 
 ## 6. Gates and evidence
 
-- [ ] 6.1 Mutate the claim, the completion rule, the abort and the verification; confirm the named tests fail.
+- [x] 6.1 Mutate the claim, the completion rule, the abort and the verification; confirm the named tests fail.
 
       Possession, 2026-09-14: nine mutations applied, all nine killed. Taking the
       tunnel after starting instead of before; never refusing at the bound;
@@ -296,7 +302,51 @@
       weak half: the abort happens anyway when the bound is reached, so counting
       the outcome could not tell "would not die" from "was not allowed to ask".
       The test now reads the reason.
-- [ ] 6.2 `make check` green.
+
+      The four this task names, 2026-09-14. The claim: placing over one already
+      held, writing in place instead of staging, accepting a foreign holder.
+      The completion rule: counting cumulatively instead of consecutively,
+      completing on one proof, counting a failed proof as a traversal, removing
+      the deadline. The abort: keeping the claim, leaving the started process
+      running, undoing nothing on a later invocation. The verification: verifying
+      once instead of at every start, trusting the file already on disk,
+      accepting any target. Thirteen applied, thirteen killed.
+
+      Four more were written and are not counted, because they did not compile.
+      A mutation that does not build is not a test of anything, and counting one
+      would inflate this list with work nobody did.
+
+      Two survived and each said something different. Ignoring the JSON parse
+      error on a claim survived because the schema check catches every case it
+      would: Go rejects malformed JSON before it fills any field, verified
+      rather than assumed. That is a redundant condition, not a weak test, and
+      the condition stays for the better message it gives.
+
+      Completing on one proof survived because it was aimed at the wrong test —
+      `prove` returning early still leaves `Run` refusing on the count, so the
+      abort test passes either way. Aimed at the completion test, it dies. The
+      fault was mine, not the suite's.
+
+      Removing the deadline was killed only by the test runner's ten-minute
+      timeout, which is a pass for the wrong reason: it reports that the test
+      took too long where the truth is that nothing bounds the attempt. The
+      prover now refuses past a bound and the deadline test asserts that it
+      stopped because the deadline passed and not because the prover gave up.
+      The same mutation now dies in two seconds, on an assertion.
+
+      That hang was a real defect and not only a testing one. The proving loop
+      consulted the context only inside the branch that waits between proofs, so
+      a policy with no wait could not be interrupted at all — and the operator
+      holds this transaction in the foreground, where interrupting the terminal
+      is how they take it back. The wait is now required to be positive and the
+      context is consulted every pass. The first fix kept an explicit check
+      beside the wait as well; a mutation removing it survived, because with a
+      positive wait it can never fire. It was dead code and was removed rather
+      than left to look like care.
+- [x] 6.2 `make check` green.
+
+      2026-09-14, on the branch carrying the work rather than on `main`, so what
+      was measured is what would be installed.
 - [ ] 6.3 Run the real transaction and record what the tunnel did.
 
 ## 7. Close

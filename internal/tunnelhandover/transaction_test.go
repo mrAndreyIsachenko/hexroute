@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -65,15 +66,28 @@ func (tunnel *recordingTunnel) Start(context.Context) (int, error) {
 func (tunnel *recordingTunnel) Stop(int) error { tunnel.stopped++; return nil }
 
 // answers hands back a fixed sequence of proofs, then repeats the last.
+//
+// It refuses after a bound, so a proving loop that never ends returns instead of
+// hanging. Without that, a transaction with no deadline is caught only by the
+// test runner's timeout, which reports "the test took too long" where the truth
+// is "nothing bounds the attempt" — and takes ten minutes to say it.
 type answers struct {
 	sequence []bool
 	asked    int
 	err      error
+	limit    int
 }
 
 func (prover *answers) Traversed(context.Context) (bool, error) {
 	if prover.err != nil {
 		return false, prover.err
+	}
+	limit := prover.limit
+	if limit == 0 {
+		limit = 500
+	}
+	if prover.asked >= limit {
+		return false, errors.New("the prover was asked past any deadline")
 	}
 	index := prover.asked
 	prover.asked++
@@ -137,6 +151,7 @@ func transaction(t *testing.T, claim *recordingClaim, tunnel *recordingTunnel, p
 		Incumbent: &holder{},
 		Policy: Policy{
 			Proofs: 2, Deadline: 120 * time.Second, Possession: 30 * time.Second,
+			Between: time.Millisecond,
 		},
 		Now: func() time.Time {
 			moment = moment.Add(time.Second)
@@ -216,6 +231,13 @@ func TestTheDeadlineReturnsTheTunnel(t *testing.T) {
 	}
 	if outcome.Reason == "" {
 		t.Fatal("an abort with no reason")
+	}
+	// It stopped because the deadline passed, not because the prover gave up.
+	// Those are the same outcome and different systems, and a transaction that
+	// bounds nothing looks exactly like one that bounds correctly until the
+	// difference is asserted.
+	if strings.Contains(outcome.Reason, "past any deadline") {
+		t.Fatalf("nothing bounded the attempt; it ran until the prover refused: %q", outcome.Reason)
 	}
 }
 

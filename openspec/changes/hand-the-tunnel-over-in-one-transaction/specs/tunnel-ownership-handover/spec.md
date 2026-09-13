@@ -75,6 +75,11 @@ the case where a second process is most likely.
 - **WHEN** the reading that would say whether a tunnel process is running fails
 - **THEN** the transaction aborts without starting a tunnel, and the refusal names the reading
 
+#### Scenario: The operator interrupts the transaction
+
+- **WHEN** the terminal holding the transaction is interrupted while it waits for proofs
+- **THEN** the attempt ends at once rather than running to its deadline
+
 #### Scenario: A rehearsal takes nothing
 
 - **WHEN** the transaction is rehearsed while a tunnel process is running
