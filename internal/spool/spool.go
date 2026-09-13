@@ -293,6 +293,49 @@ func (spool *Spool) EntriesBySequenceRanges(
 	return entries, complete, nil
 }
 
+// Sequences says which records the spool holds, opening none of them.
+//
+// It answers from the listing the spool already keeps, so a caller that wants
+// the newest few records can find them without asking for all of them. Without
+// it the only way to reach a record was to decode every record, which is how a
+// daemon came to spend 152 seconds of every start finding four.
+func (spool *Spool) Sequences() ([]uint64, error) {
+	spool.mu.Lock()
+	defer spool.mu.Unlock()
+	records, err := spool.index()
+	if err != nil {
+		return nil, err
+	}
+	sequences := make([]uint64, 0, len(records))
+	for _, record := range records {
+		sequences = append(sequences, record.Sequence)
+	}
+	return sequences, nil
+}
+
+// Entry hands back one record, proved the way any returned record is proved.
+//
+// A sequence the spool does not hold is an ordinary answer rather than an
+// error. Records leave by eviction and by acknowledgement, so a caller holding
+// a listing from a moment ago is asking a reasonable question about a record
+// that has since gone.
+func (spool *Spool) Entry(sequence uint64) (Entry, bool, error) {
+	spool.mu.Lock()
+	defer spool.mu.Unlock()
+	spool.opens++
+	entry, err := readEntry(spool.stablePath(sequence))
+	if errors.Is(err, os.ErrNotExist) {
+		return Entry{}, false, nil
+	}
+	if err != nil {
+		return Entry{}, false, err
+	}
+	if entry.Sequence != sequence {
+		return Entry{}, false, ErrCorruptSpool
+	}
+	return entry, true, nil
+}
+
 func (spool *Spool) Size() (int64, error) {
 	spool.mu.Lock()
 	defer spool.mu.Unlock()

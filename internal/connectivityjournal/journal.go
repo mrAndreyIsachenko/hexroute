@@ -321,15 +321,9 @@ func (journal *Journal) Records() ([]Record, error) {
 // broken one means the journal cannot prove what happened, which is a reason
 // to publish uncertainty rather than to fold what remains.
 func (journal *Journal) RecordsAfter(watermark uint64) ([]Record, bool, error) {
-	records, err := journal.Records()
+	out, err := journal.tailAfter(watermark)
 	if err != nil {
 		return nil, false, err
-	}
-	out := make([]Record, 0, len(records))
-	for _, record := range records {
-		if record.FoldPosition > watermark {
-			out = append(out, record)
-		}
 	}
 	expected := watermark + 1
 	for _, record := range out {
@@ -339,6 +333,115 @@ func (journal *Journal) RecordsAfter(watermark uint64) ([]Record, bool, error) {
 		expected++
 	}
 	return out, true, nil
+}
+
+// tailAfter reads from the newest record backwards and stops at the first one
+// that is not after the watermark.
+//
+// A journal appends when a fact is folded and its spool numbers records in the
+// order they were appended, so fold positions rise with sequences and the
+// records after a watermark are the end of the list. Reading everything and
+// keeping the end cost a daemon 152 seconds of every start: it decoded 136,397
+// records to find four.
+//
+// Nothing here asserts that ordering. RecordsAfter reports whether the range it
+// returns is continuous from the watermark and its caller refuses a broken one,
+// so a journal whose order does not hold is already caught — by a guard that
+// would have to stay true anyway.
+func (journal *Journal) tailAfter(watermark uint64) ([]Record, error) {
+	sequences, err := journal.spool.Sequences()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Record, 0)
+	for position := len(sequences) - 1; position >= 0; position-- {
+		entry, held, err := journal.spool.Entry(sequences[position])
+		if err != nil {
+			return nil, err
+		}
+		if !held {
+			// Eviction took it between the listing and the read. It is older
+			// than everything still here, so it is not in the tail either.
+			continue
+		}
+		record, ours, err := journal.record(entry)
+		if err != nil {
+			return nil, err
+		}
+		if !ours {
+			// The spool is shared with other event classes, and one of theirs
+			// at the end of the list says nothing about where the facts are.
+			continue
+		}
+		if record.FoldPosition <= watermark {
+			break
+		}
+		out = append(out, record)
+	}
+	for left, right := 0, len(out)-1; left < right; left, right = left+1, right-1 {
+		out[left], out[right] = out[right], out[left]
+	}
+	return out, nil
+}
+
+// record turns one stored entry into a journal record, and says whether it was
+// one of this journal's facts at all.
+//
+// A record that cannot be decoded is an error rather than a skip, here as in
+// Records: silently dropping one would turn a corrupt journal into a shorter
+// healthy-looking one.
+func (journal *Journal) record(entry spool.Entry) (Record, bool, error) {
+	decoded, err := event.Decode(entry.Event)
+	if err != nil {
+		return Record{}, false, fmt.Errorf("%w: %v", ErrCorruptRecord, err)
+	}
+	payload, ok := decoded.Payload.(*event.ConnectivityFact)
+	if !ok {
+		return Record{}, false, nil
+	}
+	fact, err := event.DecodeConnectivityFact(*payload)
+	if err != nil {
+		return Record{}, false, fmt.Errorf("%w: %v", ErrCorruptRecord, err)
+	}
+	return Record{
+		HostSequence: payload.HostSequence,
+		FoldPosition: payload.FoldPosition,
+		Outcome:      payload.Outcome,
+		Role:         safety.SourceRole(payload.Role),
+		Digest:       payload.Digest,
+		Fact:         fact,
+	}, true, nil
+}
+
+// Newest is the last fact this journal holds, and nothing before it.
+//
+// A broken lineage rebuilds its watermark from the largest host sequence and
+// fold position a journal ever handed out. Both belong to the newest fact, so
+// taking two maxima over every record was reading a whole journal for a number
+// that sits at the end of it — and it runs exactly when a host has lost its
+// read model and wants to be observing again.
+func (journal *Journal) Newest() (Record, bool, error) {
+	sequences, err := journal.spool.Sequences()
+	if err != nil {
+		return Record{}, false, err
+	}
+	for position := len(sequences) - 1; position >= 0; position-- {
+		entry, held, err := journal.spool.Entry(sequences[position])
+		if err != nil {
+			return Record{}, false, err
+		}
+		if !held {
+			continue
+		}
+		record, ours, err := journal.record(entry)
+		if err != nil {
+			return Record{}, false, err
+		}
+		if ours {
+			return record, true, nil
+		}
+	}
+	return Record{}, false, nil
 }
 
 // LatestBaselines returns the newest retained complete restatement for every

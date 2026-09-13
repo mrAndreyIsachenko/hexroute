@@ -77,7 +77,23 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`read-the-tail-not-the-journal` is open. The root daemon runs about two and a
+half minutes after launchd starts it before it reports starting, and observes
+nothing in that window. It was measured three times — 169.9, 165.9 and 152.1
+seconds — recorded twice as standing, and never diagnosed.
+
+Diagnosed by sampling the process through the window: every sample is JSON
+decoding and canonicalisation. Startup replays the facts accepted after the
+checkpoint's watermark, and finds them by decoding every record both journals
+retain and keeping the ones above it.
+
+Measured the same hour: the checkpoint the pointer names was written a minute
+earlier at fold position 144,670, and the newest records stand at 144,670 and
+144,674. The daemon decodes 136,397 records to find four.
+
+A first reading of this said the checkpoint was fifty-six thousand positions
+behind. That was wrong and is recorded rather than quietly dropped: the
+instrument had read a checkpoint the pointer does not name.
 
 `tell-a-sleeping-machine-from-a-slow-observer` closed on 2026-09-13. It was the
 third defect the tunnel decision's soak found and the only one that fired on a

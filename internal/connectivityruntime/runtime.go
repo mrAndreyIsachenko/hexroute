@@ -245,17 +245,22 @@ func highestIssued(
 ) (uint64, uint64, error) {
 	highest, folded := uint64(0), uint64(0)
 	for _, journal := range journals {
-		records, err := journal.Records()
+		// Both maxima belong to the newest fact, because a journal appends in
+		// fold order. Taking them over every record read a whole journal for a
+		// number that sits at the end of it, and this runs exactly when a host
+		// has lost its read model and wants to be observing again.
+		record, held, err := journal.Newest()
 		if err != nil {
 			return 0, 0, err
 		}
-		for _, record := range records {
-			if record.HostSequence > highest {
-				highest = record.HostSequence
-			}
-			if record.FoldPosition > folded {
-				folded = record.FoldPosition
-			}
+		if !held {
+			continue
+		}
+		if record.HostSequence > highest {
+			highest = record.HostSequence
+		}
+		if record.FoldPosition > folded {
+			folded = record.FoldPosition
 		}
 	}
 	return highest, folded, nil
