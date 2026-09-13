@@ -263,6 +263,19 @@ type TunnelDecision struct {
 	// is right, and reading one such record took a second store laid beside it
 	// and matched on time.
 	Grounds *TunnelGrounds `json:"grounds,omitempty"`
+	// Authorization is whether this runtime would have been permitted to do
+	// what it decided. Deciding and being allowed are different questions, and
+	// a record answering only the first cannot show the second was ever asked.
+	//
+	// Absent on cycles that decided to do nothing: there was nothing to be
+	// permitted.
+	Authorization *TunnelAuthorization `json:"authorization,omitempty"`
+}
+
+// TunnelAuthorization is the policy handler's answer, in its own vocabulary.
+type TunnelAuthorization struct {
+	Allowed bool   `json:"allowed"`
+	Reason  string `json:"reason"`
 }
 
 // TunnelGrounds is the observation behind each cause that can hold.
@@ -891,7 +904,33 @@ func validTunnelDecision(value TunnelDecision) bool {
 	if value.Action == "none" && len(value.Causes) > 0 {
 		return false
 	}
+	if !validTunnelAuthorization(value.Authorization) {
+		return false
+	}
+	if value.Action == "none" && value.Authorization != nil {
+		return false
+	}
 	return validTunnelGrounds(value.Grounds)
+}
+
+// validTunnelAuthorization keeps the handler's vocabulary closed here too.
+//
+// The reasons are the policy model's own, and copying them into a free string
+// would let this record say something the handler cannot.
+func validTunnelAuthorization(authorization *TunnelAuthorization) bool {
+	if authorization == nil {
+		return true
+	}
+	switch authorization.Reason {
+	case "authorized", "invalid_request", "inactive_policy",
+		"authorization_suspended", "domain_mismatch", "generation_mismatch",
+		"selector_mismatch", "authorization_lease_inactive", "explicitly_denied":
+	default:
+		return false
+	}
+	// Allowed and its reason are one statement. A refusal that says authorized,
+	// or an authorization that names a refusal, is a record nobody can read.
+	return authorization.Allowed == (authorization.Reason == "authorized")
 }
 
 // validTunnelGrounds refuses grounds that cannot be read.

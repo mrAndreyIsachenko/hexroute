@@ -434,6 +434,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		reader,
 		rescuer,
 		observations,
+		tunnelAuthorityOf(policyHandler),
 	); err != nil {
 		return 1
 	}
@@ -508,6 +509,10 @@ func observeLoop(
 	reader *connectivityhost.Reader,
 	rescuer *pritunlRescuer,
 	observations *rootObservations,
+	// authority answers whether owning the tunnel would be permitted. It is
+	// nil when this runtime has no policy control at all, which is the same
+	// state in which nothing could be permitted anyway.
+	authority tunnelAuthorizer,
 ) error {
 	// The gate keeps the log a record of what happened rather than of how
 	// often it was checked. Liveness lives in the heartbeat file.
@@ -550,6 +555,7 @@ func observeLoop(
 		// tunnel is the whole reason for deciding without acting.
 		if err := recordTunnelDecision(
 			reader, summary.Tunnel, uint16(len(summary.Plan.Operations)),
+			authority,
 		); err != nil {
 			if emitErr := logger.Emit(
 				logging.LevelWarn,
@@ -751,12 +757,29 @@ func recordTunnelDecision(
 	reader *connectivityhost.Reader,
 	plan tunnelplan.Plan,
 	routesPlanned uint16,
+	authority tunnelAuthorizer,
 ) error {
 	if reader == nil || !decided(plan) {
 		return nil
 	}
-	return reader.RecordTunnelDecision(tunnelDecisionRecord(plan, routesPlanned))
+	return reader.RecordTunnelDecision(
+		tunnelDecisionRecord(plan, routesPlanned, authority))
 }
+
+// tunnelAuthorizer is the one question this runtime asks of policy about the
+// tunnel. It is an interface so the daemon's tests can ask it without a policy
+// store, and narrow so that nothing else arrives through it.
+type tunnelAuthorizer interface {
+	AuthorizeTunnelOwnership(
+		target string,
+		controlStateGeneration uint64,
+		planSHA256 string,
+	) policy.ActionAuthorizationDecision
+}
+
+// tunnelAuthorityTarget is what the grant would be about. The safety envelope
+// already allows this target to the root domain.
+const tunnelAuthorityTarget = "tunnel"
 
 // tunnelDecisionRecord is the projection of a decision into what is stored.
 //
@@ -766,6 +789,7 @@ func recordTunnelDecision(
 func tunnelDecisionRecord(
 	plan tunnelplan.Plan,
 	routesPlanned uint16,
+	authority tunnelAuthorizer,
 ) event.TunnelDecision {
 	causes := make([]string, 0, len(plan.Causes))
 	for _, cause := range plan.Causes {
@@ -790,11 +814,27 @@ func tunnelDecisionRecord(
 		planned := routesPlanned
 		recorded.RoutesPlanned = &planned
 	}
-	return event.TunnelDecision{
+	record := event.TunnelDecision{
 		Action:  string(plan.Action),
 		Causes:  causes,
 		Grounds: &recorded,
 	}
+	// Asked on the cycles that decided to act, and on no others: a cycle that
+	// decided to do nothing has nothing to be permitted.
+	//
+	// Under the generation active while this was written the answer is a
+	// refusal, and recording it is what proves the question is asked at all.
+	// When a generation carrying the capability is installed these records turn
+	// without a line of code changing, and if they do not, that is learned while
+	// this runtime still owns nothing.
+	if authority != nil && plan.Action != tunnelplan.ActionNone {
+		answer := authority.AuthorizeTunnelOwnership(tunnelAuthorityTarget, 0, "")
+		record.Authorization = &event.TunnelAuthorization{
+			Allowed: answer.Allowed,
+			Reason:  string(answer.Reason),
+		}
+	}
+	return record
 }
 
 // decided says whether a cycle reached a decision at all.
@@ -824,4 +864,17 @@ func remainingPeriod(began, now, interval time.Duration) time.Duration {
 		return remaining
 	}
 	return 0
+}
+
+// tunnelAuthorityOf hands the loop an authorizer, or nothing at all.
+//
+// A typed nil pointer inside an interface is not nil, and a runtime without
+// policy control would then be asked a question its handler answers by saying
+// the request is invalid — which reads in the record as a refusal by policy
+// rather than as an absence of it.
+func tunnelAuthorityOf(handler *policycontrol.Handler) tunnelAuthorizer {
+	if handler == nil {
+		return nil
+	}
+	return handler
 }

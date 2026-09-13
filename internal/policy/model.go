@@ -49,11 +49,25 @@ const (
 	// and a generation that granted the restart without the reconnect would
 	// authorize root to act on a request nobody was allowed to make.
 	CapabilityPritunlRecovery Capability = "pritunl_recovery"
+	// CapabilityTunnelOwnership authorizes owning the tunnel: rebuilding it and
+	// reapplying its routes.
+	//
+	// One capability rather than two for the reason the one above is one rather
+	// than two, arrived at from the other side. Rebuilding and reapplying are
+	// two acts of one ownership, and separate grants could be revoked one at a
+	// time — leaving a runtime permitted to tear the tunnel down and not to put
+	// its routes back, which is worse than either alone.
+	//
+	// Root only. The user domain holds a keychain and a one-time code and has no
+	// business restarting a tunnel; the envelope says so by not allowing it
+	// there, the way every other domain boundary in it is said.
+	CapabilityTunnelOwnership Capability = "tunnel_ownership"
 )
 
 func (capability Capability) Valid() bool {
 	return capability == CapabilityOperatorResume ||
-		capability == CapabilityPritunlRecovery
+		capability == CapabilityPritunlRecovery ||
+		capability == CapabilityTunnelOwnership
 }
 
 type Effect string
