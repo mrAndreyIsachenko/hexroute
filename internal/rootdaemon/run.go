@@ -208,10 +208,32 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// Opened before the operator socket: the dispatcher needs the publisher,
 	// and a root that cannot receive user facts should fail at startup rather
 	// than accept publications it will drop.
-	reader, err := connectivityhost.Open(
+	reader, openTimings, err := connectivityhost.OpenTimed(
 		*readModelRoot, bootIdentity(), *eventArchiveRoot)
 	if err != nil {
 		return rejected(errorLog, logging.ReasonReadModelUnavailable)
+	}
+	// Said before the daemon reports starting, because this is the window in
+	// which it is not yet observing. Nothing outside the process could
+	// attribute it: three attempts from sample trees in one session were wrong,
+	// because a frame's presence there is not its weight.
+	for _, step := range []struct {
+		name logging.Step
+		took time.Duration
+	}{
+		{logging.StepCheckpoints, openTimings.Checkpoints},
+		{logging.StepEventArchive, openTimings.EventArchive},
+		{logging.StepRootJournal, openTimings.RootJournal},
+		{logging.StepUserJournal, openTimings.UserJournal},
+		{logging.StepReplay, openTimings.Replay},
+		{logging.StepStoresTotal, openTimings.Total},
+	} {
+		if err := infoLog.EmitTimed(
+			logging.LevelInfo, logging.EventStoreOpened, logging.ResultOK,
+			step.name, step.took,
+		); err != nil {
+			return 1
+		}
 	}
 	// An archive that would not open costs a later review and nothing else,
 	// so it is said out loud and the daemon carries on. Saying nothing would

@@ -36,7 +36,9 @@ const (
 	EventArgumentRejected EventName = "argument_rejected"
 	EventIPCRejected      EventName = "ipc_request_rejected"
 	EventDaemonStarted    EventName = "daemon_started"
-	EventDaemonStopped    EventName = "daemon_stopped"
+	// EventStoreOpened reports one durable store opened, with how long it took.
+	EventStoreOpened   EventName = "store_opened"
+	EventDaemonStopped EventName = "daemon_stopped"
 	// EventConnectivitySnapshot reports the observe-only read model's
 	// aggregate. It carries no component detail: the operator surface shows
 	// that, and a log line is not a status API.
@@ -224,6 +226,40 @@ type wireEvent struct {
 	Mode              string    `json:"mode"`
 	MutationAuthority string    `json:"mutation_authority"`
 	Reason            Reason    `json:"reason,omitempty"`
+	// Step and DurationMS say how long a named part of this component's own
+	// work took. Both are absent unless something was timed: a step that took
+	// no measurable time and a step that was not timed are different claims,
+	// and a zero would say the first when the second is true.
+	Step       Step  `json:"step,omitempty"`
+	DurationMS int64 `json:"duration_ms,omitempty"`
+}
+
+// Step names a part of a component's own work that may be timed.
+//
+// It is a closed vocabulary for the same reason every other field of this
+// record is: these logs are collected and this repository is public, and a
+// free-text step name is somewhere a path or a hostname arrives by accident.
+// The secret guard cannot tell a step name from a leak.
+type Step string
+
+const (
+	StepReadModel    Step = "read_model"
+	StepEventArchive Step = "event_archive"
+	StepRootJournal  Step = "root_journal"
+	StepUserJournal  Step = "user_journal"
+	StepCheckpoints  Step = "checkpoints"
+	StepReplay       Step = "replay"
+	StepStoresTotal  Step = "stores_total"
+)
+
+func validStep(value Step) bool {
+	switch value {
+	case StepReadModel, StepEventArchive, StepRootJournal, StepUserJournal,
+		StepCheckpoints, StepReplay, StepStoresTotal:
+		return true
+	default:
+		return false
+	}
 }
 
 type Logger struct {
@@ -255,7 +291,47 @@ func New(out io.Writer, component Component) (*Logger, error) {
 	}, nil
 }
 
+// EmitTimed records an event together with how long a named step took.
+//
+// It exists because nothing else in this runtime could report a quantity about
+// itself, so every question about how long the daemon's own start took was
+// answered by sampling it from outside — and three such answers in one session
+// were wrong by factors of two, thirteen and more, because a frame's presence in
+// a sample tree was read as its weight.
+func (l *Logger) EmitTimed(
+	level Level,
+	event EventName,
+	result Result,
+	step Step,
+	took time.Duration,
+) error {
+	if !validStep(step) {
+		return errors.New("event contains a non-allowlisted value")
+	}
+	if took < 0 {
+		return errors.New("a step cannot take less than no time")
+	}
+	milliseconds := took.Milliseconds()
+	if milliseconds == 0 {
+		// Faster than the unit it is reported in. Saying so is a measurement;
+		// omitting the field would say it was never timed.
+		milliseconds = 1
+	}
+	return l.emit(level, event, result, "", step, milliseconds)
+}
+
 func (l *Logger) Emit(level Level, event EventName, result Result, reason Reason) error {
+	return l.emit(level, event, result, reason, "", 0)
+}
+
+func (l *Logger) emit(
+	level Level,
+	event EventName,
+	result Result,
+	reason Reason,
+	step Step,
+	durationMS int64,
+) error {
 	if l == nil || l.out == nil || !validComponent(l.component) {
 		return errors.New("invalid logger")
 	}
@@ -281,6 +357,8 @@ func (l *Logger) Emit(level Level, event EventName, result Result, reason Reason
 		Mode:              componentMode(l.component),
 		MutationAuthority: "none",
 		Reason:            reason,
+		Step:              step,
+		DurationMS:        durationMS,
 	}
 
 	l.mu.Lock()
@@ -309,7 +387,8 @@ func validLevel(value Level) bool {
 func validEvent(value EventName) bool {
 	switch value {
 	case EventCommandStatus, EventStartupCheck, EventVersionRequested, EventArgumentRejected, EventIPCRejected,
-		EventDaemonStarted, EventDaemonStopped, EventConnectivitySnapshot,
+		EventDaemonStarted, EventDaemonStopped, EventStoreOpened,
+		EventConnectivitySnapshot,
 		EventConnectivityPublication,
 		EventReconcilerShadowUnavailable, EventEventArchiveUnavailable,
 		EventSentinelRecoveryMonitoring, EventSentinelRecoveryWouldRestart,
