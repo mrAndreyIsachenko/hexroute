@@ -35,8 +35,33 @@
       nothing. They are driven now, from the path that stores a record rather
       than from a copy of the rule beside it.
 - [x] 5.2 `make check` green.
-- [ ] 5.3 Install, and read a decision back without another store beside it.
+- [x] 5.3 Install, and read a decision back without another store beside it.
+
+      Read 2026-09-13 from the event archive and nothing else — no connectivity
+      observations, no matching on time. Three decisions written by the installed
+      build, each answering on its own:
+
+          reapply_routes  causes: routes_drifted
+            the cycle saw everything: True
+            process running:          True
+            machine slept:            0 ms
+            carrier:                  49147013057d over 16 entries
+            link believed present:    True after 0 consecutive failures
+            payload traversed:        True after 0 consecutive failures
+            route operations planned: 14
+
+      The carrier digest is identical across the three, which is how a reader
+      now sees that it did not change, and sixteen entries is what this runtime
+      is configured to watch. `routes_drifted` is no longer a bare word: it
+      stands on fourteen planned operations.
+
+      The reader used for this was wrong first and is recorded rather than
+      quietly fixed. Run immediately after the install it reported that no
+      record carried grounds and asserted the running daemon predated them —
+      a guess stated as a fact. It compares against the daemon's own
+      `daemon_started` now, and distinguishes a daemon that has not cycled yet
+      from one writing records without grounds.
 
 ## 6. Close
 
-- [ ] 6.1 Sync the delta into the baseline, validate, archive.
+- [x] 6.1 Sync the delta into the baseline, validate, archive.
