@@ -77,32 +77,58 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`walk-the-spool-once-when-opening` is open. Opening the user journal costs 10.2
-seconds and listing its directory costs 360 milliseconds, and the difference is
-that opening walks the directory three times: recovery reads it for pending
-records, recovery lists it again with a stat for every file, and opening lists
-it a third time for one number the second listing already held.
-
-`read-the-tail-not-the-journal` is open. The root daemon runs about two and a
-half minutes after launchd starts it before it reports starting, and observes
-nothing in that window. It was measured three times — 169.9, 165.9 and 152.1
-seconds — recorded twice as standing, and never diagnosed.
-
-Diagnosed by sampling the process through the window: every sample is JSON
-decoding and canonicalisation. Startup replays the facts accepted after the
-checkpoint's watermark, and finds them by decoding every record both journals
-retain and keeping the ones above it.
-
-Measured the same hour: the checkpoint the pointer names was written a minute
-earlier at fold position 144,670, and the newest records stand at 144,670 and
-144,674. The daemon decodes 136,397 records to find four.
-
-A first reading of this said the checkpoint was fifty-six thousand positions
-behind. That was wrong and is recorded rather than quietly dropped: the
-instrument had read a checkpoint the pointer does not name.
+None.
 
 What follows is what the recent ones changed and what they left standing, kept
 because the reasons are worth more than the record of having done them.
+
+`walk-the-spool-once-when-opening` closed on 2026-09-13. Opening the user journal
+cost 10.2 seconds while listing its directory costs 360 milliseconds, because
+opening walked that directory three times: recovery read it for pending records,
+recovery listed it again with a stat for every file, and opening listed it a
+third time for one number the second listing already held. The second listing is
+kept now — it is the first true one, taken after everything a half-finished write
+left behind has been dealt with.
+
+Measured after installing: the user journal 10.230 seconds to 2.679, the stores
+together 20.119 to 7.012. Two neighbours fell with it, the event archive 3.873 to
+2.320 and the replay 3.016 to 0.108, because the kept listing is the one they
+both go on to ask for.
+
+A mutation of the line beside the edit found a check nothing held: removing the
+refusal of a spool holding more than its bound admits left every test passing. It
+is held now.
+
+`read-the-tail-not-the-journal` closed on 2026-09-13. The root daemon ran about
+two and a half minutes before reporting that it started, observing nothing, and
+that window had been measured three times and recorded twice as standing without
+ever being diagnosed.
+
+Startup replayed the facts accepted after the checkpoint's watermark by decoding
+every record both journals retained. Measured the same hour: the checkpoint stood
+four fold positions behind, and the daemon decoded 136,397 records to find four.
+Fold positions rise with the order records were written, so the records after a
+watermark are the end of the list; the walk starts at the newest and stops at the
+first record at or below it, reading one past the tail because a search that
+cannot read its own stopping point has to guess where to stop.
+
+Nothing in the new code asserts that ordering. The range it returns is already
+reported as continuous or not, and a broken one is already refused, so the
+assumption is caught by a guard that has to stay true anyway.
+
+Opening the event archive was the same defect one store over — every record
+decoded for one number the filenames carry — and was corrected in the same change
+rather than deferred, because the symptom was the same window.
+
+The arc of the daemon's own work, measured at each step rather than predicted:
+about 152 seconds, then 33, then 20.1, then 7.0. What remains beside it is about
+eleven seconds of launchd throttle, which is a setting rather than a defect.
+
+Two readings were wrong along the way and are recorded rather than dropped. One
+claimed the checkpoint was fifty-six thousand fold positions behind, having read
+a checkpoint the pointer does not name. The other reported a forty-minute window,
+having paired a start with a stop an hour old — a daemon killed rather than asked
+to stop writes no record at all.
 
 `make-the-daemon-time-its-own-start` closed on 2026-09-13. The root daemon could
 not say how long its own start took, so every answer came from sampling it from

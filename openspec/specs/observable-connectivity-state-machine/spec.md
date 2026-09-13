@@ -190,7 +190,23 @@ identity and parent digest, prior input snapshot digest, consumed host sequence
 range and source watermarks, exact policy generations and manifest digest,
 reducer identity/version, and canonical snapshot, diff and proposal output
 digests. A bounded append-only index SHALL preserve retained checkpoint lineage.
-Startup SHALL validate the lineage and replay later accepted facts. Retention
+Startup SHALL validate the lineage and replay later accepted facts.
+
+Replay SHALL read the records it folds and no others. A journal's fold
+positions rise with the order its records were written, so the facts after a
+watermark are a suffix of it: they SHALL be found by reading from the newest
+record backwards and stopping at the first one at or below the watermark. The
+watermark a broken lineage rebuilds from SHALL likewise come from the newest
+record of each journal rather than from all of them.
+
+Startup cost SHALL NOT grow with what a journal retains. Measured on 2026-09-13:
+the daemon ran 152 seconds before it reported starting and observed nothing in
+that window, because finding the facts after a watermark meant decoding every
+record both journals held — 136,397 of them, to find four.
+
+The suffix SHALL remain guarded rather than assumed. A replay range that is not
+continuous from the watermark is already refused, and that refusal is what
+catches a journal whose order does not hold. Retention
 SHALL preserve the latest complete baseline for every configured component
 before evicting diagnostics, and overflow SHALL remain observable.
 
@@ -205,6 +221,17 @@ move the atomic-policy active pointer backward or authorize an older policy.
 
 - **WHEN** startup loads a valid checkpoint and accepted facts after its watermarks
 - **THEN** replay reconstructs the same canonical current snapshot and diff
+
+#### Scenario: A restart follows a nearly current checkpoint
+
+- **WHEN** startup replays from a checkpoint a handful of facts behind a journal holding tens of thousands
+- **THEN** it opens only the records it folds and the one that ends the search
+- **AND** the time it takes does not grow with how many records the journal retains
+
+#### Scenario: A journal's order does not hold
+
+- **WHEN** the records found after a watermark are not continuous from it
+- **THEN** startup publishes uncertainty rather than folding them
 
 #### Scenario: Latest checkpoint is corrupt and a valid ancestor is retained
 
