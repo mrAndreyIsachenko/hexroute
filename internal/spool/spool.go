@@ -129,7 +129,10 @@ func Open(path string, owner Owner, options Options) (*Spool, error) {
 	if err := spool.recover(); err != nil {
 		return nil, err
 	}
-	records, err := spool.scanIndex()
+	// What recovery learned, not a second stat for every file stored. Opening
+	// the user journal cost 10.2 seconds on this machine against a directory
+	// that lists in 360 milliseconds, and half of the walking was this.
+	records, err := spool.index()
 	if err != nil {
 		return nil, err
 	}
@@ -461,7 +464,11 @@ func (spool *Spool) recover() error {
 		}
 	}
 
-	records, err := spool.scanIndex()
+	// Kept rather than taken and dropped. This listing is the first true one:
+	// everything a half-finished write left behind has been dealt with by the
+	// lines above, so the directory now means what it says, and opening asks
+	// the same question immediately afterwards.
+	records, err := spool.index()
 	if err != nil {
 		return err
 	}
