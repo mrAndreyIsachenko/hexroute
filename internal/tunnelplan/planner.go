@@ -114,8 +114,14 @@ type Observed struct {
 	// trouble and the rebuild would be decided for the wrong reason.
 	Complete       bool
 	ProcessRunning bool
-	// SincePrevious is the interval between this cycle and the one before it.
-	SincePrevious time.Duration
+	// Slept is how long the machine was asleep between this cycle and the one
+	// before it, measured rather than inferred from how long the runtime took.
+	//
+	// It was the interval between cycles, and that made a slow runtime
+	// indistinguishable from a sleeping machine. Measured on 2026-09-12: a fold
+	// costing 32.4 seconds turned a sixty-one second period into a ninety-three
+	// second gap and named a wake on a machine that had been awake throughout.
+	Slept         time.Duration
 	Carrier       Signature
 	LinkPresent   bool
 	PayloadOK     bool
@@ -161,7 +167,7 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 		policy.LinkFailures == 0 {
 		return Plan{}, State{}, ErrInvalidPolicy
 	}
-	if observed.SincePrevious < 0 {
+	if observed.Slept < 0 {
 		return Plan{}, State{}, ErrInvalidInput
 	}
 
@@ -203,9 +209,8 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 	if !observed.ProcessRunning {
 		causes = append(causes, CauseProcessGone)
 	}
-	// The interval is measured against the previous cycle, so a first cycle
-	// has nothing to measure and SincePrevious is zero for it.
-	if observed.SincePrevious > policy.WakeThreshold {
+	// A first cycle has nothing to measure against and reports no sleep.
+	if observed.Slept > policy.WakeThreshold {
 		causes = append(causes, CauseWakeGap)
 	}
 	// Both of these compare against a previous cycle. Without one there is

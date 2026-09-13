@@ -392,6 +392,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		config.Interval,
 		*once,
 		nowTick,
+		func() time.Duration { return time.Since(started) },
 		cycle,
 		publisher,
 		controller,
@@ -462,6 +463,10 @@ func observeLoop(
 	interval time.Duration,
 	once bool,
 	nowTick func() control.Tick,
+	// elapsed advances only while the machine is running, and is what the
+	// period is measured on: a loop scheduled on the wall clock would try to
+	// make up the periods a sleeping machine went through.
+	elapsed func() time.Duration,
 	cycler Cycler,
 	publisher HeartbeatPublisher,
 	controller *operator.Controller,
@@ -478,6 +483,7 @@ func observeLoop(
 	if ctx == nil ||
 		interval <= 0 ||
 		nowTick == nil ||
+		elapsed == nil ||
 		cycler == nil ||
 		publisher == nil ||
 		controller == nil ||
@@ -489,6 +495,7 @@ func observeLoop(
 	}
 	operatorSnapshot := control.NewSnapshot(control.StateSuspended)
 	for {
+		began := elapsed()
 		summary := cycler.Observe(ctx)
 		if err := emitSummary(logger, gate, summary); err != nil {
 			return err
@@ -533,7 +540,7 @@ func observeLoop(
 			return logger.Emit(logging.LevelInfo, logging.EventDaemonStopped, logging.ResultOK, "")
 		}
 
-		timer := time.NewTimer(interval)
+		timer := time.NewTimer(remainingPeriod(began, elapsed(), interval))
 	wait:
 		for {
 			select {
@@ -731,4 +738,23 @@ func recordTunnelDecision(
 // asked.
 func decided(plan tunnelplan.Plan) bool {
 	return plan.Action != ""
+}
+
+// remainingPeriod says how long to wait so that observations fall one period
+// apart, measured from when each began rather than from when its work finished.
+//
+// Waiting a whole period after the work adds that work to the interval between
+// observations, and that interval is the quantity the tunnel decision compares
+// against a wake threshold. On 2026-09-12 a fold costing 32.4 seconds turned a
+// sixty-one second period into a ninety-three second gap, which crossed a ninety
+// second threshold on a machine that had not slept.
+//
+// A cycle that has already spent its period waits not at all. It does not make
+// up the periods it missed either: every cycle observes the present, so there is
+// nothing to catch up on.
+func remainingPeriod(began, now, interval time.Duration) time.Duration {
+	if remaining := interval - (now - began); remaining > 0 {
+		return remaining
+	}
+	return 0
 }

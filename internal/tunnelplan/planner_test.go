@@ -21,7 +21,7 @@ func steady() (State, Observed) {
 		Observed{
 			Complete:       true,
 			ProcessRunning: true,
-			SincePrevious:  10 * time.Second,
+			Slept:          0,
 			Carrier:        carrier,
 			LinkPresent:    true,
 			PayloadOK:      true,
@@ -56,7 +56,7 @@ func TestEachCauseIsReached(t *testing.T) {
 		},
 		{
 			name:   "a wake gap",
-			change: func(_ *State, o *Observed) { o.SincePrevious = 20 * time.Minute },
+			change: func(_ *State, o *Observed) { o.Slept = 20 * time.Minute },
 			cause:  CauseWakeGap,
 			action: ActionRebuildTunnel,
 		},
@@ -144,7 +144,7 @@ func TestOnePayloadFailureIsNotACause(t *testing.T) {
 func TestEveryCauseThatHeldIsNamed(t *testing.T) {
 	previous, observed := steady()
 	observed.ProcessRunning = false
-	observed.SincePrevious = 20 * time.Minute
+	observed.Slept = 20 * time.Minute
 	observed.RoutesDrifted = true
 	plan, _, err := Decide(policy(), previous, observed)
 	if err != nil {
