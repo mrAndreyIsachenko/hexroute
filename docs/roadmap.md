@@ -77,6 +77,21 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
+`ask-whether-a-tunnel-owner-would-be-allowed` is open, and it is the third of the
+four changes the grill of item 8 settled — the first that touches authority at
+all. No capability in the policy model covers owning a tunnel; the two that exist
+are `operator_resume` and `pritunl_recovery`.
+
+It adds one, root-only, covering rebuilding the tunnel and reapplying its routes
+as a single grant, and has the runtime ask on every cycle that decides to act
+whether it would be authorized. Nothing is performed and no executor is added.
+Under the generation now active the answer is a refusal, which is what proves the
+question is asked and reaches the handler.
+
+Compiling and signing a generation that grants it is not in this change. That is
+a ceremony with an operator's password, and bundling it with the code that
+introduces the capability would make one act of two.
+
 `let-a-decision-carry-its-grounds` is open. A recorded tunnel decision says what
 was decided and which causes held, and nothing about what they were decided
 from, so a cause reads as convincingly when it is wrong as when it is right.

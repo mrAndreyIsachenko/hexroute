@@ -62,9 +62,16 @@ func DefaultSafetyEnvelope() SafetyEnvelope {
 			ProtectedSchemaRange,
 		},
 		Root: DomainEnvelope{
-			Domain:               DomainRoot,
-			NamespacePrefix:      "root.",
-			AllowedCapabilities:  []Capability{CapabilityOperatorResume, CapabilityPritunlRecovery},
+			Domain:          DomainRoot,
+			NamespacePrefix: "root.",
+			AllowedCapabilities: []Capability{
+				CapabilityOperatorResume,
+				CapabilityPritunlRecovery,
+				// Root only, and deliberately absent from the user domain
+				// below: a keychain and a one-time code are not a reason to
+				// restart a tunnel.
+				CapabilityTunnelOwnership,
+			},
 			AllowedSelectorKinds: []SelectorKind{SelectorAction},
 			// pritunl is here because root restarts that one service, and
 			// naming it is more honest than folding it into "runtime": a

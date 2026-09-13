@@ -584,6 +584,42 @@ func (handler *Handler) AuthorizePritunlRecovery(
 	}, now)
 }
 
+// AuthorizeTunnelOwnership answers whether owning the tunnel would be permitted,
+// and performs nothing.
+//
+// It exists to be asked before anything can act. A grant first read at the
+// moment another runtime is booted out is read where being wrong costs the
+// network, which is the argument that put the decision rule through a soak
+// before it was allowed to act; the grant deserves the same.
+func (handler *Handler) AuthorizeTunnelOwnership(
+	target string,
+	controlStateGeneration uint64,
+	planSHA256 string,
+) policy.ActionAuthorizationDecision {
+	if handler == nil {
+		return policy.ActionAuthorizationDecision{Reason: policy.ActionInvalidRequest}
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	if !handler.mutationAllowedLocked() {
+		return policy.ActionAuthorizationDecision{Reason: policy.ActionInactivePolicy}
+	}
+	now, err := handler.checkedNowLocked()
+	if err != nil {
+		return policy.ActionAuthorizationDecision{Reason: policy.ActionAuthorizationSuspended}
+	}
+	return handler.evaluateActionLocked(policy.ActionAuthorizationRequest{
+		// Root only: the envelope refuses the capability to the user domain, and
+		// naming the domain here rather than taking it from a caller keeps the
+		// two from disagreeing.
+		Domain: policy.DomainRoot, Capability: policy.CapabilityTunnelOwnership,
+		BundleGeneration:       handler.status.BundleGeneration,
+		DomainPolicyGeneration: handler.status.PolicyGeneration,
+		ControlStateGeneration: controlStateGeneration,
+		Target:                 target, PlanSHA256: planSHA256,
+	}, now)
+}
+
 func (handler *Handler) EvaluateOperatorResume(
 	domain policy.Domain,
 	target string,

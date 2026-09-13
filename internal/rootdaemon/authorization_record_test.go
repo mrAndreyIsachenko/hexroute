@@ -1,0 +1,106 @@
+package rootdaemon
+
+import (
+	"testing"
+
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
+
+	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelplan"
+)
+
+type answeringAuthority struct {
+	decision policy.ActionAuthorizationDecision
+	asked    int
+	target   string
+}
+
+func (authority *answeringAuthority) AuthorizeTunnelOwnership(
+	target string,
+	_ uint64,
+	_ string,
+) policy.ActionAuthorizationDecision {
+	authority.asked++
+	authority.target = target
+	return authority.decision
+}
+
+// A decision that would act says whether it would have been allowed.
+//
+// Deciding and being permitted are different questions, and a record answering
+// only the first cannot show the second was ever asked. Under the generation
+// active while this was written the answer is a refusal — and recording the
+// refusal is what proves the question reaches the policy handler.
+func TestARecordSaysWhetherTheDecisionWouldBeAllowed(t *testing.T) {
+	authority := &answeringAuthority{decision: policy.ActionAuthorizationDecision{
+		Reason: policy.ActionSelectorMismatch,
+	}}
+	record, asked := recordFor(t, tunnelplan.ActionRebuildTunnel, authority)
+	if asked != 1 {
+		t.Fatalf("a decision to act asked policy %d times, want once", asked)
+	}
+	if authority.target != tunnelAuthorityTarget {
+		t.Fatalf("policy was asked about %q, want %q",
+			authority.target, tunnelAuthorityTarget)
+	}
+	if record.Authorization == nil {
+		t.Fatal("a decision to act was recorded without saying whether it was allowed")
+	}
+	if record.Authorization.Allowed {
+		t.Fatal("a refusal was recorded as an authorization")
+	}
+	if record.Authorization.Reason != string(policy.ActionSelectorMismatch) {
+		t.Fatalf("reason = %q, want the handler's own",
+			record.Authorization.Reason)
+	}
+}
+
+// A cycle that decided to do nothing asks nothing: there is nothing to permit.
+func TestADecisionToDoNothingAsksNoPermission(t *testing.T) {
+	authority := &answeringAuthority{decision: policy.ActionAuthorizationDecision{
+		Allowed: true, Reason: policy.ActionAuthorized,
+	}}
+	record, asked := recordFor(t, tunnelplan.ActionNone, authority)
+	if asked != 0 {
+		t.Fatalf("a decision to do nothing asked policy %d times", asked)
+	}
+	if record.Authorization != nil {
+		t.Fatal("a decision to do nothing recorded an authorization")
+	}
+}
+
+// A runtime with no policy control records no answer rather than a refusal.
+//
+// A typed nil inside an interface is not nil, and asking through one would get
+// "invalid request" back — which reads in the record as policy refusing rather
+// than as policy being absent.
+func TestNoPolicyControlRecordsNoAnswer(t *testing.T) {
+	record := tunnelDecisionRecord(planFor(tunnelplan.ActionRebuildTunnel), 1, nil)
+	if record.Authorization != nil {
+		t.Fatal("a record carried an authorization nobody answered")
+	}
+	if tunnelAuthorityOf(nil) != nil {
+		t.Fatal("a missing handler became an authorizer that answers")
+	}
+}
+
+func planFor(action tunnelplan.Action) tunnelplan.Plan {
+	causes := []tunnelplan.Cause{tunnelplan.CauseProcessGone}
+	if action == tunnelplan.ActionNone {
+		causes = nil
+	}
+	return tunnelplan.Plan{
+		Action: action, Causes: causes,
+		Grounds: tunnelplan.Grounds{Complete: true, ProcessRunning: false},
+	}
+}
+
+// recordFor builds the record the daemon would store, by the same call.
+func recordFor(
+	t *testing.T,
+	action tunnelplan.Action,
+	authority *answeringAuthority,
+) (event.TunnelDecision, int) {
+	t.Helper()
+	return tunnelDecisionRecord(planFor(action), 1, authority), authority.asked
+}
