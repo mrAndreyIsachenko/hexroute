@@ -66,9 +66,26 @@
 
 ## 2. The claim
 
-- [ ] 2.1 Write the claim: its shape, where it lives, who may write it.
-- [ ] 2.2 Have the supervisor read it every tick and before every start, and not start the process while it is held.
-- [ ] 2.3 Test that a supervisor restarted while the claim is held does not take the process back.
+- [x] 2.1 Write the claim: its shape, where it lives, who may write it.
+- [x] 2.2 Have the supervisor read it every tick and before every start, and not start the process while it is held.
+
+      Four acts consult it, and they are the ones that rebuild the tunnel:
+      starting sing-box, the process going missing, the carrier changing, and
+      the payload path failing. The restart on a restored outer path consults it
+      too, though it is switched off on this machine.
+
+      An earlier draft skipped the whole tick while the claim was held, which
+      would have dropped the six behaviours the supervisor keeps — the ingress
+      selection among them, at 91 changes in 61 days. Found by reading it back
+      before running it.
+- [x] 2.3 Test that a supervisor restarted while the claim is held does not take the process back.
+
+      The test exercises the supervisor's own function rather than a copy, and
+      it caught two faults in itself before it caught anything in the change: it
+      scanned a function body to an indented closing brace, where one of these
+      closes at column zero, and it looked for a behaviour by name where the
+      name also appears in its own declaration. Both let a mutation through
+      unnoticed.
 
 ## 3. The transaction
 
