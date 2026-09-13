@@ -21,15 +21,31 @@ signer that did not would be a key that anything running as root could use.
 
 ## Before starting
 
-Use the signed signer application, not a `go build` of it. The same executable
-must have provisioned the key, verified it and signed every generation:
+Find the key by the fingerprint this host pins, not by the name of a directory.
+There has been more than one signer here, and the one with the expected name was
+not the one the host trusts — this document said that name, and was wrong.
+
+`scripts/ops/find-pinned-signer.sh` prints the path of the key whose fingerprint
+matches, or says none does:
 
 ```sh
-hexroute-policy verify-key \
+SIGNER_KEY="$(scripts/ops/find-pinned-signer.sh)"
+```
+
+Use the signed signer application, not a `go build` of it. The same executable
+must have provisioned the key, verified it and signed every generation. On this
+machine it is built under `.local/policy-signer-app`:
+
+```sh
+SIGNER=".local/policy-signer-app/HexroutePolicyProfile.app/Contents/MacOS/hexroute-policy"
+"$SIGNER" verify-key \
   --keychain-service '<private service>' \
   --keychain-account '<private account>' \
-  --public-key "$HOME/Library/Application Support/Hexroute/policy-signer/public-key"
+  --public-key "$SIGNER_KEY"
 ```
+
+The Keychain service and account are the operator's own; this repository does
+not record them, and this document will not guess at them either.
 
 ## The sequence
 
@@ -54,12 +70,12 @@ shasum -a 256 "$WORK/content.json"
 Sign it. This prompts for user presence:
 
 ```sh
-hexroute-policy sign-config \
+"$SIGNER" sign-config \
   --content "$WORK/content.json" \
   --target-kind node \
   --target-key "$NODE_ID" \
   --label v1 \
-  --public-key "$HOME/Library/Application Support/Hexroute/policy-signer/public-key" \
+  --public-key "$SIGNER_KEY" \
   --keychain-service '<private service>' \
   --keychain-account '<private account>' \
   --out "$WORK/v1"
