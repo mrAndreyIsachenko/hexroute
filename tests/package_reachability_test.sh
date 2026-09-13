@@ -28,6 +28,14 @@ test_only=(
 unwired=(
   # connectivityhost is the seam; it is reachable. Nothing else here is.
 
+  # tunnelclaim says which runtime owns the tunnel process. It is read by the
+  # supervisor in the other repository already, which is why it exists now, and
+  # the thing that writes it is the operator's handover command — task 3 of
+  # `hand-the-tunnel-over-in-one-transaction`. Until that command exists nothing
+  # here opens it, and wiring it into the daemon early would give a daemon the
+  # ability to claim the tunnel, which is the one thing the claim exists to stop.
+  tunnelclaim
+
 
   # resumeexecutor is not merely unconnected: the seam is complete. It already
   # satisfies operator.ResumePolicyExecutor, and the only thing missing is the

@@ -877,6 +877,12 @@ Code that exists and no binary contains. Each entry is a claim this repository
 has made and not yet kept; the list is enforced by `make check`, so it cannot
 grow in silence.
 
+- `tunnelclaim` — which runtime owns the tunnel process. The supervisor in
+  `twilight` reads it already, which is why it exists; the thing that writes it
+  is the operator's handover command, task 3 of
+  `hand-the-tunnel-over-in-one-transaction`. Wiring it into the daemon early
+  would give a daemon the ability to claim the tunnel, which is the one thing
+  the claim exists to stop.
 - `resumeexecutor` — operator resume enforcement.
 - `policyadvisor` — redacted policy observability.
 
