@@ -18,6 +18,20 @@ const (
 	RoleCorporate     Role = "corporate"
 	RoleGitLabHTTPS   Role = "gitlab_https"
 	RoleCodexFallback Role = "codex_fallback"
+	// RoleInherited is a destination the previous owner of the tunnel routed
+	// through it, whose purpose is not recorded anywhere.
+	//
+	// Five exist on this machine. They are in the supervisor's environment and
+	// in no repository's history, no variable of its own names them, none
+	// resolves from one, and four of the five are CDN anycast — one service
+	// behind four edge addresses, which cannot be attributed from a host
+	// because that address serves every customer the CDN has.
+	//
+	// The name says what is known and no more. Calling them corporate would
+	// have been a guess written into every record that mentions them, and the
+	// point of carrying them across a handover is that the handover changes who
+	// owns the tunnel and nothing about what it carries.
+	RoleInherited Role = "inherited"
 )
 
 type Target struct {
@@ -243,7 +257,7 @@ func desiredPath(target Target, input Input) (Path, bool, error) {
 		default:
 			return Path{}, false, ErrInvalidInput
 		}
-	case RoleCorporate, RoleGitLabHTTPS:
+	case RoleCorporate, RoleGitLabHTTPS, RoleInherited:
 		return input.TUN, true, nil
 	case RoleCodexFallback:
 		if input.Codex.NormalReady {
@@ -267,7 +281,7 @@ func validateTarget(target Target) error {
 	switch target.Role {
 	case RoleIngress:
 		return nil
-	case RoleCorporate, RoleGitLabHTTPS, RoleCodexFallback:
+	case RoleCorporate, RoleGitLabHTTPS, RoleCodexFallback, RoleInherited:
 		if target.Preferred != "" {
 			return ErrInvalidInput
 		}
