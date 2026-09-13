@@ -95,6 +95,22 @@
       not what the machine runs, and the handover would be changing two things
       at once.
 
+      A preflight checks everything the ceremony reads before it touches the
+      Keychain, because a run that fails halfway leaves the configuration
+      readable by the operator's account and nothing signed.
+
+      It found that this document named the wrong key. There has been more than
+      one signer on this machine, and the one with the name the document used is
+      not the one the host pins — the path came from an example in
+      `policy-signing.md` rather than from the machine. A wrong key is
+      discovered at the moment of signing, after user presence.
+
+      So the key is found by the fingerprint the host pins, by
+      `scripts/ops/find-pinned-signer.sh`, which prints one path or nothing and
+      refuses when two match rather than choosing. The preflight itself was
+      wrong first as well: run under sudo it looked in root's home for files
+      that live in the operator's, and reported both missing.
+
 ## 2. The claim
 
 - [x] 2.1 Write the claim: its shape, where it lives, who may write it.
