@@ -35,8 +35,28 @@
       cover its parts, and a second record — the whole of what this process did
       before reporting started — so the window is attributed rather than
       assumed. What lies between that and the previous stop belongs to launchd.
-- [ ] 3.4 Read the corrected account and attribute the window end to end.
+- [x] 3.4 Read the corrected account and attribute the window end to end.
+
+      The whole window, for the first time since it was noticed:
+
+          before this process ran   11.089s   launchd: throttle and spawn
+          in the stores             20.119s
+          elsewhere in this process  0.009s
+          the window                31.217s
+
+      The totals agree — parts 20.117, stores 20.119, process 20.128 — so the
+      account closes rather than merely listing.
+
+      Within the stores: user journal 10.230s, event archive 3.873s, replay
+      3.016s, root journal 2.997s, checkpoints 0.001s.
+
+      Two things follow that no reading from outside could have settled. A third
+      of the blindness is `ThrottleInterval` in the launchd plist, which is not
+      this runtime's work at all and had been counted against it every time.
+      And the user journal is half of what remains, while its directory listing
+      takes 360 milliseconds — so the cost is in opening, and opening passes the
+      directory three times.
 
 ## 4. Close
 
-- [ ] 4.1 Sync the delta into the baseline, validate, archive.
+- [x] 4.1 Sync the delta into the baseline, validate, archive.

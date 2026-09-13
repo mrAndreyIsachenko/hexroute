@@ -77,19 +77,31 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`make-the-daemon-time-its-own-start` is open. The root daemon takes tens of
-seconds to open, observes nothing while it does, and cannot say where the time
-goes — so every answer about it has come from sampling the process from outside,
-and three attributions taken that way in one session were wrong. Seventeen
-seconds were assigned to a store that cost about seven; thirteen to listings
-that take 951 milliseconds; and the latest sample shows this repository's frames
-holding about one percent of the window, so the daemon is waiting rather than
-working and nothing outside it can say on what.
+`make-the-daemon-time-its-own-start` closed on 2026-09-13. The root daemon could
+not say how long its own start took, so every answer came from sampling it from
+outside, and three attributions taken that way in one session were wrong —
+seventeen seconds assigned to a store that cost seven, thirteen to listings that
+take 951 milliseconds, and a window read as work that the samples showed was
+spent waiting. Each read a frame's presence in a sample tree as its weight.
 
-The instrument was wrong three times because the machine has no way to be right:
-its log records carry a level, an event, a result and a reason, and no number.
-That is the same shape as a tunnel decision record carrying an action and its
-causes and nothing they were decided from.
+A log record may now carry how long a named step took, with the steps closed the
+way every other field of that record is: these logs are collected and this
+repository is public, and the secret guard cannot tell a step name from a leak.
+
+The first reading corrected the instrument as well as the picture. The total
+reported a millisecond beside seventeen seconds of parts, because it was set in
+a deferred call while the timings returned by value. That is fixed, with a test
+that fails when a total does not cover its parts.
+
+The whole window, attributed for the first time: 11.089 seconds before the
+process ran, which is launchd's throttle and spawn; 20.119 in the stores; 0.009
+everywhere else. Within the stores the user journal is 10.230 and the event
+archive 3.873, against directory listings of 360 and 136 milliseconds — so the
+cost is in opening rather than in listing, and opening passes each spool's
+directory three times.
+
+A third of this daemon's blindness is therefore a launchd setting that had been
+counted against the runtime every time it was measured.
 
 `read-the-tail-not-the-journal` is open. The root daemon runs about two and a
 half minutes after launchd starts it before it reports starting, and observes
