@@ -81,11 +81,20 @@ type Cycle struct {
 	payload   PayloadObserver
 	tunnel    *tunnelStateStore
 	now       func() time.Time
-	// lastObserved is when the previous cycle ran, for the wake gap. It is not
-	// durable on purpose: across a restart there is no previous cycle of this
-	// process to have slept through, and inventing a gap from a file would
-	// rebuild the tunnel every time the runtime is installed.
+	// steady advances only while the machine is running.
+	//
+	// On this platform Go's monotonic reading is mach_absolute_time, which the
+	// kernel suspends across sleep, while the wall clock is not suspended. The
+	// difference between the two is the sleep, and asking for it directly is
+	// what separates a machine that slept from an observer that was slow.
+	steady func() time.Duration
+	// lastObserved and lastSteady are when the previous cycle ran, on each
+	// clock. Neither is durable on purpose: across a restart there is no
+	// previous cycle of this process to have slept through, and inventing a gap
+	// from a file would rebuild the tunnel every time the runtime is installed.
 	lastObserved time.Time
+	lastSteady   time.Duration
+	observed     bool
 }
 
 func NewCycle(
@@ -103,7 +112,8 @@ func NewCycle(
 		network:   network,
 		processes: processes,
 		readiness: readiness,
-		now:       time.Now,
+		now:       wallClock,
+		steady:    steadyClock(),
 	}
 	for _, option := range options {
 		option(cycle)
@@ -340,6 +350,38 @@ func WithCycleClock(now func() time.Time) CycleOption {
 	}
 }
 
+// WithSteadyClock replaces the clock that stops when the machine does.
+//
+// A test cannot attach a monotonic reading to a time it made up, so a test that
+// needs a sleeping machine needs this clock separately: it advances the wall
+// clock and leaves this one still. Advancing both is a slow observer.
+func WithSteadyClock(steady func() time.Duration) CycleOption {
+	return func(cycle *Cycle) {
+		if steady != nil {
+			cycle.steady = steady
+		}
+	}
+}
+
+// wallClock is the clock a person reads, and carries no monotonic reading.
+//
+// Stripping it is the whole point. A time.Time from time.Now carries both a wall
+// value and a monotonic one, and Sub prefers the monotonic one when both
+// operands have it — so subtracting two of them would silently give the same
+// quantity the steady clock gives, the divergence would always be zero, and the
+// wake gap would never hold however long the machine slept.
+//
+// This cannot be caught by a test in one process: a test cannot make a real
+// clock pair diverge without really sleeping. So the property is asserted of
+// this function rather than of the arithmetic that uses it.
+func wallClock() time.Time { return time.Now().Round(0) }
+
+// steadyClock counts from now, on the reading that stops across sleep.
+func steadyClock() func() time.Duration {
+	start := time.Now()
+	return func() time.Duration { return time.Since(start) }
+}
+
 // decideTunnel reaches what a tunnel owner would do and records the memory the
 // next cycle needs. It performs nothing.
 func (cycle *Cycle) decideTunnel(
@@ -349,12 +391,20 @@ func (cycle *Cycle) decideTunnel(
 	if cycle.config.TunnelSupervision == nil {
 		return
 	}
-	at := cycle.now()
-	since := time.Duration(0)
-	if !cycle.lastObserved.IsZero() && at.After(cycle.lastObserved) {
-		since = at.Sub(cycle.lastObserved)
+	// Round(0) again, because an injected clock is not obliged to have been
+	// stripped and a monotonic reading here would silently zero the divergence.
+	at := cycle.now().Round(0)
+	steady := cycle.steady()
+	slept := time.Duration(0)
+	if cycle.observed {
+		wall := at.Sub(cycle.lastObserved)
+		ran := steady - cycle.lastSteady
+		// A clock that went backwards says nothing about sleep.
+		if slept = wall - ran; slept < 0 {
+			slept = 0
+		}
 	}
-	cycle.lastObserved = at
+	cycle.lastObserved, cycle.lastSteady, cycle.observed = at, steady, true
 
 	carried := carriedDestinations(summary.Observed.Routes)
 	summary.Carrier = tunnelplan.NewSignature(carried)
@@ -374,7 +424,7 @@ func (cycle *Cycle) decideTunnel(
 		previous,
 		tunnelplan.Observed{
 			ProcessRunning: summary.SingBoxRunning,
-			SincePrevious:  since,
+			Slept:          slept,
 			Carrier:        summary.Carrier,
 			Complete:       summary.Complete,
 			LinkPresent:    summary.OuterReady,

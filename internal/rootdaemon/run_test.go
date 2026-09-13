@@ -103,6 +103,7 @@ func TestObserveLoopEmitsOnlyRedactedProposals(t *testing.T) {
 		time.Minute,
 		true,
 		func() control.Tick { return 7 },
+		func() time.Duration { return 0 },
 		cycler,
 		heartbeat,
 		controller,

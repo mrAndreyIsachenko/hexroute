@@ -77,7 +77,29 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`tell-a-sleeping-machine-from-a-slow-observer` is open. It is the third defect
+the tunnel decision's soak found and the only one that fires on a machine that
+is behaving.
+
+The wake gap is measured as the interval between this runtime's own
+observations, so a runtime that is slow reports a machine that slept. On
+2026-09-12 the first fold after a reinstall cost 32.4 seconds, the loop then
+waited its interval, and ninety-three seconds passed between two observations
+against a threshold of ninety. With authority that decision rebuilds a working
+tunnel every time this daemon is installed.
+
+It is measured directly instead. On this platform the monotonic clock is
+`mach_absolute_time`, which the kernel suspends across sleep, and the wall clock
+is not — so the difference between them is the sleep and nothing else. Read from
+the toolchain this repository builds with rather than recalled, and to be
+confirmed against a real sleep on the machine before the change closes.
+
+The loop is corrected with it, because the two compound: it starts its timer
+after the work rather than aiming at a period, so a 32-second fold becomes a
+93-second gap. It will schedule from when an observation began.
+
+Both are owed before the next change, which is the first to grant this rule any
+authority at all.
 
 `decide-what-a-tunnel-owner-would-do` closed on 2026-09-13. It is the second of
 four changes the grill of item 8 settled, and the first in this repository: the
