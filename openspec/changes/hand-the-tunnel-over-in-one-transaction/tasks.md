@@ -89,13 +89,33 @@
 
 ## 3. The transaction
 
-- [ ] 3.1 The durable session record: phase, the previous owner's state, what this runtime started.
-- [ ] 3.2 Refuse to start a transaction beside one already in flight.
-- [ ] 3.3 Complete on two consecutive proofs of traversal inside the deadline.
-- [ ] 3.4 Abort on the deadline: remove the claim, stop what was started, let the supervisor take it back.
-- [ ] 3.5 A later invocation can abort what it finds.
+- [x] 3.1 The durable session record: phase, the previous owner's state, what this runtime started.
+
+      The phase is recorded before the act it names, not after. A transaction
+      that fell over between acting and recording would leave the machine
+      changed by a phase no record mentions, and the abort that came later would
+      not undo it.
+- [x] 3.2 Refuse to start a transaction beside one already in flight.
+- [x] 3.3 Complete on two consecutive proofs of traversal inside the deadline.
+
+      Consecutive rather than cumulative. A path that traverses, fails and
+      traverses again has not been shown to hold, and counting cumulatively
+      would complete the handover on exactly the evidence the link cause was
+      completing on when it was wrong six times in half an hour.
+- [x] 3.4 Abort on the deadline: remove the claim, stop what was started, let the supervisor take it back.
+- [x] 3.5 A later invocation can abort what it finds.
+
+      `hexroute-handover abort` reads the phase a closed terminal left behind and
+      undoes exactly it: the claim if one was placed, the process if one was
+      started. Aborting when nothing is in flight is not an error, because an
+      abort runs when the state is uncertain and must be able to run twice.
 
 ## 4. Starting the tunnel from a signed version
+
+      Until this section is done the command rehearses and aborts and will not
+      begin a real handover: starting the tunnel needs the signed version, and a
+      command that pretended otherwise would be worse than one that says so.
+
 
 - [ ] 4.1 Verify at every start, against this host, without reaching the network.
 - [ ] 4.2 Refuse to start on a version that does not verify, and return ownership.
