@@ -30,7 +30,7 @@
       to the tunnel unconditionally and `validateTarget` refuses a preference for
       them at all. So it invented a leak of corporate traffic out of the tunnel.
       The comparison asks the planner's rule now.
-- [ ] 1.3 Close the gap: give this runtime the five destinations only the supervisor routes, and prove the comparison is empty.
+- [x] 1.3 Close the gap: give this runtime the five destinations only the supervisor routes, and prove the comparison is empty.
 
       What they are could not be established from the machine, and the attempt
       is recorded because it bounds what anyone else could learn later.
@@ -61,6 +61,19 @@
       Whether they are still needed is left to evidence rather than to silence:
       three minutes of watching saw no packet, which is what a route used once a
       day also looks like, so the watch runs for a day.
+
+      Adopted 2026-09-13 by a script that runs on the machine, so the addresses
+      stayed there: five added as `inherited-01` through `inherited-05`, twenty-one
+      routes in all, and the runtime accepts the configuration. The comparison
+      that found the gap now reports none.
+
+      It reported five disagreements on that same run, and they were not real.
+      The comparison lived in a scratch directory and did not know the role that
+      had just been added to the planner, so it could not place those five on
+      either side of the tunnel and said they differed. It lives in the
+      repository now, and `tests/route_coverage_roles_test.sh` fails when the two
+      lists of roles part company — which is the fault it would have caught on
+      the run that was meant to prove the handover safe.
 - [ ] 1.4 Read the day's watch and decide whether the inherited destinations stay.
 - [ ] 1.2 Publish the first signed configuration version from the bytes running today, and prove it is byte for byte identical.
 
