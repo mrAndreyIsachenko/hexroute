@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelclaim"
 )
 
 // The command runs.
@@ -61,8 +63,13 @@ func TestAnUnknownSubcommandIsRefused(t *testing.T) {
 	if code := Run([]string{"take-the-tunnel"}, stdout, stderr); code != 2 {
 		t.Fatalf("an unknown subcommand returned %d", code)
 	}
-	if !strings.Contains(stderr.String(), "begin|rehearse|abort") {
-		t.Fatalf("it did not say what it accepts: %q", stderr.String())
+	// Each one named, rather than the line as a whole: the usage gains
+	// subcommands, and a test that pinned the exact string would fail for a
+	// correct change while saying nothing about whether the usage is right.
+	for _, subcommand := range []string{"begin", "check", "rehearse", "abort"} {
+		if !strings.Contains(stderr.String(), subcommand) {
+			t.Fatalf("the usage does not offer %q: %q", subcommand, stderr.String())
+		}
 	}
 }
 
@@ -96,5 +103,77 @@ func TestExtraArgumentsAreRefused(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	if code := Run([]string{"abort", "now"}, stdout, stderr); code != 2 {
 		t.Fatalf("two subcommands returned %d", code)
+	}
+}
+
+// Checking touches nothing.
+//
+// This is the whole point of it: an operator asks whether the handover would
+// complete, and the answer must not be that it half happened. A begin that
+// refuses has already placed the claim, and the machine has no tunnel until
+// somebody aborts.
+func TestCheckingClaimsNothingAndStartsNothing(t *testing.T) {
+	claim := filepath.Join(t.TempDir(), "claim.json")
+	session := filepath.Join(t.TempDir(), "handover.json")
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+	// Nothing is configured, so every precondition it can ask about refuses.
+	code := Run([]string{"--session", session, "--claim", claim, "check"}, stdout, stderr)
+	if code == 0 {
+		t.Fatalf("check passed with nothing configured: %s", stdout.String())
+	}
+	if _, err := os.Stat(claim); err == nil {
+		t.Fatal("check placed a claim")
+	}
+	if _, err := os.Stat(session); err == nil {
+		t.Fatal("check left a session record")
+	}
+}
+
+// It reports every precondition rather than stopping at the first.
+//
+// Each round of one-fault-at-a-time is another run of a ceremony that needs the
+// operator present. What they asked is whether the handover is ready, which is
+// a statement about all of them.
+func TestCheckReportsEveryPreconditionAtOnce(t *testing.T) {
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	Run([]string{
+		"--session", filepath.Join(t.TempDir(), "handover.json"),
+		"--claim", filepath.Join(t.TempDir(), "claim.json"),
+		"check",
+	}, stdout, stderr)
+
+	for _, precondition := range []string{
+		"signed version", "tunnel binary", "payload probe",
+		"nothing in flight", "tunnel unclaimed", "tunnel process",
+	} {
+		if !strings.Contains(stdout.String(), precondition) {
+			t.Fatalf("check did not report %q:\n%s", precondition, stdout.String())
+		}
+	}
+}
+
+// A claim already in place is a refusal, not a detail.
+func TestCheckRefusesWhenTheTunnelIsAlreadyClaimed(t *testing.T) {
+	directory := t.TempDir()
+	claim := filepath.Join(directory, "claim.json")
+	claims, err := tunnelclaim.Open(claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := claims.Place("handover-earlier"); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := Run([]string{
+		"--session", filepath.Join(t.TempDir(), "handover.json"),
+		"--claim", claim, "check",
+	}, stdout, stderr)
+	if code == 0 {
+		t.Fatal("check passed with the tunnel already claimed")
+	}
+	if !strings.Contains(stdout.String(), "handover-earlier") {
+		t.Fatalf("it did not name what holds the tunnel:\n%s", stdout.String())
 	}
 }

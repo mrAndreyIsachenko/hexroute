@@ -139,6 +139,7 @@ shell-test: shell-test-tools build-observe-root build-observe-user build-policy-
 	tests/roadmap_drift_test.sh
 	tests/route_coverage_roles_test.sh
 	tests/ingress_documentation_test.sh
+	tests/documentation_make_targets_test.sh
 	tests/baseline_archives_test.sh
 	tests/emergency_restore_test.sh
 	tests/container_contract_test.sh

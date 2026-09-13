@@ -349,6 +349,39 @@
       was measured is what would be installed.
 - [ ] 6.3 Run the real transaction and record what the tunnel did.
 
+      Prepared, not yet run. The sequence is in
+      `docs/macos/tunnel-configuration-version.md`, and it installs the binary
+      from the branch carrying the work rather than from `main`, because `bin/`
+      is often an older revision and what is measured must be what is installed.
+
+      `begin` had no way to check itself. Everything it refuses on — the version
+      not verifying, the binary missing, the payload not traversing, a session
+      left in flight, the tunnel already claimed — it discovered after placing
+      the claim, and a claim already placed has told the previous owner to step
+      back. The machine would then have no tunnel until somebody aborted. This
+      is the same shape as the signer key that was wrong: found at the moment of
+      the act, when the act is the expensive part.
+
+      So there is `hexroute-handover check`. It reports every precondition
+      rather than stopping at the first, because each round of one fault at a
+      time is another run of a ceremony that needs the operator present. It
+      claims nothing and starts nothing, and it asks through the same code
+      `begin` does: `Starter.Verify` is now what `Start` calls, not a second
+      copy of it. A preflight with its own conditions drifts from the ones that
+      matter and then answers green for a start that refuses.
+
+      Five mutations on it, five killed: passing despite refusals, ignoring an
+      existing claim, stopping at the first refusal, placing a claim while
+      checking, and no longer refusing an unverified version.
+
+      Writing the runbook produced the fault it is meant to prevent. It named
+      `make build-handover`, which does not exist — the target is
+      `build-observe-root`. A line written from memory rather than from the
+      machine, which is exactly how the wrong signing key got into the ceremony.
+      `tests/documentation_make_targets_test.sh` now fails when a fenced command
+      in `docs/` names a target the Makefile does not have, and it was driven to
+      that failure before being believed.
+
 ## 7. Close
 
 - [ ] 7.1 Sync the delta into the baseline, validate, archive.

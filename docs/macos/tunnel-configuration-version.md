@@ -135,3 +135,51 @@ once placed the claim and started sing-box without stopping the sing-box already
 running, and a clean rehearsal said nothing about it. The real run takes the
 tunnel from its holder between those two phases, and refuses to start if the
 holder is still there — see `--possession`, which bounds that wait.
+
+## The handover itself
+
+Install the binary from the branch carrying the work, not from `main`. `bin/` is
+often an older revision, so the build and the install are one command:
+
+```sh
+cd ~/Developer/personal/hexroute && make build-observe-root && \
+  sudo /usr/bin/install -o root -g wheel -m 0755 bin/hexroute-handover \
+  '/Library/Application Support/Hexroute/observe-root/bin/hexroute-handover'
+```
+
+Ask whether it would complete, before it takes anything:
+
+```sh
+sudo '/Library/Application Support/Hexroute/observe-root/bin/hexroute-handover' \
+  --config '/Library/Application Support/Hexroute/observe-root/config/root-observe.json' \
+  --tunnel-version '/Library/Application Support/Hexroute/observe-root/config/tunnel-version.json' \
+  --target-key "$(sudo cat '/Library/Application Support/Hexroute/observe-root/state/connectivity/node-id')" \
+  --sing-box /opt/homebrew/bin/sing-box \
+  --content '/Library/Application Support/Hexroute/observe-root/state/tunnel-config.json' \
+  check
+```
+
+It reports every precondition rather than stopping at the first, claims nothing
+and starts nothing. `check` asking the same questions through the same code as
+`begin` is the point: a preflight with its own copy of the conditions would
+drift from the ones that matter and answer green for a start that refuses.
+
+`begin` is the same command with `begin` in place of `check`. It places the
+claim, stops the tunnel the previous owner is running, starts its own from the
+signed version, and completes only on two consecutive proofs that traffic
+traversed. Anything else aborts: the claim comes off, and the previous owner
+restarts the tunnel it finds missing — measured at fifty-seven seconds end to
+end on this machine.
+
+Run it in a terminal you will watch. It is held in the foreground on purpose,
+and interrupting that terminal ends the attempt rather than leaving it running.
+
+If the terminal dies with a handover in flight, the next invocation undoes
+exactly what the phase on disk says was done:
+
+```sh
+sudo '/Library/Application Support/Hexroute/observe-root/bin/hexroute-handover' abort
+```
+
+Aborting when nothing is in flight is not an error. An abort runs when the state
+is uncertain, and a rollback that could only be run once would be no rollback.

@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
@@ -45,7 +46,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	singBox := flags.String("sing-box", "", "the tunnel binary")
 	contentPath := flags.String("content", "", "where the verified configuration is written")
 	if flags.Parse(args) != nil {
-		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] begin|rehearse|abort")
+		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] begin|check|rehearse|abort")
 		return 2
 	}
 	// Asked before a subcommand is required: --version is a question about the
@@ -57,7 +58,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] begin|rehearse|abort")
+		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] begin|check|rehearse|abort")
 		return 2
 	}
 
@@ -114,6 +115,15 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return report(stdout, outcome)
+	case "check":
+		// Everything begin refuses on, and nothing begin does.
+		//
+		// A begin that refuses has already placed the claim, which tells the
+		// previous owner to step back; the machine then has no tunnel until
+		// somebody aborts. This asks the same questions through the same code
+		// beforehand.
+		return check(stdout, stderr, transaction,
+			*configPath, *versionPath, *targetKey, *singBox, *contentPath)
 	case "abort":
 		outcome, err := transaction.Abort()
 		if err != nil {
@@ -135,7 +145,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		return report(stdout, outcome)
 	default:
-		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] begin|rehearse|abort")
+		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] begin|check|rehearse|abort")
 		return 2
 	}
 }
@@ -187,6 +197,102 @@ func tunnelIncumbent() (*tunnelstart.Incumbent, error) {
 		Observer: observer,
 		Runner:   tunnelstart.ExecRunner{},
 	}, nil
+}
+
+// check reports every precondition, and does not stop at the first failure.
+//
+// Stopping would hand the operator one fault at a time, and each round of that
+// is a run of the ceremony. What they want to know is whether the handover is
+// ready, which is a statement about all of them.
+func check(
+	stdout, stderr io.Writer,
+	transaction *tunnelhandover.Transaction,
+	configPath, versionPath, targetKey, singBox, contentPath string,
+) int {
+	failures := 0
+	say := func(name string, err error, detail string) {
+		if err != nil {
+			failures++
+			fmt.Fprintf(stdout, "REFUSED  %-22s %v\n", name, err)
+			return
+		}
+		fmt.Fprintf(stdout, "ok       %-22s %s\n", name, detail)
+	}
+
+	starter, err := tunnelStarter(configPath, versionPath, targetKey, singBox, contentPath)
+	if err != nil {
+		say("signed version", err, "")
+	} else if content, err := starter.Verify(); err != nil {
+		say("signed version", err, "")
+	} else {
+		say("signed version", nil, fmt.Sprintf("%d bytes verified for %s", len(content), targetKey))
+	}
+
+	if info, err := os.Stat(singBox); err != nil {
+		say("tunnel binary", err, "")
+	} else if info.Mode()&0o111 == 0 {
+		say("tunnel binary", errors.New("not executable"), "")
+	} else {
+		say("tunnel binary", nil, singBox)
+	}
+
+	if prover, err := payloadProver(configPath); err != nil {
+		say("payload probe", err, "")
+	} else if traversed, err := prover.Traversed(context.Background()); err != nil {
+		say("payload probe", err, "")
+	} else if !traversed {
+		say("payload probe", errors.New(
+			"the payload does not traverse now; the handover would abort on its own evidence"), "")
+	} else {
+		say("payload probe", nil, "traffic traverses the tunnel today")
+	}
+
+	// Read through the same store the transaction uses, so "nothing in flight"
+	// means what the transaction will mean by it.
+	if session, inFlight, err := transaction.Store.Read(); err != nil {
+		say("nothing in flight", err, "")
+	} else if inFlight {
+		say("nothing in flight", fmt.Errorf(
+			"%s is abandoned at %s; abort it first", session.Transaction, session.Phase), "")
+	} else {
+		say("nothing in flight", nil, "no session left behind")
+	}
+
+	if claim, held, err := transaction.Claim.(claimReader).Held(); err != nil {
+		say("tunnel unclaimed", err, "")
+	} else if held {
+		say("tunnel unclaimed", fmt.Errorf(
+			"already claimed by %s", claim.Transaction), "")
+	} else {
+		say("tunnel unclaimed", nil, "the previous owner still holds it")
+	}
+
+	if incumbent, err := tunnelIncumbent(); err != nil {
+		say("tunnel process", err, "")
+	} else if pid, running, err := incumbent.Running(context.Background()); err != nil {
+		say("tunnel process", err, "")
+	} else if !running {
+		// Not a refusal. Nothing to take is an ordinary state, and the
+		// transaction proceeds; it is reported because an operator expecting to
+		// take a running tunnel should know they are not.
+		say("tunnel process", nil, "none running; nothing to take over")
+	} else {
+		say("tunnel process", nil, fmt.Sprintf("pid %d would be stopped first", pid))
+	}
+
+	fmt.Fprintln(stdout)
+	if failures > 0 {
+		fmt.Fprintf(stderr, "%d preconditions refused; begin would not complete\n", failures)
+		return 1
+	}
+	fmt.Fprintln(stdout, "every precondition holds")
+	return 0
+}
+
+// claimReader is the reading half of the claim. The transaction only ever
+// writes it, so the interface it holds does not carry this.
+type claimReader interface {
+	Held() (tunnelclaim.Claim, bool, error)
 }
 
 func report(stdout io.Writer, outcome tunnelhandover.Outcome) int {

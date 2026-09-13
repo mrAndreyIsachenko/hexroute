@@ -60,24 +60,9 @@ type Starter struct {
 // answer that sent a reader looking at the wrong half of a system more than
 // once in this repository's history.
 func (starter *Starter) Start(ctx context.Context) (int, error) {
-	if starter.Runner == nil || starter.Binary == "" ||
-		starter.ArtifactPath == "" || starter.ContentPath == "" {
-		return 0, ErrMisplaced
-	}
-	if !filepath.IsAbs(starter.ContentPath) {
-		return 0, fmt.Errorf("%w: the content path must be absolute", ErrMisplaced)
-	}
-	encoded, err := os.ReadFile(starter.ArtifactPath)
+	content, err := starter.Verify()
 	if err != nil {
-		return 0, fmt.Errorf("%w: the version is not on disk: %v", ErrUnverified, err)
-	}
-	artifact, err := configversion.Decode(encoded)
-	if err != nil {
-		return 0, fmt.Errorf("%w: %s", ErrUnverified, configversion.Reason(err))
-	}
-	content, err := configversion.Verify(artifact, starter.PublicKey, starter.Target)
-	if err != nil {
-		return 0, fmt.Errorf("%w: %s", ErrUnverified, configversion.Reason(err))
+		return 0, err
 	}
 
 	if err := os.MkdirAll(filepath.Dir(starter.ContentPath), 0o700); err != nil {
@@ -96,6 +81,41 @@ func (starter *Starter) Start(ctx context.Context) (int, error) {
 	}
 
 	return starter.Runner.Start(ctx, starter.Binary, "run", "-c", starter.ContentPath)
+}
+
+// Verify answers what the tunnel would be started from, and starts nothing.
+//
+// It is the whole of Start's refusal and none of its effect, so an operator can
+// learn that a version will not run before the claim is placed rather than
+// after. A handover that discovers it at that point has already told the
+// previous owner to step back, and the machine has no tunnel until somebody
+// aborts it.
+//
+// Start calls this rather than repeating it. A preflight that checked its own
+// copy of these conditions would drift from the ones that matter, and would
+// then be worse than no preflight at all: a green answer for a start that
+// refuses.
+func (starter *Starter) Verify() ([]byte, error) {
+	if starter.Runner == nil || starter.Binary == "" ||
+		starter.ArtifactPath == "" || starter.ContentPath == "" {
+		return nil, ErrMisplaced
+	}
+	if !filepath.IsAbs(starter.ContentPath) {
+		return nil, fmt.Errorf("%w: the content path must be absolute", ErrMisplaced)
+	}
+	encoded, err := os.ReadFile(starter.ArtifactPath)
+	if err != nil {
+		return nil, fmt.Errorf("%w: the version is not on disk: %v", ErrUnverified, err)
+	}
+	artifact, err := configversion.Decode(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrUnverified, configversion.Reason(err))
+	}
+	content, err := configversion.Verify(artifact, starter.PublicKey, starter.Target)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrUnverified, configversion.Reason(err))
+	}
+	return content, nil
 }
 
 // Stop stops what Start started.
