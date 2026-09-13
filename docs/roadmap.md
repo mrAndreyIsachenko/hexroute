@@ -77,7 +77,16 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`let-a-decision-carry-its-grounds` is open. A recorded tunnel decision says what
+was decided and which causes held, and nothing about what they were decided
+from, so a cause reads as convincingly when it is wrong as when it is right.
+
+On 2026-09-12 this runtime recorded six rebuilds for a returned link in half an
+hour and the link had not returned. Working that out took the connectivity
+archive laid beside the decisions and matched on time, because that archive —
+not the decision — held the count of endpoints that answered. It worked only
+because one runtime writes both stores, and the comparison these records exist
+for is against a runtime that writes neither.
 
 What follows is what the recent ones changed and what they left standing, kept
 because the reasons are worth more than the record of having done them.

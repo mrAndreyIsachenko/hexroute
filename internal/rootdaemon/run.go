@@ -548,7 +548,9 @@ func observeLoop(
 		// decision that agreed and a decision never reached look the same in an
 		// empty record, and the comparison against the runtime that owns the
 		// tunnel is the whole reason for deciding without acting.
-		if err := recordTunnelDecision(reader, summary.Tunnel); err != nil {
+		if err := recordTunnelDecision(
+			reader, summary.Tunnel, uint16(len(summary.Plan.Operations)),
+		); err != nil {
 			if emitErr := logger.Emit(
 				logging.LevelWarn,
 				logging.EventConnectivitySnapshot,
@@ -748,18 +750,51 @@ func reduced(logger *logging.Logger) int {
 func recordTunnelDecision(
 	reader *connectivityhost.Reader,
 	plan tunnelplan.Plan,
+	routesPlanned uint16,
 ) error {
 	if reader == nil || !decided(plan) {
 		return nil
 	}
+	return reader.RecordTunnelDecision(tunnelDecisionRecord(plan, routesPlanned))
+}
+
+// tunnelDecisionRecord is the projection of a decision into what is stored.
+//
+// Separated from the writing so the boundary it keeps can be tested: what
+// carries the destinations becomes a digest and a count here, and a test can
+// hold the result up against the addresses it was built from.
+func tunnelDecisionRecord(
+	plan tunnelplan.Plan,
+	routesPlanned uint16,
+) event.TunnelDecision {
 	causes := make([]string, 0, len(plan.Causes))
 	for _, cause := range plan.Causes {
 		causes = append(causes, string(cause))
 	}
-	return reader.RecordTunnelDecision(event.TunnelDecision{
-		Action: string(plan.Action),
-		Causes: causes,
-	})
+	grounds := plan.Grounds
+	recorded := event.TunnelGrounds{
+		Complete:        grounds.Complete,
+		ProcessRunning:  grounds.ProcessRunning,
+		SleptMS:         grounds.Slept.Milliseconds(),
+		CarrierDigest:   grounds.Carrier.Digest(),
+		LinkPresent:     grounds.LinkPresent,
+		LinkFailures:    grounds.LinkFailures,
+		PayloadOK:       grounds.PayloadOK,
+		PayloadFailures: grounds.PayloadFailures,
+	}
+	if grounds.Complete {
+		// What an incomplete cycle did not observe stays absent. A zero would
+		// say it saw none where it saw nothing.
+		entries := grounds.CarrierEntries
+		recorded.CarrierEntries = &entries
+		planned := routesPlanned
+		recorded.RoutesPlanned = &planned
+	}
+	return event.TunnelDecision{
+		Action:  string(plan.Action),
+		Causes:  causes,
+		Grounds: &recorded,
+	}
 }
 
 // decided says whether a cycle reached a decision at all.

@@ -258,6 +258,33 @@ const (
 type TunnelDecision struct {
 	Action string   `json:"action"`
 	Causes []string `json:"causes,omitempty"`
+	// Grounds is what the causes were reached from. A decision naming a cause
+	// and nothing behind it reads as convincingly when it is wrong as when it
+	// is right, and reading one such record took a second store laid beside it
+	// and matched on time.
+	Grounds *TunnelGrounds `json:"grounds,omitempty"`
+}
+
+// TunnelGrounds is the observation behind each cause that can hold.
+//
+// What carries the configured destinations appears as a digest and a count and
+// never as the destinations themselves, on the same terms as every other
+// projection here: how many there are and whether they changed, never which.
+//
+// The fields an incomplete cycle could not observe are pointers, because a
+// cycle that saw none and a cycle that saw nothing are different claims and a
+// zero would say the first.
+type TunnelGrounds struct {
+	Complete        bool    `json:"complete"`
+	ProcessRunning  bool    `json:"process_running"`
+	SleptMS         int64   `json:"slept_ms"`
+	CarrierDigest   string  `json:"carrier_digest,omitempty"`
+	CarrierEntries  *int    `json:"carrier_entries,omitempty"`
+	LinkPresent     bool    `json:"link_present"`
+	LinkFailures    uint32  `json:"link_failures"`
+	PayloadOK       bool    `json:"payload_ok"`
+	PayloadFailures uint32  `json:"payload_failures"`
+	RoutesPlanned   *uint16 `json:"routes_planned,omitempty"`
 }
 
 type Sleep struct {
@@ -864,5 +891,46 @@ func validTunnelDecision(value TunnelDecision) bool {
 	if value.Action == "none" && len(value.Causes) > 0 {
 		return false
 	}
+	return validTunnelGrounds(value.Grounds)
+}
+
+// validTunnelGrounds refuses grounds that cannot be read.
+//
+// The digest is a fixed-width hex identity or absent. Anything longer is a
+// signature arriving where a digest belongs, which is how the destinations this
+// projection exists to keep out would get in.
+func validTunnelGrounds(grounds *TunnelGrounds) bool {
+	if grounds == nil {
+		return true
+	}
+	if grounds.SleptMS < 0 {
+		return false
+	}
+	if grounds.CarrierDigest != "" {
+		if len(grounds.CarrierDigest) != tunnelCarrierDigestLength {
+			return false
+		}
+		for _, letter := range grounds.CarrierDigest {
+			if (letter < '0' || letter > '9') && (letter < 'a' || letter > 'f') {
+				return false
+			}
+		}
+	}
+	if grounds.CarrierEntries != nil && *grounds.CarrierEntries < 0 {
+		return false
+	}
+	// A cycle that saw nothing has nothing to report about what it saw, and a
+	// cycle that completed has both. Reporting one without the other says a
+	// cycle both did and did not observe.
+	if grounds.Complete != (grounds.CarrierEntries != nil) {
+		return false
+	}
+	if grounds.Complete != (grounds.RoutesPlanned != nil) {
+		return false
+	}
 	return true
 }
+
+// tunnelCarrierDigestLength is what Signature.Digest emits: enough to tell two
+// carriers apart, not enough to be a handle on either.
+const tunnelCarrierDigestLength = 12

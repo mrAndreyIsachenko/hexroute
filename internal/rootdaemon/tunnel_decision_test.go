@@ -79,7 +79,7 @@ func TestOnlyADecisionIsRecorded(t *testing.T) {
 	if !decided(tunnelplan.Plan{Action: tunnelplan.ActionNone}) {
 		t.Fatal("deciding nothing was taken as not having been asked")
 	}
-	if err := recordTunnelDecision(nil, tunnelplan.Plan{}); err != nil {
+	if err := recordTunnelDecision(nil, tunnelplan.Plan{}, 0); err != nil {
 		t.Fatalf("an absent decision was an error: %v", err)
 	}
 	encoded, err := event.Encode(event.SchemaTunnelDecision, event.TunnelDecision{

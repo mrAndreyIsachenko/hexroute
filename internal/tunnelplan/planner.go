@@ -13,6 +13,8 @@
 package tunnelplan
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"sort"
 	"strings"
@@ -65,6 +67,38 @@ var (
 // question. It is a string because it is compared for equality and carried
 // across a restart, and both are simpler on a string than on a map.
 type Signature string
+
+// Entries is how many destinations the signature covers.
+//
+// It travels into a decision record where the signature itself must not: a
+// count says whether the runtime is watching what it was configured to watch,
+// and a signature of twenty entries where sixteen were expected is how a defect
+// showed itself once already.
+func (signature Signature) Entries() int {
+	if signature == "" {
+		return 0
+	}
+	return strings.Count(string(signature), " ") + 1
+}
+
+// Digest identifies a signature without disclosing it.
+//
+// A reader needs to know whether two cycles saw the same carrier. They do not
+// need the addresses, and this repository does not let those out: the relay
+// mapper beside this one records how many endpoints answered and says in its own
+// comment that which endpoint is which never leaves it.
+//
+// Truncated because it is compared and never resolved. A whole digest of a small
+// input space can be walked back by anyone who guesses the space; twelve hex
+// characters distinguish the carriers a machine sees without being a handle on
+// them.
+func (signature Signature) Digest() string {
+	if signature == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(signature))
+	return hex.EncodeToString(sum[:])[:12]
+}
 
 type CarriedDestination struct {
 	Destination string
@@ -154,6 +188,34 @@ type Plan struct {
 	// is compared against reports one reason, so recording only the first would
 	// make an honest disagreement look like a wrong decision.
 	Causes []Cause
+	// Grounds is what the causes were reached from.
+	//
+	// A decision naming a cause and nothing behind it reads as convincingly
+	// when it is wrong as when it is right. On 2026-09-12 this rule recorded six
+	// rebuilds for a returned link in half an hour and the link had not
+	// returned; working that out took a second store laid beside the decisions
+	// and matched on time, and the comparison these decisions exist for is
+	// against a runtime that writes no such store.
+	Grounds Grounds
+}
+
+// Grounds is the observation behind each cause, and the cycle's own honesty
+// about what it managed to see.
+//
+// Three of the six causes are comparisons an incomplete cycle does not make, so
+// without Complete a reader cannot tell a cause that did not hold from one that
+// was never asked.
+type Grounds struct {
+	Complete        bool
+	ProcessRunning  bool
+	Slept           time.Duration
+	Carrier         Signature
+	CarrierEntries  int
+	LinkPresent     bool
+	LinkFailures    uint32
+	PayloadOK       bool
+	PayloadFailures uint32
+	RoutesDrifted   bool
 }
 
 // Decide reaches one decision and the state the next cycle needs.
@@ -226,6 +288,7 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 		!previous.LinkPresent && next.LinkPresent {
 		causes = append(causes, CauseLinkReturned)
 	}
+	payloadFailuresBehind := next.PayloadFailures
 	if next.PayloadFailures >= policy.PayloadFailures {
 		causes = append(causes, CausePayloadFailed)
 		// The count is spent on the decision it caused. Leaving it standing
@@ -247,5 +310,26 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 		}
 		action = ActionRebuildTunnel
 	}
-	return Plan{Action: action, Causes: causes}, next, nil
+	// Built from what the decision above used, rather than gathered again. A
+	// second gathering could drift from the first, and a record that says
+	// something the decision did not is worse than one that says nothing.
+	grounds := Grounds{
+		Complete:       observed.Complete,
+		ProcessRunning: observed.ProcessRunning,
+		Slept:          observed.Slept,
+		LinkPresent:    next.LinkPresent,
+		LinkFailures:   next.LinkFailures,
+		PayloadOK:      observed.PayloadOK,
+		// The count before it was spent, because the reader wants to know what
+		// stood behind the cause rather than what is left after it.
+		PayloadFailures: payloadFailuresBehind,
+		RoutesDrifted:   observed.RoutesDrifted,
+	}
+	if observed.Complete {
+		// A cycle that stopped early saw no carrier, and an empty signature is
+		// not an observation of one.
+		grounds.Carrier = observed.Carrier
+		grounds.CarrierEntries = observed.Carrier.Entries()
+	}
+	return Plan{Action: action, Causes: causes, Grounds: grounds}, next, nil
 }
