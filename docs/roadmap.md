@@ -77,6 +77,33 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
+`walk-the-spool-once-when-opening` is open. Opening the user journal costs 10.2
+seconds and listing its directory costs 360 milliseconds, and the difference is
+that opening walks the directory three times: recovery reads it for pending
+records, recovery lists it again with a stat for every file, and opening lists
+it a third time for one number the second listing already held.
+
+`read-the-tail-not-the-journal` is open. The root daemon runs about two and a
+half minutes after launchd starts it before it reports starting, and observes
+nothing in that window. It was measured three times — 169.9, 165.9 and 152.1
+seconds — recorded twice as standing, and never diagnosed.
+
+Diagnosed by sampling the process through the window: every sample is JSON
+decoding and canonicalisation. Startup replays the facts accepted after the
+checkpoint's watermark, and finds them by decoding every record both journals
+retain and keeping the ones above it.
+
+Measured the same hour: the checkpoint the pointer names was written a minute
+earlier at fold position 144,670, and the newest records stand at 144,670 and
+144,674. The daemon decodes 136,397 records to find four.
+
+A first reading of this said the checkpoint was fifty-six thousand positions
+behind. That was wrong and is recorded rather than quietly dropped: the
+instrument had read a checkpoint the pointer does not name.
+
+What follows is what the recent ones changed and what they left standing, kept
+because the reasons are worth more than the record of having done them.
+
 `make-the-daemon-time-its-own-start` closed on 2026-09-13. The root daemon could
 not say how long its own start took, so every answer came from sampling it from
 outside, and three attributions taken that way in one session were wrong —
@@ -102,24 +129,6 @@ directory three times.
 
 A third of this daemon's blindness is therefore a launchd setting that had been
 counted against the runtime every time it was measured.
-
-`read-the-tail-not-the-journal` is open. The root daemon runs about two and a
-half minutes after launchd starts it before it reports starting, and observes
-nothing in that window. It was measured three times — 169.9, 165.9 and 152.1
-seconds — recorded twice as standing, and never diagnosed.
-
-Diagnosed by sampling the process through the window: every sample is JSON
-decoding and canonicalisation. Startup replays the facts accepted after the
-checkpoint's watermark, and finds them by decoding every record both journals
-retain and keeping the ones above it.
-
-Measured the same hour: the checkpoint the pointer names was written a minute
-earlier at fold position 144,670, and the newest records stand at 144,670 and
-144,674. The daemon decodes 136,397 records to find four.
-
-A first reading of this said the checkpoint was fifty-six thousand positions
-behind. That was wrong and is recorded rather than quietly dropped: the
-instrument had read a checkpoint the pointer does not name.
 
 `tell-a-sleeping-machine-from-a-slow-observer` closed on 2026-09-13. It was the
 third defect the tunnel decision's soak found and the only one that fired on a
@@ -167,9 +176,6 @@ window; 165.9 seconds this time, 169.9 the time before. And a decision record
 still cannot be diagnosed on its own: it carries the action and the causes and
 not what they were decided from, and reading the link disagreement took the
 connectivity archive beside it.
-
-What follows is what the recent ones changed and what they left standing, kept
-because the reasons are worth more than the record of having done them.
 
 `pay-for-eviction-not-for-being-full` closed on 2026-09-13. The root daemon came
 up at 17:32:58 on 2026-09-12, wrote its last heartbeat at 17:35:54, and four
