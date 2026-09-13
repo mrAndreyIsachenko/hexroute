@@ -92,19 +92,30 @@ Compiling and signing a generation that grants it is not in this change. That is
 a ceremony with an operator's password, and bundling it with the code that
 introduces the capability would make one act of two.
 
-`let-a-decision-carry-its-grounds` is open. A recorded tunnel decision says what
-was decided and which causes held, and nothing about what they were decided
-from, so a cause reads as convincingly when it is wrong as when it is right.
-
-On 2026-09-12 this runtime recorded six rebuilds for a returned link in half an
-hour and the link had not returned. Working that out took the connectivity
-archive laid beside the decisions and matched on time, because that archive —
-not the decision — held the count of endpoints that answered. It worked only
-because one runtime writes both stores, and the comparison these records exist
-for is against a runtime that writes neither.
-
 What follows is what the recent ones changed and what they left standing, kept
 because the reasons are worth more than the record of having done them.
+
+`let-a-decision-carry-its-grounds` closed on 2026-09-13. A recorded tunnel
+decision said what was decided and which causes held, and nothing about what they
+were decided from, so a cause read as convincingly when it was wrong as when it
+was right. Reading the six false returned links of 2026-09-12 took the
+connectivity archive laid beside the decisions and matched on time, and that
+worked only because one runtime writes both stores.
+
+Each of the six causes has a ground in the same record now, and the carrier
+appears as a truncated digest and a count rather than as the destinations it is
+made of — how many there are and whether they changed, never which.
+
+Read back from the event archive alone: the carrier digest identical across
+three consecutive cycles over sixteen entries, the link believed present after
+zero consecutive failures, and `routes_drifted` standing on fourteen planned
+operations rather than on a bare word.
+
+Two mutations of the validation survived at first, because nothing drove the
+refusals: the checks that keep a whole signature out of the field built to keep
+destinations out were held by nothing. They are driven now, through the path that
+stores a record.
+
 
 `walk-the-spool-once-when-opening` closed on 2026-09-13. Opening the user journal
 cost 10.2 seconds while listing its directory costs 360 milliseconds, because
