@@ -26,11 +26,14 @@ find four.
   of each journal rather than from all of them.
 - The spool says which sequences it holds without opening any record, and hands
   back one record by sequence.
+- Opening the event archive takes its highest sequence from the listing rather
+  than by decoding every record. Found by measuring what the rest of this change
+  left standing: seventeen of the thirty-three remaining seconds.
 
 ## Impact
 
-- Affected specs: `observable-connectivity-state-machine`, `bounded-spool-operation-cost`
-- Affected code: `internal/connectivityjournal`, `internal/connectivityruntime`, `internal/spool`
+- Affected specs: `observable-connectivity-state-machine`, `bounded-spool-operation-cost`, `local-event-archive`
+- Affected code: `internal/connectivityjournal`, `internal/connectivityruntime`, `internal/spool`, `internal/eventarchive`
 - The offline verifier keeps reading everything. Proving a whole lineage is what
   it is for, and it does not run on a daemon's startup path.
 

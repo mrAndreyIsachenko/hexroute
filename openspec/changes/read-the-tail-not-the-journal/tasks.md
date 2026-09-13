@@ -39,7 +39,35 @@
       listing and the read as the end of the journal cannot be reached without
       injecting that race, and it is defensive rather than load-bearing.
 - [x] 5.2 `make check` green.
-- [ ] 5.3 Install, restart, and measure the window between the process appearing and `daemon_started`.
+- [x] 5.3 Install, restart, and measure the window between the process appearing and `daemon_started`.
+
+      Measured 2026-09-13 across three restarts: 42.9, 33.5 and 33.3 seconds,
+      against 169.9, 165.9 and 152.1 before. The replay cost is gone.
+
+      The prediction that went with this change was "single seconds", and that
+      was wrong. Thirty-three seconds of blindness remain, and they are now
+      attributed rather than suspected. Sampling the process through the shorter
+      window, with only this repository's frames shown:
+
+      - the first seventeen seconds are `eventarchive.(*Archive).scan` beneath
+        `eventarchive.Open`, which reads and decodes every archive record to
+        compute one number — the highest sequence, which the filenames carry;
+      - the rest is `spool.scanIndex` and `spool.parseStableName`, the listing
+        of two spools holding 136,000 files.
+
+      The first is the same defect this change removed, one store over, and it
+      is not corrected here. The second is a stat per file and is real work.
+- [x] 5.4 Correct the archive's open, which decodes every record for its highest sequence.
+
+      Corrected here rather than deferred. The defect is the same one this
+      change removed from the journals, the symptom is the same window, and
+      closing the change with the symptom still standing would repeat what
+      leaving it standing twice already did.
+
+      Open takes the highest sequence from the listing the filenames carry.
+      Mutations: decode every record for the maximum, and take the first
+      sequence rather than the last. Both fail named tests.
+- [ ] 5.5 Install again and measure what the archive's correction returned.
 
 ## 6. Close
 
