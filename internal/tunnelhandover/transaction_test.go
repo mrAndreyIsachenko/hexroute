@@ -8,16 +8,30 @@ import (
 	"time"
 )
 
+// order is what the fakes write down as they are called. The defect this file
+// grew to cover was an ordering one — a tunnel started beside the one it was
+// replacing — and a count of calls cannot see it.
+type order struct{ steps []string }
+
+func (journal *order) note(step string) {
+	if journal == nil {
+		return
+	}
+	journal.steps = append(journal.steps, step)
+}
+
 type recordingClaim struct {
 	placed, released int
 	held             bool
 	refuse           error
+	journal          *order
 }
 
 func (claim *recordingClaim) Place(string) error {
 	if claim.refuse != nil {
 		return claim.refuse
 	}
+	claim.journal.note("claim")
 	claim.placed++
 	claim.held = true
 	return nil
@@ -33,12 +47,14 @@ type recordingTunnel struct {
 	started, stopped int
 	pid              int
 	refuse           error
+	journal          *order
 }
 
 func (tunnel *recordingTunnel) Start(context.Context) (int, error) {
 	if tunnel.refuse != nil {
 		return 0, tunnel.refuse
 	}
+	tunnel.journal.note("start")
 	tunnel.started++
 	if tunnel.pid == 0 {
 		tunnel.pid = 4242
@@ -67,6 +83,48 @@ func (prover *answers) Traversed(context.Context) (bool, error) {
 	return prover.sequence[index], nil
 }
 
+// holder is the sing-box that was there first.
+//
+// stopsAfter is how many further readings it takes to be gone once signalled:
+// zero is a process that dies on the signal, and a large number is one that
+// does not.
+type holder struct {
+	pid         int
+	running     bool
+	stopsAfter  int
+	signalled   int
+	signalledAt int
+	readings    int
+	err         error
+	refuse      error
+	journal     *order
+}
+
+func (incumbent *holder) Running(context.Context) (int, bool, error) {
+	if incumbent.err != nil {
+		return 0, false, incumbent.err
+	}
+	incumbent.readings++
+	if !incumbent.running {
+		return 0, false, nil
+	}
+	if incumbent.signalled > 0 && incumbent.readings > incumbent.signalledAt+incumbent.stopsAfter {
+		incumbent.running = false
+		return 0, false, nil
+	}
+	return incumbent.pid, true, nil
+}
+
+func (incumbent *holder) Stop(pid int) error {
+	if incumbent.refuse != nil {
+		return incumbent.refuse
+	}
+	incumbent.journal.note("possess")
+	incumbent.signalled++
+	incumbent.signalledAt = incumbent.readings
+	return nil
+}
+
 func transaction(t *testing.T, claim *recordingClaim, tunnel *recordingTunnel, prover *answers) *Transaction {
 	t.Helper()
 	store, err := OpenStore(filepath.Join(t.TempDir(), "handover.json"))
@@ -76,7 +134,10 @@ func transaction(t *testing.T, claim *recordingClaim, tunnel *recordingTunnel, p
 	moment := time.Date(2026, 9, 13, 19, 0, 0, 0, time.UTC)
 	return &Transaction{
 		Store: store, Claim: claim, Tunnel: tunnel, Prover: prover,
-		Policy: Policy{Proofs: 2, Deadline: 120 * time.Second},
+		Incumbent: &holder{},
+		Policy: Policy{
+			Proofs: 2, Deadline: 120 * time.Second, Possession: 30 * time.Second,
+		},
 		Now: func() time.Time {
 			moment = moment.Add(time.Second)
 			return moment

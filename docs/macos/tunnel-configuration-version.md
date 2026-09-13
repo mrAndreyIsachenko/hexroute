@@ -127,3 +127,11 @@ sudo /Library/Application\ Support/Hexroute/observe-root/bin/hexroute-handover \
 
 It reports whether the payload traversed twice inside the deadline, which is the
 same evidence the real handover completes on.
+
+What a rehearsal cannot tell you is what happens in the two phases it skips.
+Claiming the tunnel and starting the process are exactly the phases that change
+the machine, and a defect living in either is invisible here: the transaction
+once placed the claim and started sing-box without stopping the sing-box already
+running, and a clean rehearsal said nothing about it. The real run takes the
+tunnel from its holder between those two phases, and refuses to start if the
+holder is still there — see `--possession`, which bounds that wait.

@@ -161,6 +161,38 @@
       traverses again has not been shown to hold, and counting cumulatively
       would complete the handover on exactly the evidence the link cause was
       completing on when it was wrong six times in half an hour.
+- [x] 3.6 Take the tunnel from its holder before starting one.
+
+      Found by reading the code rather than by running it, and the rehearsal
+      could not have found it: a rehearsal skips exactly the two phases
+      involved. `Run` placed the claim and started sing-box. The supervisor,
+      seeing the claim, stops *restarting* the process — it does not stop the
+      one already running. So a real handover would have put two sing-box
+      processes on one tunnel address.
+
+      The order is claim, then take, then start. The claim is what makes the
+      process this runtime's to stop; stopping first would be one runtime ending
+      another's job without having said so on disk. Waiting for the previous
+      owner to notice on its own tick was rejected: sixty seconds against a
+      hundred-and-twenty-second deadline is half the budget spent waiting for
+      somebody else to read a file.
+
+      No phase of its own. The undo for "the claim is placed" and "the holder is
+      stopped" is the same act — releasing the claim, after which the previous
+      owner restarts what it finds missing — and a phase whose undo is another
+      phase's undo is not a phase.
+
+      Which process counts as the tunnel comes from the observer the root daemon
+      decides `process_gone` with, so the two cannot part company. Parentage is
+      deliberately not asked for: the daemon passes its own pid to tell its child
+      from a stranger's, and the handover is asking about the stranger's, so a
+      filter on parentage would report nothing running in exactly the case there
+      is something to take.
+
+      A holder that will not go, one that cannot be signalled, and a reading that
+      fails all abort before anything is started. The last of those is the case
+      where a second process is most likely.
+
 - [x] 3.4 Abort on the deadline: remove the claim, stop what was started, let the supervisor take it back.
 - [x] 3.5 A later invocation can abort what it finds.
 
@@ -202,12 +234,32 @@
 
 ## 5. The rehearsal
 
-- [ ] 5.1 Every phase except the claim and the start, reported as a rehearsal.
-- [ ] 5.2 Run it on the machine and record what it found.
+- [x] 5.1 Every phase except the claim and the start, reported as a rehearsal.
+- [x] 5.2 Run it on the machine and record what it found.
+
+      Ran 2026-09-14 as `handover-1789336113`: completed at phase `proven` on two
+      proofs, and left nothing behind — neither the claim nor the session record
+      was on disk afterwards.
+
+      What it proved is the session record, the proving and the clearing. What it
+      could not prove is the claim and the start, which it skips by design — and
+      that is where task 3.6's defect was living. The rehearsal is worth what it
+      costs and is not a substitute for reading the two phases it does not run.
 
 ## 6. Gates and evidence
 
 - [ ] 6.1 Mutate the claim, the completion rule, the abort and the verification; confirm the named tests fail.
+
+      Possession, 2026-09-14: nine mutations applied, all nine killed. Taking the
+      tunnel after starting instead of before; never refusing at the bound;
+      ignoring the signal failure; treating a failed reading as an absent holder;
+      possessing during a rehearsal; allowing a nil holder; making the bound
+      optional; filtering the holder by parentage; signalling pid zero.
+
+      The signal-failure mutation survived its first run and the test was the
+      weak half: the abort happens anyway when the bound is reached, so counting
+      the outcome could not tell "would not die" from "was not allowed to ask".
+      The test now reads the reason.
 - [ ] 6.2 `make check` green.
 - [ ] 6.3 Run the real transaction and record what the tunnel did.
 
