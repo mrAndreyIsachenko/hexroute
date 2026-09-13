@@ -34,8 +34,8 @@ it would act.
 ### Requirement: The causes are the ones that keep a machine on the network
 
 The runtime SHALL reach a decision to rebuild the tunnel when the sing-box
-process is gone, when the interval since the previous cycle exceeds the wake
-threshold, when the set of interfaces carrying the configured destinations has
+process is gone, when the machine has slept longer than the wake threshold,
+when the set of interfaces carrying the configured destinations has
 changed, when connectivity has returned after being absent past its threshold,
 or when the payload path has failed past its threshold. It SHALL reach a
 decision to reapply routes when the observed routes differ from the planned
@@ -56,6 +56,21 @@ return. Six of them fell in one half hour on 2026-09-12, each asking for a
 rebuild of a tunnel that was working, while the runtime that owns that tunnel
 did nothing at all in the same window.
 
+A wake gap SHALL be the time the machine spent asleep, measured rather than
+inferred from an absence of observations. A runtime that is slow is not a
+machine that slept, and the two SHALL NOT be reported as the same thing.
+
+The rule SHALL obtain it from the divergence of two clocks: one that advances
+while the machine sleeps and one that does not. Where the platform offers no
+such pair the cause SHALL NOT hold, because a gap that cannot be attributed to
+sleep is not evidence of one.
+
+Measured on 2026-09-12: the first fold after a reinstall cost 32.4 seconds, the
+loop then waited its interval, and ninety-three seconds passed between two
+observations against a threshold of ninety. The cycle named a wake gap on a
+machine that had been awake throughout. With authority that decision rebuilds a
+working tunnel every time this daemon is installed.
+
 These are the six the production supervisor acts on, measured from its own log
 rather than derived from its source. Two of them have not occurred in
 sixty-one days and are kept: the process exiting is the only thing between this
@@ -69,8 +84,13 @@ back from a dead link.
 
 #### Scenario: A wake gap
 
-- **WHEN** the interval since the previous cycle exceeds the configured wake threshold
+- **WHEN** the machine has been asleep for longer than the configured wake threshold
 - **THEN** the decision is to rebuild, naming the gap
+
+#### Scenario: The observer was slow and the machine was awake
+
+- **WHEN** more than the wake threshold passes between two observations while the machine stayed awake
+- **THEN** no wake gap is named and no rebuild is decided
 
 #### Scenario: The carrier changed
 
