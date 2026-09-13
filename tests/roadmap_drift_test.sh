@@ -24,12 +24,25 @@ roadmap=docs/roadmap.md
 failed=0
 
 # --- Active Changes -----------------------------------------------------
-open_changes=$(OPENSPEC_TELEMETRY=0 openspec list --json 2>/dev/null \
+# What openspec said is captured before it is parsed, and a failure to ask is
+# not the same answer as "nothing is open".
+#
+# It used to be. The listing was piped through a parser that returned nothing on
+# any exception, with stderr discarded, so a missing CLI, a broken install and an
+# empty repository all produced the same silence — and the gate then demanded the
+# roadmap say "None." on the strength of a question it had not managed to ask.
+if ! openspec_raw=$(OPENSPEC_TELEMETRY=0 openspec list --json 2>&1); then
+	printf 'openspec list failed, so what is open was never established:\n' >&2
+	printf '%s\n' "$openspec_raw" >&2
+	exit 1
+fi
+open_changes=$(printf '%s' "$openspec_raw" \
 	| python3 -c 'import json,sys
 try:
     data = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
+except Exception as error:
+    sys.stderr.write("openspec list is not the JSON this gate reads: %s\n" % error)
+    sys.exit(1)
 items = data if isinstance(data, list) else data.get("changes", [])
 for item in items:
     name = item.get("name") if isinstance(item, dict) else item
@@ -39,15 +52,23 @@ for item in items:
 section=$(sed -n '/^## Active Changes$/,/^## /p' "$roadmap")
 if [ -z "$open_changes" ]; then
 	printf '%s' "$section" | grep -qiE '^None\.|^None$' || {
-		printf 'no change is open, but the roadmap does not say so\n' >&2
+		printf 'no change is open, but the roadmap does not say so.\n' >&2
+		# A gate that refuses without showing what it read makes the reader
+		# guess at a machine they cannot see. This one has already sent a
+		# reader chasing a file that was correct in every checkout of it.
+		printf 'the section under "## Active Changes" read:\n' >&2
+		printf '%s\n' "${section:-<the section is empty; the heading was not found>}" >&2
+		printf 'openspec answered:\n%s\n' "$openspec_raw" >&2
 		failed=1
 	}
 else
 	while read -r name; do
 		[ -z "$name" ] && continue
 		printf '%s' "$section" | grep -qF "$name" || {
-			printf 'change %s is open and the roadmap does not name it\n' \
+			printf 'change %s is open and the roadmap does not name it.\n' \
 				"$name" >&2
+			printf 'the section under "## Active Changes" read:\n' >&2
+			printf '%s\n' "${section:-<the section is empty>}" >&2
 			failed=1
 		}
 	done <<< "$open_changes"
