@@ -32,6 +32,54 @@ claim ownership could claim it while the other still held the process.
 - **WHEN** anything other than the operator's transaction writes the claim
 - **THEN** it is refused
 
+### Requirement: The new owner takes the process before it starts one
+
+The transaction SHALL stop the tunnel process it is taking over before it starts
+its own, and SHALL do so after the claim is placed rather than before. The claim
+is what makes the process the new owner's to stop; stopping first would be a
+runtime ending another runtime's job without having said so on disk.
+
+Two tunnel processes SHALL never be started on one tunnel address. The previous
+owner stops restarting the process while the claim is held but does not stop the
+one already running, so a transaction that only claimed and started would leave
+both.
+
+The process the transaction stops SHALL be identified the same way the decision
+rule identifies the tunnel process, so the runtime that stops it and the record
+that reports on it cannot come to disagree about which process that is. The
+identification SHALL NOT be narrowed to a process this runtime started, because
+the process being taken over is by definition another runtime's.
+
+The wait for the previous process to be gone SHALL be bounded, and reaching that
+bound SHALL abort rather than start. Not knowing whether anything holds the
+tunnel SHALL be treated as something holding it: an observation that failed is
+the case where a second process is most likely.
+
+#### Scenario: A tunnel is running when the transaction begins
+
+- **WHEN** the transaction has placed the claim and a tunnel process is running
+- **THEN** that process is stopped and observed gone before any new one is started
+
+#### Scenario: Nothing holds the tunnel
+
+- **WHEN** the transaction has placed the claim and no tunnel process is running
+- **THEN** nothing is signalled and the transaction starts its own
+
+#### Scenario: The previous process does not stop
+
+- **WHEN** the process being taken over is still running at the bound
+- **THEN** the transaction aborts without starting a tunnel, and the claim is released
+
+#### Scenario: The previous process cannot be observed
+
+- **WHEN** the reading that would say whether a tunnel process is running fails
+- **THEN** the transaction aborts without starting a tunnel, and the refusal names the reading
+
+#### Scenario: A rehearsal takes nothing
+
+- **WHEN** the transaction is rehearsed while a tunnel process is running
+- **THEN** nothing is signalled, for the same reason a rehearsal starts nothing
+
 ### Requirement: The handover completes on traffic, not on an interface
 
 The transaction SHALL complete only on evidence that traffic traversed the

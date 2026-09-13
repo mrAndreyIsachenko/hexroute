@@ -39,8 +39,13 @@ type Policy struct {
 	// Deadline bounds the whole attempt. Twice the fifty-seven seconds the
 	// incumbent was measured taking to restart its own tunnel.
 	Deadline time.Duration
-	// Between is the wait between proofs.
+	// Between is the wait between proofs, and between the readings that watch
+	// the previous holder go.
 	Between time.Duration
+	// Possession bounds the wait for the previous holder to be gone. The
+	// incumbent's own tunnel restart was measured at fifty-seven seconds end to
+	// end on this machine; stopping is the cheap half of that.
+	Possession time.Duration
 }
 
 // Outcome is what happened, in enough detail to be recorded.
@@ -60,12 +65,15 @@ var (
 
 // Transaction runs one handover, or rehearses one.
 type Transaction struct {
-	Store  *Store
-	Claim  Claimer
-	Tunnel Tunnel
-	Prover Prover
-	Policy Policy
-	Now    func() time.Time
+	Store *Store
+	Claim Claimer
+	// Incumbent is who holds the tunnel now, and is stopped before this runtime
+	// starts its own. Absent during a rehearsal, for the same reason Tunnel is.
+	Incumbent Incumbent
+	Tunnel    Tunnel
+	Prover    Prover
+	Policy    Policy
+	Now       func() time.Time
 }
 
 // Run carries the handover from prepared to proven, or aborts it back.
@@ -74,11 +82,15 @@ type Transaction struct {
 // between acting and recording would leave the machine changed by a phase no
 // record mentions, and the abort that came later would not undo it.
 func (transaction *Transaction) Run(ctx context.Context, id string, rehearsal bool) (Outcome, error) {
-	if transaction.Policy.Proofs < 1 || transaction.Policy.Deadline <= 0 {
+	if transaction.Policy.Proofs < 1 || transaction.Policy.Deadline <= 0 ||
+		transaction.Policy.Possession <= 0 {
 		return Outcome{}, ErrInvalidPolicy
 	}
 	if !rehearsal && transaction.Tunnel == nil {
 		return Outcome{}, ErrNoTunnel
+	}
+	if !rehearsal && transaction.Incumbent == nil {
+		return Outcome{}, ErrNoIncumbent
 	}
 	now := transaction.Now
 	if now == nil {
@@ -119,6 +131,15 @@ func (transaction *Transaction) Run(ctx context.Context, id string, rehearsal bo
 	outcome.Phase = PhaseClaimed
 	if err := transaction.Claim.Place(id); err != nil {
 		return outcome, transaction.abort(&outcome, session, 0, fmt.Sprintf("the claim was refused: %v", err))
+	}
+
+	// Taking the tunnel from its holder belongs to the claimed phase rather than
+	// to one of its own. The claim is what authorises it, and releasing the
+	// claim is what undoes it: the previous owner restarts a tunnel it finds
+	// missing once it is supervising again. A phase whose undo is another
+	// phase's undo is not a phase.
+	if err := transaction.possess(ctx, now); err != nil {
+		return outcome, transaction.abort(&outcome, session, 0, err.Error())
 	}
 
 	session, err = transaction.Store.Advance(session, PhaseStarted)

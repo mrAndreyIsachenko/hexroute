@@ -38,6 +38,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	proofs := flags.Int("proofs", 2, "consecutive proofs of traversal that complete it")
 	deadline := flags.Duration("deadline", 120*time.Second, "how long the whole attempt may take")
 	between := flags.Duration("between", 5*time.Second, "wait between proofs")
+	possession := flags.Duration("possession", 30*time.Second,
+		"how long to wait for the previous holder of the tunnel to be gone")
 	versionPath := flags.String("tunnel-version", "", "the signed tunnel configuration version")
 	targetKey := flags.String("target-key", "", "what this host is, for the version's target")
 	singBox := flags.String("sing-box", "", "the tunnel binary")
@@ -73,6 +75,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		Store: sessions, Claim: claims,
 		Policy: tunnelhandover.Policy{
 			Proofs: *proofs, Deadline: *deadline, Between: *between,
+			Possession: *possession,
 		},
 	}
 
@@ -97,8 +100,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 2
 		}
+		incumbent, err := tunnelIncumbent()
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 2
+		}
 		transaction.Prover = prover
 		transaction.Tunnel = starter
+		transaction.Incumbent = incumbent
 		outcome, err := transaction.Run(context.Background(), transactionID(), false)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
@@ -161,6 +170,22 @@ func tunnelStarter(
 		ContentPath: contentPath,
 		Binary:      binary,
 		Runner:      tunnelstart.ExecRunner{},
+	}, nil
+}
+
+// tunnelIncumbent is whoever holds the tunnel now.
+//
+// It is built from the observer the root daemon decides process_gone with, so
+// the process this stops is by construction the process the decision record
+// calls the tunnel.
+func tunnelIncumbent() (*tunnelstart.Incumbent, error) {
+	observer, err := observe.NewProcessObserver(observe.ExecRunner{})
+	if err != nil {
+		return nil, err
+	}
+	return &tunnelstart.Incumbent{
+		Observer: observer,
+		Runner:   tunnelstart.ExecRunner{},
 	}, nil
 }
 
