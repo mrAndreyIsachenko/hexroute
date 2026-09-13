@@ -112,13 +112,34 @@
 
 ## 4. Starting the tunnel from a signed version
 
-      Until this section is done the command rehearses and aborts and will not
-      begin a real handover: starting the tunnel needs the signed version, and a
-      command that pretended otherwise would be worse than one that says so.
+- [x] 4.1 Verify at every start, against this host, without reaching the network.
 
+      At every start rather than once at installation: verifying once would let
+      anyone able to write the file afterwards choose the bytes that carry every
+      packet this machine sends. The verified content is rewritten from the
+      artifact each time, so a file edited between starts is replaced rather
+      than obeyed.
 
-- [ ] 4.1 Verify at every start, against this host, without reaching the network.
-- [ ] 4.2 Refuse to start on a version that does not verify, and return ownership.
+      Nothing reaches the network to do it. A host needs its tunnel
+      configuration exactly when it has none, and a verification that had to
+      fetch a key would fail in the one case it exists for.
+
+      The key is the one this host already pins for policy. Signing a
+      configuration a host will run is the same authority as signing a policy
+      generation, and a second key would be a second thing to keep safe for no
+      gain — which is why `configversion.Signer` is the policy signer's method
+      set and not a type of its own.
+- [x] 4.2 Refuse to start on a version that does not verify, and return ownership.
+
+      The refusal names which check failed. "It did not verify" is the answer
+      that sent a reader looking at the wrong half of a system more than once in
+      this repository's history.
+
+      Refused: signed by another key, meant for another host, content changed
+      after signing, not a version at all, and absent. In every case nothing is
+      started and nothing is written for a process to read, so a refusal leaves
+      no half-prepared configuration behind for the next attempt to find.
+- [ ] 4.3 Publish the first version from the bytes running today, and prove it byte for byte. Signed with the operator's key; the one step nobody else can take.
 
 ## 5. The rehearsal
 
