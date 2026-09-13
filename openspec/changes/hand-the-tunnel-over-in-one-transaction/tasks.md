@@ -74,7 +74,43 @@
       repository now, and `tests/route_coverage_roles_test.sh` fails when the two
       lists of roles part company — which is the fault it would have caught on
       the run that was meant to prove the handover safe.
-- [ ] 1.4 Read the day's watch and decide whether the inherited destinations stay.
+- [x] 1.4 Read the watch and decide whether the inherited destinations stay.
+
+      They stay. All five carried traffic inside a bounded window, so removing
+      them would take away routing something is using.
+
+      Read 2026-09-14 01:17 MSK. Uses since the routes were created:
+      151.101.2.133 861, 151.101.130.133 228, 151.101.66.133 185,
+      151.101.194.133 170, 77.222.40.254 70.
+
+      The window is 9h42m. The routes cannot predate the tunnel interface, and
+      sing-box has been running since 15:34:30 without a restart; `apply_routes`
+      skips a destination that already points at the right interface rather than
+      re-adding it, so the reapplications in between did not reset the counters.
+
+      The packet capture this task was waiting a day for is not where the answer
+      came from, and the reason is worth keeping. After 69 minutes the capture
+      was zero bytes — not zero packets, zero bytes, without even a pcap header,
+      because `tcpdump -w` buffers. A count taken from it would have been a
+      guess about an instrument rather than a reading of the network, and the
+      reader refused rather than printing a zero. That refusal is the only
+      reason this was noticed instead of being written down as "no traffic".
+
+      What answered it was the per-route use counter in `netstat -rnl`, which had
+      been accumulating the whole time nobody was watching. It was driven before
+      it was believed: one connection to 151.101.2.133 moved its counter by five,
+      and a route nothing is sent to stayed at zero across the same reading.
+
+      The traffic is in bursts, not a stream: across five minutes of sampling, all
+      five counters stayed still, and the capture's 69 silent minutes agree with
+      that rather than contradicting it. A three-minute look — which is what this
+      task originally had — could have seen nothing on a destination carrying
+      hundreds of packets a day. That is the fault the day-long watch was meant
+      to fix, and the counter fixes it better, because it was already running.
+
+      What they are is still unknown, and this does not change it. Four are
+      Fastly anycast and cannot be attributed from a host. They keep the
+      `inherited` role, which says what is known rather than guessing.
 - [x] 1.2 Publish the first signed configuration version from the bytes running today, and prove it is byte for byte identical.
 
       The sequence is written down at `docs/macos/tunnel-configuration-version.md`.
