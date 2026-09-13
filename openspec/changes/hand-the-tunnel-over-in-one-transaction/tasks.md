@@ -75,7 +75,7 @@
       lists of roles part company — which is the fault it would have caught on
       the run that was meant to prove the handover safe.
 - [ ] 1.4 Read the day's watch and decide whether the inherited destinations stay.
-- [ ] 1.2 Publish the first signed configuration version from the bytes running today, and prove it is byte for byte identical.
+- [x] 1.2 Publish the first signed configuration version from the bytes running today, and prove it is byte for byte identical.
 
       The sequence is written down at `docs/macos/tunnel-configuration-version.md`.
       It is the operator's to run: the key requires user presence in their own
@@ -109,7 +109,19 @@
       `scripts/ops/find-pinned-signer.sh`, which prints one path or nothing and
       refuses when two match rather than choosing. The preflight itself was
       wrong first as well: run under sudo it looked in root's home for files
-      that live in the operator's, and reported both missing.
+      that live in the operator's, and reported both missing; and it reported the
+      signer application absent because it searched four directories deep where
+      that application lives nine.
+
+      Run on 2026-09-13. `verify-key` returned the fingerprint the host pins.
+      The content digest taken before signing and the `content_sha256` the
+      signature covers are the same value, and the installed version's content
+      is byte for byte the file the supervisor still runs.
+
+      One thing the installer does not know about: the version is placed beside
+      the daemon's configuration by hand, and `observe-root-launchd.sh` neither
+      installs nor removes it. A reinstall leaves it alone, which is right, and a
+      machine that lost it would need the ceremony again.
 
 ## 2. The claim
 
