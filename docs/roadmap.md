@@ -77,6 +77,33 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
+`hand-the-tunnel-over-in-one-transaction` is open. It is item 8's fourth change
+and the first in which this runtime performs anything.
+
+Its grill was run on 2026-09-13 against the live supervisor rather than its
+source, and revised two things the item had settled. The supervisor is not
+booted out: it has no reduced mode — `TWILIGHT_SUPERVISOR_MODE` is written by
+its installer and read by nothing — and its ingress selection changed 91 times
+in 61 days, so booting it out to take the tunnel would drop a behaviour that
+fires half again a day to gain one that fires every other week. Six of its
+twelve live behaviours move; six stay.
+
+The grill also found that `TWILIGHT_INTERNET_RESTART_ON_RESTORE` is off. The
+runtime that owns the tunnel is configured never to act on connectivity
+returning, which is one of the six causes this one decides on — recorded as a
+cause that had not occurred in sixty-one days, when it could not have.
+
+Ownership passes through a file both runtimes read and only the operator's
+transaction writes. Completion is two consecutive proofs that traffic traversed,
+within 120 seconds; the deadline aborts to the supervisor rather than leaving
+the tunnel unowned. The configuration becomes a signed version, first byte for
+byte what runs today, and a version that does not verify is not started.
+
+It runs first as a rehearsal that performs every phase except the handover,
+because every part of this runtime applied to the live machine for the first
+time has been wrong about something, and this is the part whose first mistake
+costs the network.
+
 `ask-whether-a-tunnel-owner-would-be-allowed` is open, and it is the third of the
 four changes the grill of item 8 settled — the first that touches authority at
 all. No capability in the policy model covers owning a tunnel; the two that exist
