@@ -17,6 +17,28 @@ Only the operator's transaction SHALL write the claim, and abandoning the
 transaction SHALL remove it. Neither daemon SHALL write it: a daemon that could
 claim ownership could claim it while the other still held the process.
 
+The runtime taking the tunnel SHALL establish that the previous owner is able to
+read the claim before taking it, and SHALL read that from the program as
+installed rather than as committed. A repository is not what runs. A previous
+owner that cannot read a claim does not step back: it starts its own tunnel
+against an interface already taken, and is restarted for as long as whatever
+supervises it keeps trying.
+
+While the claim is held, the previous owner SHALL keep recording that it has
+handed the tunnel over, and SHALL NOT relabel itself on evidence that traffic is
+flowing. After a handover the traffic it observes is the new owner's, so a
+probe that passes says nothing about a tunnel it no longer has.
+
+#### Scenario: The previous owner cannot read a claim
+
+- **WHEN** the program that owns the tunnel today has no notion of the claim
+- **THEN** the handover refuses before anything is taken, and names that program
+
+#### Scenario: The previous owner's probe passes after the handover
+
+- **WHEN** traffic traverses the new owner's tunnel and the previous owner probes it
+- **THEN** the previous owner keeps recording that the tunnel is handed over
+
 #### Scenario: The previous owner restarts mid-handover
 
 - **WHEN** the supervisor exits and is restarted while the claim is held
