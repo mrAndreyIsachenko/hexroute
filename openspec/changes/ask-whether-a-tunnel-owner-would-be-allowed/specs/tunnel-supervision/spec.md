@@ -54,6 +54,16 @@ never which they are.
 - **WHEN** a cycle decides to act and no active generation carries the capability
 - **THEN** the record says the decision was not authorized, and names why
 
+#### Scenario: The refusal is policy's, not the question's
+
+- **WHEN** a cycle decides to act under a control state and an active generation that grants nothing
+- **THEN** the question carries that control-state generation and a digest of the decision, and the recorded reason is the policy's — never that the request was malformed
+
+#### Scenario: No control state yet
+
+- **WHEN** a cycle decides to act before the runtime has a control-state generation
+- **THEN** nothing is asked, and the record carries no authorization rather than a refusal
+
 #### Scenario: A cause is read back
 
 - **WHEN** a recorded decision names a cause
