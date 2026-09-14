@@ -77,20 +77,21 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`ask-whether-a-tunnel-owner-would-be-allowed` is open, and it is the third of the
-four changes the grill of item 8 settled — the first that touches authority at
-all. No capability in the policy model covers owning a tunnel; the two that exist
-are `operator_resume` and `pritunl_recovery`.
+None.
 
-It adds one, root-only, covering rebuilding the tunnel and reapplying its routes
-as a single grant, and has the runtime ask on every cycle that decides to act
-whether it would be authorized. Nothing is performed and no executor is added.
-Under the generation now active the answer is a refusal, which is what proves the
-question is asked and reaches the handler.
+`ask-whether-a-tunnel-owner-would-be-allowed` closed on 2026-09-14, and item 8
+with it. The policy model has a root-only `tunnel_ownership` capability, and the
+runtime asks whether it would be authorized on every cycle that decides to act.
+Nothing is performed; granting it is a ceremony, and performing it is item 9.
 
-Compiling and signing a generation that grants it is not in this change. That is
-a ceremony with an operator's password, and bundling it with the code that
-introduces the capability would make one act of two.
+It first closed on a refusal for the wrong reason. The runtime asked with
+control generation zero and an empty plan digest, which the evaluator rejects as
+malformed before reading any policy, so all 683 answers in the archive were
+`invalid_request` and a granting generation would have left them so. The test
+meant to prove the question reached policy used an authority that discarded both
+arguments. Read back after the fix: the first cycle after a restart asks nothing,
+having no control state yet, and every decision after it reads
+`selector_mismatch` — policy's own refusal.
 
 What follows is what the recent ones changed and what they left standing, kept
 because the reasons are worth more than the record of having done them.
@@ -797,7 +798,7 @@ item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
    bound are the same order of magnitude, and starting a multi-week wait whose
    sample can end silently — before the thing that makes it non-silent exists —
    would set up the experiment that just failed.
-8. Cut root tunnel ownership from Twilight to Hexroute transactionally. Its
+8. ~~Cut root tunnel ownership from Twilight to Hexroute transactionally.~~ Its
    grill was run before the reorder and settled its shape, recorded here so it
    is not derived again.
 
@@ -908,6 +909,16 @@ it the fifth thing here found designed and never given a producer. After item 6
 was taken apart it is worse than unused — it computes an objective for a service
 that will not be built, and should be removed or redefined rather than left to
 look like a commitment. Found 2026-09-06.
+
+**The control-state generation an authorization carries binds nothing.**
+`policycontrol.evaluateActionLocked` builds the evaluator's state with the
+control-state generation taken from the request itself, so the check that the
+two match compares the request to itself, and the only real requirement is that
+it is not zero. That holds for the Pritunl rescue, operator resume and the
+tunnel question alike. It was found while fixing the tunnel question, which had
+sent zero; sending the right number made that question well-formed, and did not
+make the generation mean anything. An executor granted authority under this
+check is not refused for acting on a stale control state. Found 2026-09-14.
 
 ## Debt
 

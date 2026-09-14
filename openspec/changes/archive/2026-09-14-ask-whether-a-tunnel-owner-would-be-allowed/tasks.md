@@ -45,7 +45,7 @@
       digest that ignores the causes, and the handler asking about the wrong
       capability.
 - [x] 4.2 `make check` green.
-- [ ] 4.3 Install, and read back a decision that says it would not have been allowed.
+- [x] 4.3 Install, and read back a decision that says it would not have been allowed.
 
       First read 2026-09-14: 2072 tunnel decisions held, 683 with an answer,
       every recent one `invalid_request`. That satisfied this task's wording and
@@ -61,6 +61,16 @@
       branch and a decision read back whose reason is the policy's —
       `selector_mismatch` under generation 4 — rather than `invalid_request`.
 
+      Read back 2026-09-14 after installing from the branch at 09:20:31Z. Ten
+      decisions: the first, at 09:22:24Z, carries no answer — the cycle before
+      the operator snapshot had a generation, which asks nothing by design — and
+      the other nine all read `{"allowed": false, "reason": "selector_mismatch"}`.
+      The question reaches policy, and policy answers it.
+
+      The reader first called that single unanswered decision proof that the
+      daemon does not ask. One decision cannot tell an old daemon from a first
+      cycle; the reader now says so instead of reaching a verdict.
+
 ## 5. Close
 
-- [ ] 5.1 Sync the deltas into the baselines, validate, archive.
+- [x] 5.1 Sync the deltas into the baselines, validate, archive.

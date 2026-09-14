@@ -167,6 +167,14 @@ records exist for is against a runtime that writes neither, and when this rule i
 granted authority the record is what a rebuilt tunnel would have to be explained
 from.
 
+A record SHALL also carry whether the runtime would have been permitted to do
+what it decided. Deciding and being allowed are different questions, and a
+record that answers only the first cannot show that the second was ever asked.
+
+The answer SHALL be recorded on the cycles that decided to act, including every
+cycle on which it is a refusal. A refusal recorded before any generation grants
+the capability is what proves the question reaches the policy handler at all.
+
 The grounds SHALL carry no identity. What carries the tunnel is recorded as a
 digest and a count, never as the destinations it is made of, on the same terms
 as every other projection here: how many there are and whether they changed,
@@ -181,6 +189,21 @@ never which they are.
 
 - **WHEN** the owning runtime rebuilt the tunnel
 - **THEN** the record can be read to say whether this runtime would have, and for which cause
+
+#### Scenario: A decision that would not be permitted
+
+- **WHEN** a cycle decides to act and no active generation carries the capability
+- **THEN** the record says the decision was not authorized, and names why
+
+#### Scenario: The refusal is policy's, not the question's
+
+- **WHEN** a cycle decides to act under a control state and an active generation that grants nothing
+- **THEN** the question carries that control-state generation and a digest of the decision, and the recorded reason is the policy's — never that the request was malformed
+
+#### Scenario: No control state yet
+
+- **WHEN** a cycle decides to act before the runtime has a control-state generation
+- **THEN** nothing is asked, and the record carries no authorization rather than a refusal
 
 #### Scenario: A cause is read back
 
