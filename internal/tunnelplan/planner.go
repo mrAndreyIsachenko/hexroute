@@ -37,13 +37,20 @@ const (
 	// CauseLinkReturned is connectivity coming back after being absent. It has
 	// not occurred in sixty-one days and is how a laptop returns from a dead
 	// link.
+	// It is observed and recorded and no longer named: the runtime this rule
+	// reproduces does not rebuild on a returned link, by recorded decision.
 	CauseLinkReturned Cause = "link_returned"
 	// CausePayloadFailed is the tunnel being up and carrying nothing. Two in
 	// sixty-one days, and the only cause that distinguishes a path that works
 	// from one that answers.
+	// It is observed and recorded and no longer named: the runtime this rule
+	// reproduces rebuilds on the payload path only after a failover this runtime
+	// does not perform.
 	CausePayloadFailed Cause = "payload_failed"
 	// CauseRoutesDrifted is the observed routes differing from the planned
 	// ones. The supervisor reapplies them every tick.
+	// It is observed and recorded and no longer named: routes stay with the
+	// runtime that owns them.
 	CauseRoutesDrifted Cause = "routes_drifted"
 )
 
@@ -52,6 +59,8 @@ type Action string
 const (
 	ActionNone          Action = "none"
 	ActionRebuildTunnel Action = "rebuild_tunnel"
+	// ActionReapplyRoutes is no longer produced. Records written before this
+	// change carry it, and the record's vocabulary still reads them.
 	ActionReapplyRoutes Action = "reapply_routes"
 )
 
@@ -117,6 +126,11 @@ func NewSignature(carried []CarriedDestination) Signature {
 }
 
 type Policy struct {
+	// Interval is how long the runtime waits between cycles. A wake gap is the
+	// interval plus the time the machine slept, because that is what the runtime
+	// this rule reproduces compares: the wall time between the starts of two
+	// ticks that sleep an interval apart.
+	Interval time.Duration
 	// WakeThreshold is the interval since the previous cycle beyond which the
 	// gap is a sleep rather than a slow cycle.
 	WakeThreshold time.Duration
@@ -206,9 +220,11 @@ type Plan struct {
 // without Complete a reader cannot tell a cause that did not hold from one that
 // was never asked.
 type Grounds struct {
-	Complete        bool
-	ProcessRunning  bool
-	Slept           time.Duration
+	Complete       bool
+	ProcessRunning bool
+	Slept          time.Duration
+	// TickGap is what the wake cause was compared on: the interval plus the sleep.
+	TickGap         time.Duration
 	Carrier         Signature
 	CarrierEntries  int
 	LinkPresent     bool
@@ -225,8 +241,11 @@ type Grounds struct {
 // held is named; the action is the strongest of them, because rebuilding the
 // tunnel reapplies its routes and reporting both would suggest two acts.
 func Decide(policy Policy, previous State, observed Observed) (Plan, State, error) {
+	// A threshold at or below one interval would name a wake gap on every cycle,
+	// because every cycle is at least an interval after the one before it.
 	if policy.WakeThreshold <= 0 || policy.PayloadFailures == 0 ||
-		policy.LinkFailures == 0 {
+		policy.LinkFailures == 0 || policy.Interval <= 0 ||
+		policy.WakeThreshold <= policy.Interval {
 		return Plan{}, State{}, ErrInvalidPolicy
 	}
 	if observed.Slept < 0 {
@@ -267,47 +286,32 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 		next.PayloadFailures++
 	}
 
-	causes := make([]Cause, 0, 6)
+	payloadFailuresBehind := next.PayloadFailures
+
+	// Three causes act, in the definitions of the runtime this rule reproduces.
+	// A returned link, a failed payload path and drifted routes are still
+	// observed above and still recorded below; they no longer decide anything.
+	// Measured before this change: the rule that acted on them decided 125
+	// rebuilds in a window where that runtime made 2.
+	causes := make([]Cause, 0, 3)
 	if !observed.ProcessRunning {
 		causes = append(causes, CauseProcessGone)
 	}
-	// A first cycle has nothing to measure against and reports no sleep.
-	if observed.Slept > policy.WakeThreshold {
+	// The tick gap, inclusive, as that runtime compares it. The sleep is measured
+	// rather than inferred, so a slow cycle does not look like a sleeping machine;
+	// the interval is added because that runtime's gap always contains one.
+	if policy.Interval+observed.Slept >= policy.WakeThreshold {
 		causes = append(causes, CauseWakeGap)
 	}
-	// Both of these compare against a previous cycle. Without one there is
-	// nothing to differ from, and inventing a difference would rebuild the
-	// tunnel on every restart.
+	// A carrier change compares against a previous cycle. Without one there is
+	// nothing to differ from, and inventing a difference would rebuild the tunnel
+	// on every restart.
 	if observed.Complete && previous.Known && observed.Carrier != previous.Carrier {
 		causes = append(causes, CauseCarrierChanged)
 	}
-	// The comparison is between what was believed and what is believed, not
-	// between two probes. A probe that failed once and succeeded once changed
-	// no belief and is not a return.
-	if observed.Complete && previous.Known &&
-		!previous.LinkPresent && next.LinkPresent {
-		causes = append(causes, CauseLinkReturned)
-	}
-	payloadFailuresBehind := next.PayloadFailures
-	if next.PayloadFailures >= policy.PayloadFailures {
-		causes = append(causes, CausePayloadFailed)
-		// The count is spent on the decision it caused. Leaving it standing
-		// would make every later cycle repeat the cause until the path
-		// recovered, which says the path failed many times rather than once.
-		next.PayloadFailures = 0
-	}
-	if observed.RoutesDrifted {
-		causes = append(causes, CauseRoutesDrifted)
-	}
 
 	action := ActionNone
-	for _, cause := range causes {
-		if cause == CauseRoutesDrifted {
-			if action == ActionNone {
-				action = ActionReapplyRoutes
-			}
-			continue
-		}
+	if len(causes) > 0 {
 		action = ActionRebuildTunnel
 	}
 	// Built from what the decision above used, rather than gathered again. A
@@ -317,11 +321,12 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 		Complete:       observed.Complete,
 		ProcessRunning: observed.ProcessRunning,
 		Slept:          observed.Slept,
+		TickGap:        policy.Interval + observed.Slept,
 		LinkPresent:    next.LinkPresent,
 		LinkFailures:   next.LinkFailures,
 		PayloadOK:      observed.PayloadOK,
-		// The count before it was spent, because the reader wants to know what
-		// stood behind the cause rather than what is left after it.
+		// How many consecutive cycles the payload path has failed. It is a
+		// ground, not a cause, and the count stands until the path answers.
 		PayloadFailures: payloadFailuresBehind,
 		RoutesDrifted:   observed.RoutesDrifted,
 	}

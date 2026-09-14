@@ -299,6 +299,12 @@ func (config Config) runtime() (RuntimeConfig, error) {
 		if err != nil {
 			return RuntimeConfig{}, ErrInvalidConfig
 		}
+		// The wake gap is the interval plus the sleep, so a threshold at or below
+		// one interval would name a gap on every cycle.
+		supervision.Policy.Interval = runtime.Interval
+		if supervision.Policy.WakeThreshold <= supervision.Policy.Interval {
+			return RuntimeConfig{}, ErrInvalidConfig
+		}
 		runtime.TunnelSupervision = supervision
 	}
 	return runtime, nil

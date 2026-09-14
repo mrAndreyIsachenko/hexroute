@@ -5,9 +5,12 @@ import (
 	"time"
 )
 
+// The values the runtime this rule reproduces runs with: a sixty-second tick and
+// a wake gap at 180 seconds.
 func policy() Policy {
 	return Policy{
-		WakeThreshold: 90 * time.Second, PayloadFailures: 2, LinkFailures: 2,
+		Interval: 60 * time.Second, WakeThreshold: 180 * time.Second,
+		PayloadFailures: 2, LinkFailures: 2,
 	}
 }
 
@@ -36,64 +39,18 @@ func causes(plan Plan) map[Cause]bool {
 	return held
 }
 
-// Each of the six, one at a time. They are the causes the production supervisor
-// acts on, measured from its own log: nineteen carrier changes, eleven wake
-// gaps, two payload failures, and two that did not occur in sixty-one days and
-// are kept because the process exiting is the only thing between this machine
-// and no network at all.
-func TestEachCauseIsReached(t *testing.T) {
+// The three causes that act, one at a time.
+func TestEachActingCauseIsReached(t *testing.T) {
 	for _, testCase := range []struct {
 		name   string
 		change func(*State, *Observed)
 		cause  Cause
-		action Action
 	}{
-		{
-			name:   "the process is gone",
-			change: func(_ *State, o *Observed) { o.ProcessRunning = false },
-			cause:  CauseProcessGone,
-			action: ActionRebuildTunnel,
-		},
-		{
-			name:   "a wake gap",
-			change: func(_ *State, o *Observed) { o.Slept = 20 * time.Minute },
-			cause:  CauseWakeGap,
-			action: ActionRebuildTunnel,
-		},
-		{
-			name: "the carrier changed",
-			change: func(_ *State, o *Observed) {
-				o.Carrier = NewSignature([]CarriedDestination{
-					{Destination: "203.0.113.20", Interface: "en1"},
-				})
-			},
-			cause:  CauseCarrierChanged,
-			action: ActionRebuildTunnel,
-		},
-		{
-			name: "connectivity returned",
-			change: func(s *State, o *Observed) {
-				s.LinkPresent = false
-				o.LinkPresent = true
-			},
-			cause:  CauseLinkReturned,
-			action: ActionRebuildTunnel,
-		},
-		{
-			name: "the payload path failed past its threshold",
-			change: func(s *State, o *Observed) {
-				s.PayloadFailures = 1
-				o.PayloadOK = false
-			},
-			cause:  CausePayloadFailed,
-			action: ActionRebuildTunnel,
-		},
-		{
-			name:   "the routes drifted",
-			change: func(_ *State, o *Observed) { o.RoutesDrifted = true },
-			cause:  CauseRoutesDrifted,
-			action: ActionReapplyRoutes,
-		},
+		{"the process is gone", func(_ *State, o *Observed) { o.ProcessRunning = false }, CauseProcessGone},
+		{"a wake gap", func(_ *State, o *Observed) { o.Slept = 20 * time.Minute }, CauseWakeGap},
+		{"the carrier changed", func(_ *State, o *Observed) {
+			o.Carrier = NewSignature([]CarriedDestination{{Destination: "203.0.113.20", Interface: "en1"}})
+		}, CauseCarrierChanged},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			previous, observed := steady()
@@ -105,43 +62,103 @@ func TestEachCauseIsReached(t *testing.T) {
 			if !causes(plan)[testCase.cause] {
 				t.Fatalf("causes = %v, want %q among them", plan.Causes, testCase.cause)
 			}
-			if plan.Action != testCase.action {
-				t.Fatalf("action = %q, want %q", plan.Action, testCase.action)
+			if plan.Action != ActionRebuildTunnel {
+				t.Fatalf("action = %q, want a rebuild", plan.Action)
 			}
 		})
 	}
 }
 
-// One failure is a network; several are a path. The supervisor counts, and a
-// rule that rebuilt on the first would rebuild on every lost packet.
-func TestOnePayloadFailureIsNotACause(t *testing.T) {
-	previous, observed := steady()
-	observed.PayloadOK = false
-	plan, next, err := Decide(policy(), previous, observed)
-	if err != nil {
-		t.Fatalf("Decide() error: %v", err)
-	}
-	if causes(plan)[CausePayloadFailed] {
-		t.Fatal("one failure was taken as a failed path")
-	}
-	if next.PayloadFailures != 1 {
-		t.Fatalf("failures carried = %d, want 1", next.PayloadFailures)
-	}
-	plan, next, err = Decide(policy(), next, observed)
-	if err != nil {
-		t.Fatalf("Decide() error: %v", err)
-	}
-	if !causes(plan)[CausePayloadFailed] {
-		t.Fatalf("the threshold was reached and the cause was not: %v", plan.Causes)
-	}
-	if next.PayloadFailures != 0 {
-		t.Fatalf("the count survived the decision it caused: %d", next.PayloadFailures)
+// The wake gap is the tick gap, compared inclusively.
+//
+// The runtime this rule reproduces sleeps sixty seconds between ticks and
+// rebuilds when the wall time between two tick starts reaches 180 seconds. So a
+// sleep of two minutes makes a gap, and a sleep a second shorter does not.
+// Comparing the sleep alone against 180 seconds would miss every sleep between
+// two and three minutes that runtime rebuilds on.
+func TestAWakeGapIsTheTickGapInclusive(t *testing.T) {
+	for _, item := range []struct {
+		slept time.Duration
+		gap   bool
+	}{
+		{0, false},
+		{119 * time.Second, false},
+		{120 * time.Second, true},
+		{121 * time.Second, true},
+	} {
+		previous, observed := steady()
+		observed.Slept = item.slept
+		plan, _, err := Decide(policy(), previous, observed)
+		if err != nil {
+			t.Fatalf("Decide() error: %v", err)
+		}
+		if causes(plan)[CauseWakeGap] != item.gap {
+			t.Fatalf("slept %s: wake gap named = %v, want %v", item.slept, !item.gap, item.gap)
+		}
+		if plan.Grounds.TickGap != policy().Interval+item.slept {
+			t.Fatalf("slept %s: tick gap recorded %s", item.slept, plan.Grounds.TickGap)
+		}
 	}
 }
 
-// The runtime this is compared against reports one reason. Recording only the
-// first cause would make an honest disagreement look like a wrong decision.
-func TestEveryCauseThatHeldIsNamed(t *testing.T) {
+// What no longer acts is still seen, and decides nothing.
+//
+// The runtime this rule reproduces does not rebuild on a returned link, rebuilds
+// on the payload path only after a failover this runtime does not perform, and
+// keeps its own routes. Acting on them decided 125 rebuilds where it made 2.
+func TestWhatNoLongerActsIsRecordedAndDecidesNothing(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		change func(*State, *Observed)
+		ground func(Grounds) bool
+	}{
+		{"connectivity returned",
+			func(s *State, o *Observed) { s.LinkPresent = false; o.LinkPresent = true },
+			func(g Grounds) bool { return g.LinkPresent }},
+		{"the payload path failed past its threshold",
+			func(s *State, o *Observed) { s.PayloadFailures = 1; o.PayloadOK = false },
+			func(g Grounds) bool { return !g.PayloadOK && g.PayloadFailures == 2 }},
+		{"the routes drifted",
+			func(_ *State, o *Observed) { o.RoutesDrifted = true },
+			func(g Grounds) bool { return g.RoutesDrifted }},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			previous, observed := steady()
+			testCase.change(&previous, &observed)
+			plan, _, err := Decide(policy(), previous, observed)
+			if err != nil {
+				t.Fatalf("Decide() error: %v", err)
+			}
+			if plan.Action != ActionNone || len(plan.Causes) != 0 {
+				t.Fatalf("it decided %q for %v, want nothing", plan.Action, plan.Causes)
+			}
+			if !testCase.ground(plan.Grounds) {
+				t.Fatalf("it is not in the grounds: %+v", plan.Grounds)
+			}
+		})
+	}
+}
+
+// The payload count is consecutive and stands until the path answers.
+func TestPayloadFailuresAreCountedUntilThePathAnswers(t *testing.T) {
+	previous, observed := steady()
+	failing := observed
+	failing.PayloadOK = false
+
+	plans, state := run(t, previous, []Observed{failing, failing, failing})
+	for index, want := range []uint32{1, 2, 3} {
+		if plans[index].Grounds.PayloadFailures != want {
+			t.Fatalf("cycle %d reported %d failures, want %d", index, plans[index].Grounds.PayloadFailures, want)
+		}
+	}
+	plans, _ = run(t, state, []Observed{observed})
+	if plans[0].Grounds.PayloadFailures != 0 {
+		t.Fatalf("a path that answered still counts %d failures", plans[0].Grounds.PayloadFailures)
+	}
+}
+
+// Every acting cause that held is named, and nothing that no longer acts.
+func TestEveryActingCauseThatHeldIsNamed(t *testing.T) {
 	previous, observed := steady()
 	observed.ProcessRunning = false
 	observed.Slept = 20 * time.Minute
@@ -151,13 +168,14 @@ func TestEveryCauseThatHeldIsNamed(t *testing.T) {
 		t.Fatalf("Decide() error: %v", err)
 	}
 	held := causes(plan)
-	for _, want := range []Cause{CauseProcessGone, CauseWakeGap, CauseRoutesDrifted} {
-		if !held[want] {
-			t.Errorf("causes = %v, want %q among them", plan.Causes, want)
-		}
+	if !held[CauseProcessGone] || !held[CauseWakeGap] {
+		t.Fatalf("causes = %v, want the process and the gap", plan.Causes)
+	}
+	if held[CauseRoutesDrifted] {
+		t.Fatalf("drifted routes were named: %v", plan.Causes)
 	}
 	if plan.Action != ActionRebuildTunnel {
-		t.Fatalf("action = %q; a rebuild subsumes reapplying routes", plan.Action)
+		t.Fatalf("action = %q", plan.Action)
 	}
 }
 
@@ -169,48 +187,39 @@ func TestDoingNothingIsADecision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decide() error: %v", err)
 	}
-	if plan.Action != ActionNone {
-		t.Fatalf("action = %q, want %q", plan.Action, ActionNone)
-	}
-	if len(plan.Causes) != 0 {
-		t.Fatalf("causes = %v, want none", plan.Causes)
+	if plan.Action != ActionNone || len(plan.Causes) != 0 {
+		t.Fatalf("plan = %+v, want nothing", plan)
 	}
 	if !next.Known {
 		t.Fatal("the next cycle was left with no previous cycle to compare against")
 	}
 }
 
-// A runtime that has just started has no signature to differ from. Treating an
-// absent one as a change would rebuild the tunnel on every restart.
+// A runtime that has just started has no signature to differ from.
 func TestAFirstCycleDoesNotInventAChange(t *testing.T) {
 	_, observed := steady()
-	observed.LinkPresent = true
 	plan, next, err := Decide(policy(), State{}, observed)
 	if err != nil {
 		t.Fatalf("Decide() error: %v", err)
 	}
-	held := causes(plan)
-	if held[CauseCarrierChanged] {
+	if causes(plan)[CauseCarrierChanged] {
 		t.Fatal("a first cycle invented a carrier change")
 	}
-	if held[CauseLinkReturned] {
-		t.Fatal("a first cycle invented a returned link")
-	}
-	if !next.Known {
-		t.Fatal("the first cycle left nothing for the second to compare against")
-	}
-	if next.Carrier != observed.Carrier {
-		t.Fatalf("carrier carried = %q, want %q", next.Carrier, observed.Carrier)
+	if !next.Known || next.Carrier != observed.Carrier {
+		t.Fatalf("the first cycle left %+v for the second", next)
 	}
 }
 
 func TestAPolicyThatCannotDecideIsRefused(t *testing.T) {
 	_, observed := steady()
 	for _, broken := range []Policy{
-		{WakeThreshold: 0, PayloadFailures: 2, LinkFailures: 2},
-		{WakeThreshold: 90 * time.Second, PayloadFailures: 0, LinkFailures: 2},
-		{WakeThreshold: 90 * time.Second, PayloadFailures: 2, LinkFailures: 0},
-		{WakeThreshold: -time.Second, PayloadFailures: 2, LinkFailures: 2},
+		{Interval: 60 * time.Second, WakeThreshold: 0, PayloadFailures: 2, LinkFailures: 2},
+		{Interval: 60 * time.Second, WakeThreshold: 180 * time.Second, PayloadFailures: 0, LinkFailures: 2},
+		{Interval: 60 * time.Second, WakeThreshold: 180 * time.Second, PayloadFailures: 2, LinkFailures: 0},
+		{Interval: 0, WakeThreshold: 180 * time.Second, PayloadFailures: 2, LinkFailures: 2},
+		// A threshold at or below one interval names a gap on every cycle.
+		{Interval: 60 * time.Second, WakeThreshold: 60 * time.Second, PayloadFailures: 2, LinkFailures: 2},
+		{Interval: 60 * time.Second, WakeThreshold: 30 * time.Second, PayloadFailures: 2, LinkFailures: 2},
 	} {
 		if _, _, err := Decide(broken, State{}, observed); err == nil {
 			t.Fatalf("Decide() accepted %+v", broken)
@@ -218,10 +227,8 @@ func TestAPolicyThatCannotDecideIsRefused(t *testing.T) {
 	}
 }
 
-// A cycle that stopped before it saw the routes has no carrier signature, and
-// an empty one is not a changed one. Deciding a carrier change out of that
-// would rebuild the tunnel every time an observation failed — which is when the
-// tunnel is already in trouble and the rebuild would be for the wrong reason.
+// A cycle that stopped before it saw the routes has no carrier signature, and an
+// empty one is not a changed one.
 func TestAnIncompleteCycleDecidesOnlyFromWhatItSaw(t *testing.T) {
 	previous, observed := steady()
 	observed.Complete = false
@@ -235,23 +242,18 @@ func TestAnIncompleteCycleDecidesOnlyFromWhatItSaw(t *testing.T) {
 	}
 	held := causes(plan)
 	if !held[CauseProcessGone] {
-		t.Fatalf("an incomplete cycle lost the one cause it could see: %v",
-			plan.Causes)
+		t.Fatalf("an incomplete cycle lost the one cause it could see: %v", plan.Causes)
 	}
 	if held[CauseCarrierChanged] {
 		t.Fatal("an incomplete cycle read a carrier change out of what it did not see")
 	}
-	if next.Carrier != previous.Carrier {
-		t.Fatalf("what it could not see was overwritten: %q became %q",
-			previous.Carrier, next.Carrier)
-	}
-	if next.LinkPresent != previous.LinkPresent {
-		t.Fatal("what it could not see about the link was overwritten")
+	if next.Carrier != previous.Carrier || next.LinkPresent != previous.LinkPresent {
+		t.Fatalf("what it could not see was overwritten: %+v", next)
 	}
 }
 
-// The same on the way back: a complete cycle after an incomplete one compares
-// against the last cycle that actually saw something.
+// A complete cycle after an incomplete one compares against the last cycle that
+// actually saw something.
 func TestACompleteCycleComparesAgainstTheLastOneThatSaw(t *testing.T) {
 	previous, observed := steady()
 	blind := observed
@@ -270,57 +272,27 @@ func TestACompleteCycleComparesAgainstTheLastOneThatSaw(t *testing.T) {
 	}
 }
 
-// A single failed probe is not the link going away.
-//
-// This is the regression for a live disagreement. Over seven days on the
-// machine that owns this tunnel, the outer probe failed on 25 of 3,117 cycles
-// and never twice in a row. Without a threshold each isolated failure set the
-// link absent and the next cycle called it returned: six of those returns fell
-// in one half hour on 2026-09-12, each one asking for a tunnel rebuild, while
-// the runtime that actually owns the tunnel did nothing at all in that window —
-// it declares the outer path down on the second consecutive failure.
-//
-// The failure is driven through a run of cycles rather than one call, because
-// the defect is in what one cycle leaves for the next.
-func TestOneFailedProbeIsNotTheLinkReturning(t *testing.T) {
-	previous, observed := steady()
-	blink := observed
-	blink.LinkPresent = false
-
-	after, state := run(t, previous, []Observed{blink, observed})
-	if causes(after[0])[CauseLinkReturned] || causes(after[1])[CauseLinkReturned] {
-		t.Fatalf("a single failed probe was read as the link returning: %v, %v",
-			after[0].Causes, after[1].Causes)
-	}
-	if !state.LinkPresent {
-		t.Fatal("the rule still believes the link is gone after it answered")
-	}
-	for _, plan := range after {
-		if plan.Action == ActionRebuildTunnel {
-			t.Fatalf("a blink asked for a rebuild: %v", plan.Causes)
-		}
-	}
-}
-
-// A link that stays gone is gone, and its return is a cause.
-func TestALinkGoneTwiceOverReturns(t *testing.T) {
+// The belief about the link is still kept, because it is recorded: one failed
+// probe does not change it, two do, and the first answer brings it back.
+func TestTheLinkBeliefNeedsTwoFailures(t *testing.T) {
 	previous, observed := steady()
 	gone := observed
 	gone.LinkPresent = false
 
-	after, state := run(t, previous, []Observed{gone, gone, observed})
-	if causes(after[0])[CauseLinkReturned] || causes(after[1])[CauseLinkReturned] {
-		t.Fatalf("the link returned while it was still gone: %v, %v",
-			after[0].Causes, after[1].Causes)
+	_, afterOne := run(t, previous, []Observed{gone})
+	if !afterOne.LinkPresent {
+		t.Fatal("one failed probe changed the belief")
 	}
-	if !causes(after[2])[CauseLinkReturned] {
-		t.Fatalf("the link came back and nothing said so: %v", after[2].Causes)
+	_, afterTwo := run(t, previous, []Observed{gone, gone})
+	if afterTwo.LinkPresent {
+		t.Fatal("two failed probes did not")
 	}
-	if after[2].Action != ActionRebuildTunnel {
-		t.Fatalf("action = %q, want a rebuild", after[2].Action)
+	plans, back := run(t, afterTwo, []Observed{observed})
+	if !back.LinkPresent || back.LinkFailures != 0 {
+		t.Fatalf("the first answer did not bring the link back: %+v", back)
 	}
-	if state.LinkFailures != 0 {
-		t.Fatalf("the count stands at %d after the link answered", state.LinkFailures)
+	if plans[0].Action != ActionNone {
+		t.Fatalf("the link coming back decided %q", plans[0].Action)
 	}
 }
 
@@ -333,29 +305,20 @@ func TestAnIncompleteCycleDoesNotCountAgainstTheLink(t *testing.T) {
 	blind.Complete = false
 	blind.LinkPresent = false
 
-	// One real failure, then a run of blind cycles, then another real failure.
-	// If blindness counted, the link would have been declared gone in between.
-	after, _ := run(t, previous, []Observed{gone, blind, blind, blind, observed})
-	for index, plan := range after {
-		if causes(plan)[CauseLinkReturned] {
-			t.Fatalf("cycle %d read a return out of a blind cycle: %v",
-				index, plan.Causes)
-		}
+	_, state := run(t, previous, []Observed{gone, blind, blind, blind})
+	if state.LinkFailures != 1 || !state.LinkPresent {
+		t.Fatalf("blind cycles counted against the link: %+v", state)
 	}
 }
 
-// A start that has seen nothing does not call the first answer a return.
-func TestAStartDoesNotReadTheFirstProbeAsAReturn(t *testing.T) {
+// A start that has seen nothing believes the link present.
+func TestAStartBelievesTheLinkPresent(t *testing.T) {
 	_, observed := steady()
 	gone := observed
 	gone.LinkPresent = false
-
-	after, _ := run(t, State{}, []Observed{gone, observed})
-	for index, plan := range after {
-		if causes(plan)[CauseLinkReturned] {
-			t.Fatalf("cycle %d of a fresh start claimed a return: %v",
-				index, plan.Causes)
-		}
+	_, state := run(t, State{}, []Observed{gone})
+	if !state.LinkPresent {
+		t.Fatal("a fresh start took its first failed probe as an absent link")
 	}
 }
 

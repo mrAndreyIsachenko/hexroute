@@ -66,6 +66,12 @@ type Summary struct {
 	// cycle. It is what a carrier change is a change in, so a reader comparing
 	// two decisions can see what differed rather than only that something did.
 	Carrier tunnelplan.Signature
+	// Carried is what the carrier signature is built from: the interface carrying
+	// the upstream probe and each ingress target, the three paths the runtime
+	// this rule reproduces watches. A signature over every configured route
+	// changed whenever a fallback route came or went, and whenever the
+	// configuration gained a destination.
+	Carried []tunnelplan.CarriedDestination
 }
 
 // PayloadObserver exercises a path and reports whether traffic traversed it.
@@ -221,6 +227,10 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 			summary.Failures++
 			return summary
 		}
+		summary.Carried = append(summary.Carried, tunnelplan.CarriedDestination{
+			Destination: cycle.config.UpstreamProbeAddress.String(),
+			Interface:   observation.Interface,
+		})
 		if strings.HasPrefix(observation.Interface, "utun") &&
 			observation.Interface != managedTUN.Name {
 			upstream = &routeplan.Path{
@@ -234,6 +244,15 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 	for _, target := range cycle.config.Targets {
 		observation, routeErr := cycle.network.Route(ctx, target.Destination)
 		summary.Observed.Routes = append(summary.Observed.Routes, observation)
+		// An interface that could not be read is still an entry, as the runtime
+		// this rule reproduces writes "unknown" for one: a path that stops
+		// answering is a change of carrier to both of them.
+		if target.Role == routeplan.RoleIngress {
+			summary.Carried = append(summary.Carried, tunnelplan.CarriedDestination{
+				Destination: target.Destination.String(),
+				Interface:   observation.Interface,
+			})
+		}
 		if routeErr != nil {
 			summary.Observed.RouteError = routeErr
 			summary.Failures++
@@ -436,8 +455,7 @@ func (cycle *Cycle) decideTunnel(
 	}
 	cycle.lastObserved, cycle.lastSteady, cycle.observed = at, steady, true
 
-	carried := carriedDestinations(summary.Observed.Routes)
-	summary.Carrier = tunnelplan.NewSignature(carried)
+	summary.Carrier = tunnelplan.NewSignature(summary.Carried)
 
 	// A path that cannot be exercised is not a failed path. Without a probe the
 	// cause simply does not hold, rather than holding on every cycle.
@@ -469,30 +487,4 @@ func (cycle *Cycle) decideTunnel(
 	// cycle then has no previous one, which costs the three causes that compare
 	// against it and none of the three that do not.
 	_ = cycle.tunnel.Save(next)
-}
-
-// carriedDestinations says which interface carries each destination this
-// runtime asked about.
-//
-// Keyed by the address asked about, not by the route that answered. A route
-// observation carries both: the route's own destination is the prefix that
-// matched, often the half a tunnel claims, so many configured destinations
-// share one and a route with none leaves it empty. Keyed that way the live
-// signature had seven identical entries and four reading "invalid IP" — a
-// signature that can change without the carrier changing and stay still when
-// it does.
-func carriedDestinations(
-	routes []observe.RouteObservation,
-) []tunnelplan.CarriedDestination {
-	carried := make([]tunnelplan.CarriedDestination, 0, len(routes))
-	for _, route := range routes {
-		if !route.Requested.IsValid() {
-			continue
-		}
-		carried = append(carried, tunnelplan.CarriedDestination{
-			Destination: route.Requested.String(),
-			Interface:   route.Interface,
-		})
-	}
-	return carried
 }

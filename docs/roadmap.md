@@ -77,7 +77,11 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`decide-by-twilights-rule` is open, the second of item 9's three changes. It gives
+this runtime's decision rule Twilight's three causes in Twilight's definitions,
+records what a comparison needs, and soaks the rule against Twilight acting for
+at least a week before the executor is written against it.
+
 
 `hand-the-tunnel-back` closed on 2026-09-14, the first of item 9's three changes.
 The tunnel is Twilight's again, handed back by a transaction rather than by hand,
