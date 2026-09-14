@@ -48,8 +48,11 @@ func TestASleepingMachineIsAWakeGap(t *testing.T) {
 	cycle := clockedCycle(t, clocks)
 
 	cycle.Observe(context.Background())
-	// Two minutes on the wall, one second of running: the machine slept.
-	clocks.advance(2*time.Minute, time.Second)
+	// Three minutes on the wall, one second of running: the machine slept. Two
+	// minutes would not do: with a sixty-second interval the tick gap would be
+	// 179 seconds, short of 180, and the runtime this rule reproduces would not
+	// rebuild on it either.
+	clocks.advance(3*time.Minute, time.Second)
 	summary := cycle.Observe(context.Background())
 
 	named := false
@@ -59,7 +62,7 @@ func TestASleepingMachineIsAWakeGap(t *testing.T) {
 		}
 	}
 	if !named {
-		t.Fatalf("the machine slept for two minutes and nothing said so: %v",
+		t.Fatalf("the machine slept for three minutes and nothing said so: %v",
 			summary.Tunnel.Causes)
 	}
 }
@@ -83,7 +86,7 @@ func clockedCycle(t *testing.T, clocks *pairedClocks) *Cycle {
 	config, network, processes, endpoints := healthyCycleFixtures(t)
 	config.TunnelSupervision = &RuntimeTunnelSupervision{
 		Policy: tunnelplan.Policy{
-			WakeThreshold: 90 * time.Second, PayloadFailures: 2, LinkFailures: 2,
+			Interval: 60 * time.Second, WakeThreshold: 180 * time.Second, PayloadFailures: 2, LinkFailures: 2,
 		},
 		Payload: observe.PayloadEndpoint{
 			Name: "payload", URL: "http://198.51.100.1/", Timeout: time.Second,

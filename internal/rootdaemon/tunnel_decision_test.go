@@ -11,6 +11,7 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
+	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelplan"
 )
 
@@ -30,7 +31,7 @@ func supervisedCycle(t *testing.T, traversed bool) *Cycle {
 	config, network, processes, endpoints := healthyCycleFixtures(t)
 	config.TunnelSupervision = &RuntimeTunnelSupervision{
 		Policy: tunnelplan.Policy{
-			WakeThreshold: 90 * time.Second, PayloadFailures: 2, LinkFailures: 2,
+			Interval: 60 * time.Second, WakeThreshold: 180 * time.Second, PayloadFailures: 2, LinkFailures: 2,
 		},
 		Payload: observe.PayloadEndpoint{
 			Name: "payload", URL: "http://198.51.100.1/", Timeout: time.Second,
@@ -117,23 +118,27 @@ func TestTheRecordedVocabularyIsClosed(t *testing.T) {
 	}
 }
 
-// The payload path failing past its threshold is the sixth cause, and it is the
-// one that tells a tunnel that works from one that answers.
-func TestAPayloadThatDoesNotTraverseBecomesACause(t *testing.T) {
+// A payload that does not traverse is recorded, and decides nothing.
+//
+// The runtime this rule reproduces rebuilds on the payload path only after a
+// failover this runtime does not perform, so a rule that rebuilt on it would
+// disagree with that runtime every time the path failed.
+func TestAPayloadThatDoesNotTraverseIsRecordedNotActedOn(t *testing.T) {
 	cycle := supervisedCycle(t, false)
 	var summary Summary
-	for range 2 {
+	for range 3 {
 		summary = cycle.Observe(context.Background())
 	}
-	found := false
 	for _, cause := range summary.Tunnel.Causes {
 		if cause == tunnelplan.CausePayloadFailed {
-			found = true
+			t.Fatalf("a failed payload path was named: %v", summary.Tunnel.Causes)
 		}
 	}
-	if !found {
-		t.Fatalf("causes = %v, want %q among them",
-			summary.Tunnel.Causes, tunnelplan.CausePayloadFailed)
+	if summary.Tunnel.Action != tunnelplan.ActionNone {
+		t.Fatalf("a failed payload path decided %q", summary.Tunnel.Action)
+	}
+	if summary.Tunnel.Grounds.PayloadOK || summary.Tunnel.Grounds.PayloadFailures < 3 {
+		t.Fatalf("the failure is not in the grounds: %+v", summary.Tunnel.Grounds)
 	}
 }
 
@@ -145,7 +150,7 @@ func TestAnIncompleteCycleStillDecides(t *testing.T) {
 	config, network, processes, endpoints := healthyCycleFixtures(t)
 	config.TunnelSupervision = &RuntimeTunnelSupervision{
 		Policy: tunnelplan.Policy{
-			WakeThreshold: 90 * time.Second, PayloadFailures: 2, LinkFailures: 2,
+			Interval: 60 * time.Second, WakeThreshold: 180 * time.Second, PayloadFailures: 2, LinkFailures: 2,
 		},
 		Payload: observe.PayloadEndpoint{
 			Name: "payload", URL: "http://198.51.100.1/", Timeout: time.Second,
@@ -192,96 +197,52 @@ var errPowerUnreadable = errors.New("power state is unreadable")
 //
 // A route observation carries both, and the route's own destination is the
 // prefix that matched — often the half a tunnel claims, shared by many
-// configured destinations, and empty for routes that have none. On the machine
-// that produced a signature with seven identical keys and four invalid ones:
-// one that can change without the carrier changing, and stay still when it
-// does.
+// destinations. On the machine a signature keyed that way had seven identical
+// keys and four invalid ones. The keys now come from the configuration: the
+// upstream probe and each ingress target, the three paths the runtime this rule
+// reproduces watches.
 func TestTheSignatureIsKeyedByWhatWasAsked(t *testing.T) {
-	cycle := supervisedCycle(t, true)
+	cycle, config, _ := carrierCycle(t)
 	summary := cycle.Observe(context.Background())
-	if len(summary.Observed.Routes) < 2 {
-		t.Fatalf("the fixture observed %d routes; this proves nothing below two",
-			len(summary.Observed.Routes))
-	}
 
-	carried := map[string]struct{}{}
-	for _, route := range summary.Observed.Routes {
-		if !route.Requested.IsValid() {
-			t.Fatalf("a route observation has no address it was asked about: %+v",
-				route)
+	asked := map[string]bool{config.UpstreamProbeAddress.String(): true}
+	for _, target := range config.Targets {
+		if target.Role == routeplan.RoleIngress {
+			asked[target.Destination.String()] = true
 		}
-		if _, duplicate := carried[route.Requested.String()]; duplicate {
-			t.Fatalf("%s was asked about twice; the signature would count it twice",
-				route.Requested)
-		}
-		carried[route.Requested.String()] = struct{}{}
 	}
-
-	// The signature the cycle actually built, not the observations it built it
-	// from. Keyed by the route that answered rather than by the address asked
-	// about, it had seven identical keys and four invalid ones on the machine.
-	for destination := range carried {
-		if !strings.Contains(string(summary.Carrier), destination+"=") {
-			t.Fatalf("the signature %q does not key %s, which was asked about",
-				summary.Carrier, destination)
+	entries := strings.Fields(string(summary.Carrier))
+	if len(entries) != len(asked) {
+		t.Fatalf("the signature has %d entries for %d paths asked about: %q", len(entries), len(asked), summary.Carrier)
+	}
+	for _, entry := range entries {
+		key, _, _ := strings.Cut(entry, "=")
+		if !asked[key] {
+			t.Fatalf("the signature keys %s, which is not a path asked about: %q", key, summary.Carrier)
 		}
 	}
 	if strings.Contains(string(summary.Carrier), "invalid IP") {
-		t.Fatalf("the signature carries an address that is not one: %q",
-			summary.Carrier)
-	}
-	entries := strings.Fields(string(summary.Carrier))
-	if len(entries) != len(carried) {
-		t.Fatalf("the signature has %d entries for %d destinations asked about: %q",
-			len(entries), len(carried), summary.Carrier)
+		t.Fatalf("the signature carries an address that is not one: %q", summary.Carrier)
 	}
 }
 
-// The shape the machine actually produced, which the shared fixture does not:
-// route observations whose own destination is the prefix that matched rather
-// than the address asked about, and some with no destination at all.
+// The shape the machine actually produced: route observations whose own
+// destination is the prefix that matched rather than the address asked about.
+// The signature keys by what was asked, so the shared prefix never appears in it.
 func TestTheSignatureSurvivesRoutesThatSharedAPrefix(t *testing.T) {
+	cycle, config, network := carrierCycle(t)
 	shared := netip.MustParseAddr("128.0.0.0")
-	routes := []observe.RouteObservation{
-		{
-			Requested:   netip.MustParseAddr("203.0.113.20"),
-			Destination: shared,
-			Interface:   "utun4",
-		},
-		{
-			Requested:   netip.MustParseAddr("198.51.100.20"),
-			Destination: shared,
-			Interface:   "utun4",
-		},
-		{
-			Requested: netip.MustParseAddr("192.0.2.20"),
-			Interface: "en0",
-		},
-		{
-			Destination: shared,
-			Interface:   "utun4",
-		},
+	for address, route := range network.routes {
+		route.Destination = shared
+		network.routes[address] = route
 	}
-	carried := carriedDestinations(routes)
-	if len(carried) != 3 {
-		t.Fatalf("carried %d destinations, want 3 — the one with no address "+
-			"asked about is not a destination this runtime cares about",
-			len(carried))
-	}
-	signature := string(tunnelplan.NewSignature(carried))
-	for _, want := range []string{
-		"203.0.113.20=utun4", "198.51.100.20=utun4", "192.0.2.20=en0",
-	} {
-		if !strings.Contains(signature, want) {
-			t.Errorf("signature %q does not carry %q", signature, want)
-		}
-	}
+	summary := cycle.Observe(context.Background())
+
+	signature := string(summary.Carrier)
 	if strings.Contains(signature, "128.0.0.0") {
-		t.Fatalf("the signature is keyed by the route that answered: %q",
-			signature)
+		t.Fatalf("the signature is keyed by the route that answered: %q", signature)
 	}
-	if strings.Contains(signature, "invalid IP") {
-		t.Fatalf("the signature carries an address that is not one: %q",
-			signature)
+	if !strings.Contains(signature, config.UpstreamProbeAddress.String()+"=") {
+		t.Fatalf("the signature lost the probe it asked about: %q", signature)
 	}
 }

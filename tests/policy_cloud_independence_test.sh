@@ -29,6 +29,7 @@ local_binaries=(
   ./cmd/hexroute-policy-qualification
   ./cmd/hexroute-policy-check
   ./cmd/hexroute-handover
+  ./cmd/hexroute-soak-compare
 )
 
 # Binaries that are the cloud, or that build and inspect releases rather than

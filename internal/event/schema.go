@@ -288,9 +288,12 @@ type TunnelAuthorization struct {
 // cycle that saw none and a cycle that saw nothing are different claims and a
 // zero would say the first.
 type TunnelGrounds struct {
-	Complete        bool    `json:"complete"`
-	ProcessRunning  bool    `json:"process_running"`
-	SleptMS         int64   `json:"slept_ms"`
+	Complete       bool  `json:"complete"`
+	ProcessRunning bool  `json:"process_running"`
+	SleptMS        int64 `json:"slept_ms"`
+	// TickGapMS is what the wake cause was compared on, the interval plus the
+	// sleep. Records written before it was carried have none, and are read so.
+	TickGapMS       *int64  `json:"tick_gap_ms,omitempty"`
 	CarrierDigest   string  `json:"carrier_digest,omitempty"`
 	CarrierEntries  *int    `json:"carrier_entries,omitempty"`
 	LinkPresent     bool    `json:"link_present"`
@@ -943,6 +946,9 @@ func validTunnelGrounds(grounds *TunnelGrounds) bool {
 		return true
 	}
 	if grounds.SleptMS < 0 {
+		return false
+	}
+	if grounds.TickGapMS != nil && *grounds.TickGapMS < 0 {
 		return false
 	}
 	if grounds.CarrierDigest != "" {

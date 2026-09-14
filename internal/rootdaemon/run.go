@@ -816,6 +816,10 @@ func tunnelDecisionRecord(
 		PayloadOK:       grounds.PayloadOK,
 		PayloadFailures: grounds.PayloadFailures,
 	}
+	// What the wake cause was compared on, so a disagreement about a wake can
+	// be read from the record that made it.
+	tickGap := grounds.TickGap.Milliseconds()
+	recorded.TickGapMS = &tickGap
 	if grounds.Complete {
 		// What an incomplete cycle did not observe stays absent. A zero would
 		// say it saw none where it saw nothing.

@@ -75,7 +75,7 @@ func TestAnUnknownMemoryDoesNotBecomeACause(t *testing.T) {
 	}
 	plan, next, err := tunnelplan.Decide(
 		tunnelplan.Policy{
-			WakeThreshold: 90_000_000_000, PayloadFailures: 2, LinkFailures: 2,
+			Interval: 60_000_000_000, WakeThreshold: 180_000_000_000, PayloadFailures: 2, LinkFailures: 2,
 		},
 		store.Load(),
 		tunnelplan.Observed{
