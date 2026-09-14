@@ -10,6 +10,14 @@
       last day 8,024 critical records were written, 7,954 of them overflow, and
       16,272 operational.
 
+      That reading did not divide overflow records by reason, and the proposal
+      then said the age bound had not bitten — unread. Read again at
+      installation, 2026-09-14 18:55Z, by reason: 9,296 age overflow records
+      held naming 21,306 evicted, 5,780 size naming 56,025. In the last day,
+      age 2,404 naming 2,620 (1.1 each), size 5,366 naming 21,464 (4.0 each).
+      Age was the larger cause. Oldest operational record 3 days 5 hours old,
+      oldest critical 6 days 23 hours.
+
 ## 2. The eviction
 
 - [x] 2.1 Choosing what to evict for size counts what each record occupies.
@@ -41,6 +49,13 @@
       On the branch stacked on `decide-by-twilights-rule`, so the daemon
       installed from it carries both the soaked rule and this.
 - [ ] 3.3 Install the root daemon from this branch with the reinstall shorter than three cycles, and read the archive a day later: overflow records written in that day, and the oldest operational record against its age at installation.
+
+      Installed 2026-09-14 18:55:55Z, with the configuration in place kept.
+      Before installing, the silence the previous reinstall left was read as 38
+      seconds, and the installation would have stopped above 120. This one left
+      27 seconds. The soak was collected again from its start with silences
+      measured, 4,058 records and no rebuild decision, and judged not passed for
+      length and counts only — not unjudgeable. The day-later reading is owed.
 
 ## 4. Close
 
