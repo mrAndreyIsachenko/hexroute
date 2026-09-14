@@ -347,7 +347,58 @@
 
       2026-09-14, on the branch carrying the work rather than on `main`, so what
       was measured is what would be installed.
-- [ ] 6.3 Run the real transaction and record what the tunnel did.
+- [x] 6.3 Run the real transaction and record what the tunnel did.
+
+      Run 2026-09-14 10:32 MSK as `handover-1789371131`. Completed at phase
+      `proven` on two proofs. The binary was built from `723ec2f` with a clean
+      tree, and the installed file's digest was compared against a rebuild of
+      that tree rather than assumed.
+
+      What the tunnel did, measured rather than reported: the previous process
+      85478 is gone; a new sing-box runs from the content this runtime verified;
+      general traffic answers 200; an address routed through the tunnel answers
+      421, which is a live server refusing an SNI and therefore a completed TLS
+      exchange rather than a socket that merely opened; the route's use counter
+      moved from zero to fourteen. All five inherited destinations still route
+      through the tunnel.
+
+      **And the handover was wrong, in the half nobody checked.** The installed
+      supervisor was the revision of 12 September and had no notion of a claim.
+      The claim work was merged into the other repository on the 13th and never
+      installed. So the previous owner did not step back: it kept starting its
+      own tunnel against the interface this runtime had taken, failed, and was
+      restarted by launchd every eighteen seconds. Ninety-seven starts before it
+      was noticed.
+
+      Nothing was lost, and that is luck rather than design: the tunnel it could
+      not build is the one this runtime already held, so the machine kept its
+      network throughout. Had the interface been free for a moment, two sing-box
+      processes would have raced for it — which is the arrangement task 3.6
+      exists to prevent, arriving by the one route 3.6 does not cover.
+
+      The preflight said every precondition held, and it was right about all six
+      of them. Every one was a question about this side. `check` now asks the
+      seventh: whether the program the tunnel is being taken *from* can read a
+      claim at all, read from the installed file rather than from a repository,
+      because the repository is not what runs. Three mutations on it, three
+      killed — an unaware supervisor passing, an absent program reading as an
+      old one, and the precondition going unreported.
+
+      Fixed on the machine by installing that one script and nothing else.
+      `make supervisor-sync` would have done it, and would also have overwritten
+      the live `.env` and the sing-box configuration from the checkout — the
+      bytes the signed version was made from — changing the machine a second
+      time in the middle of a handover. Only `twilight-up.sh` differed, so only
+      `twilight-up.sh` was installed.
+
+      The crash loop stopped at the next start and the supervisor reached
+      `HANDED_OVER`. It then flapped: its health probe passes through whatever
+      carries traffic, which after a handover is this runtime's tunnel, so it
+      relabelled itself `HEALTHY` and back once a minute. The guards read the
+      claim rather than the state, so no second tunnel was ever started — the
+      fault was a record saying a runtime held a tunnel it did not hold. The
+      health path now keeps the handed-over state while the claim is held, with
+      a test that was driven to failure before it was believed.
 
       Prepared, not yet run. The sequence is in
       `docs/macos/tunnel-configuration-version.md`, and it installs the binary

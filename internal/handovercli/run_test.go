@@ -146,6 +146,7 @@ func TestCheckReportsEveryPreconditionAtOnce(t *testing.T) {
 	for _, precondition := range []string{
 		"signed version", "tunnel binary", "payload probe",
 		"nothing in flight", "tunnel unclaimed", "tunnel process",
+		"previous owner reads claims",
 	} {
 		if !strings.Contains(stdout.String(), precondition) {
 			t.Fatalf("check did not report %q:\n%s", precondition, stdout.String())
@@ -175,5 +176,51 @@ func TestCheckRefusesWhenTheTunnelIsAlreadyClaimed(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "handover-earlier") {
 		t.Fatalf("it did not name what holds the tunnel:\n%s", stdout.String())
+	}
+}
+
+// The preflight asks about the runtime it is taking the tunnel from.
+//
+// On 2026-09-14 every precondition about this side passed and the handover
+// still went wrong: the previous owner's installed program was older than the
+// claim, so it could not read one. It kept starting its own tunnel against the
+// interface this runtime had taken, and launchd restarted it every eighteen
+// seconds. A preflight that inspects only the side it was written for reports
+// ready for a handover the other side cannot honour.
+func TestThePreviousOwnerMustBeAbleToReadAClaim(t *testing.T) {
+	directory := t.TempDir()
+
+	aware := filepath.Join(directory, "aware.sh")
+	if err := os.WriteFile(aware, []byte(
+		"#!/bin/bash\nf=\"${X:-"+tunnelclaim.DefaultPath+"}\"\n[[ -f \"$f\" ]]\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := supervisorReadsClaims(aware); err != nil {
+		t.Fatalf("a program that reads the claim was refused: %v", err)
+	}
+
+	// The revision that was actually installed during the handover: a
+	// supervisor with no notion of a claim at all.
+	unaware := filepath.Join(directory, "unaware.sh")
+	if err := os.WriteFile(unaware, []byte(
+		"#!/bin/bash\nstart_singbox() { exec sing-box run; }\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := supervisorReadsClaims(unaware); err == nil {
+		t.Fatal("a supervisor that cannot read a claim was accepted")
+	}
+
+	// Absent is not permission either, and it is not the same answer as old.
+	//
+	// A missing program is a machine this preflight cannot make a statement
+	// about; an old one is a machine whose supervisor will fight for the
+	// tunnel. Both refuse, and reporting them alike would send the reader to
+	// upgrade a file that is not there.
+	err := supervisorReadsClaims(filepath.Join(directory, "nothing.sh"))
+	if err == nil {
+		t.Fatal("a program that is not there was accepted")
+	}
+	if !strings.Contains(err.Error(), "cannot read") {
+		t.Fatalf("an absent program was reported as an old one: %v", err)
 	}
 }

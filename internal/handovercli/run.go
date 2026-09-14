@@ -6,6 +6,7 @@
 package handovercli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -280,6 +281,17 @@ func check(
 		say("tunnel process", nil, fmt.Sprintf("pid %d would be stopped first", pid))
 	}
 
+	// The one precondition that is not about this runtime.
+	//
+	// Every other question here asks whether this side can take the tunnel. On
+	// 2026-09-14 all six passed and the handover still went wrong, because the
+	// previous owner's installed program was a revision older than the claim:
+	// it could not read one, so it kept trying to start its own tunnel and
+	// crash-looped against the interface this runtime had taken. A preflight
+	// that only inspects the side it is written for reports ready for a
+	// handover the other side cannot honour.
+	say("previous owner reads claims", supervisorReadsClaims(previousOwnerProgram), previousOwnerProgram)
+
 	fmt.Fprintln(stdout)
 	if failures > 0 {
 		fmt.Fprintf(stderr, "%d preconditions refused; begin would not complete\n", failures)
@@ -287,6 +299,28 @@ func check(
 	}
 	fmt.Fprintln(stdout, "every precondition holds")
 	return 0
+}
+
+// previousOwnerProgram is the supervisor as installed, not as committed. The
+// repository is not what runs.
+const previousOwnerProgram = "/Library/Application Support/twilight/supervisor/scripts/twilight-up.sh"
+
+// supervisorReadsClaims answers whether the program that owns the tunnel today
+// consults the claim before starting one.
+//
+// It reads the installed file rather than asking the running process, because
+// the question is what it will do at its next start — and it is restarted by
+// launchd within ten seconds of exiting, so its next start is never far away.
+func supervisorReadsClaims(program string) error {
+	contents, err := os.ReadFile(program)
+	if err != nil {
+		return fmt.Errorf("cannot read the previous owner's program: %w", err)
+	}
+	if !bytes.Contains(contents, []byte(tunnelclaim.DefaultPath)) {
+		return fmt.Errorf(
+			"it does not know the claim path; it would keep starting its own tunnel")
+	}
+	return nil
 }
 
 // claimReader is the reading half of the claim. The transaction only ever
