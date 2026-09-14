@@ -24,7 +24,22 @@ import (
 const (
 	// Schema is stamped into every claim. A file that does not carry it is not
 	// a claim, however much it looks like one.
-	Schema = "hexroute.tunnel-claim.v1"
+	Schema = "hexroute.tunnel-claim.v2"
+
+	// SchemaV1 is a claim written before a claim said which process it covers.
+	// The one placed by the handover of 2026-09-14 is one, and it must still
+	// read as held: an unreadable claim stops the previous owner, but a claim
+	// read as absent would let it start a second tunnel.
+	SchemaV1 = "hexroute.tunnel-claim.v1"
+
+	// HexrouteContent is where this runtime writes the configuration its tunnel
+	// runs. A v1 claim covers this, because it is the path that handover used.
+	HexrouteContent = "/Library/Application Support/Hexroute/observe-root/state/tunnel-config.json"
+
+	// PreviousOwnerConfig is the configuration the previous owner's tunnel runs.
+	// No claim means the previous owner holds the tunnel, and this is how its
+	// process is told from anything else running sing-box.
+	PreviousOwnerConfig = "/Library/Application Support/twilight/supervisor/client/twilight-sing-box-tun.json"
 
 	// DefaultPath is where both runtimes look.
 	//
@@ -59,12 +74,17 @@ type Claim struct {
 	// the session that made it and a stale one can be told from a current one.
 	Transaction string `json:"transaction"`
 	ClaimedAt   string `json:"claimed_at"`
+	// ProcessConfig is the configuration the holder's tunnel runs. A claim that
+	// did not say which process it covers would leave every reader to guess,
+	// and a guess is how a probe gets stopped instead of a tunnel.
+	ProcessConfig string `json:"process_config,omitempty"`
 }
 
 // Store reads and writes the claim at one path.
 type Store struct {
-	path string
-	now  func() time.Time
+	path          string
+	now           func() time.Time
+	processConfig string
 }
 
 func Open(path string) (*Store, error) {
@@ -80,6 +100,29 @@ func (store *Store) WithClock(now func() time.Time) *Store {
 		store.now = now
 	}
 	return store
+}
+
+// WithProcessConfig names the configuration a claim placed through this store
+// covers. Placing without one is refused.
+func (store *Store) WithProcessConfig(path string) *Store {
+	store.processConfig = path
+	return store
+}
+
+// OwnerConfig answers which configuration the tunnel's owner runs: the one the
+// claim names, or the previous owner's when there is no claim.
+//
+// An unreadable claim is an error, for the reason Held gives: guessing between
+// the two owners is how a probe or the wrong tunnel gets taken for the right one.
+func (store *Store) OwnerConfig() (string, error) {
+	claim, held, err := store.Held()
+	if err != nil {
+		return "", err
+	}
+	if !held {
+		return PreviousOwnerConfig, nil
+	}
+	return claim.ProcessConfig, nil
 }
 
 // Held answers whether the tunnel is claimed, and by whom.
@@ -100,8 +143,20 @@ func (store *Store) Held() (Claim, bool, error) {
 	if err := json.Unmarshal(encoded, &claim); err != nil {
 		return Claim{}, false, fmt.Errorf("%w: %v", ErrInvalidClaim, err)
 	}
-	if claim.Schema != Schema || claim.Holder != HolderHexroute ||
-		claim.Transaction == "" || claim.ClaimedAt == "" {
+	if claim.Holder != HolderHexroute || claim.Transaction == "" || claim.ClaimedAt == "" {
+		return Claim{}, false, ErrInvalidClaim
+	}
+	switch claim.Schema {
+	case SchemaV1:
+		if claim.ProcessConfig != "" {
+			return Claim{}, false, ErrInvalidClaim
+		}
+		claim.ProcessConfig = HexrouteContent
+	case Schema:
+		if !filepath.IsAbs(claim.ProcessConfig) {
+			return Claim{}, false, ErrInvalidClaim
+		}
+	default:
 		return Claim{}, false, ErrInvalidClaim
 	}
 	return claim, true, nil
@@ -116,6 +171,9 @@ func (store *Store) Place(transaction string) error {
 	if transaction == "" {
 		return fmt.Errorf("%w: a claim without a transaction", ErrInvalidClaim)
 	}
+	if !filepath.IsAbs(store.processConfig) {
+		return fmt.Errorf("%w: a claim that does not name the configuration it covers", ErrInvalidClaim)
+	}
 	if _, held, err := store.Held(); err != nil {
 		return err
 	} else if held {
@@ -123,8 +181,9 @@ func (store *Store) Place(transaction string) error {
 	}
 	encoded, err := json.Marshal(Claim{
 		Schema: Schema, Holder: HolderHexroute,
-		Transaction: transaction,
-		ClaimedAt:   store.now().UTC().Format(time.RFC3339),
+		Transaction:   transaction,
+		ClaimedAt:     store.now().UTC().Format(time.RFC3339),
+		ProcessConfig: store.processConfig,
 	})
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidClaim, err)

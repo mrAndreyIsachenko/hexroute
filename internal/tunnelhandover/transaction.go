@@ -53,6 +53,7 @@ type Policy struct {
 // Outcome is what happened, in enough detail to be recorded.
 type Outcome struct {
 	Transaction string
+	Kind        Kind
 	Rehearsal   bool
 	Completed   bool
 	Phase       Phase
@@ -72,10 +73,13 @@ type Transaction struct {
 	// Incumbent is who holds the tunnel now, and is stopped before this runtime
 	// starts its own. Absent during a rehearsal, for the same reason Tunnel is.
 	Incumbent Incumbent
-	Tunnel    Tunnel
-	Prover    Prover
-	Policy    Policy
-	Now       func() time.Time
+	// Own is the tunnel this runtime runs, found by this runtime's own
+	// configuration. A release stops it; a handover never touches it.
+	Own    Incumbent
+	Tunnel Tunnel
+	Prover Prover
+	Policy Policy
+	Now    func() time.Time
 }
 
 // Run carries the handover from prepared to proven, or aborts it back.
@@ -248,7 +252,10 @@ func (transaction *Transaction) Abort() (Outcome, error) {
 	}
 	outcome := Outcome{
 		Transaction: session.Transaction, Rehearsal: session.Rehearsal,
-		Phase: session.Phase,
+		Phase: session.Phase, Kind: session.Kind,
+	}
+	if session.Release() {
+		return transaction.abortRelease(context.Background(), outcome, session)
 	}
 	return outcome, transaction.abort(&outcome, session, session.StartedPID,
 		fmt.Sprintf("abandoned at %s", session.Phase))

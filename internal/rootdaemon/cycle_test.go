@@ -52,12 +52,16 @@ func (observer *fakeNetworkObserver) Route(
 type fakeProcessObserver struct {
 	observation observe.ProcessObservation
 	err         error
+	asked       *string
 }
 
-func (observer fakeProcessObserver) SingBox(
-	context.Context,
-	int,
+func (observer fakeProcessObserver) Tunnel(
+	_ context.Context,
+	configPath string,
 ) (observe.ProcessObservation, error) {
+	if observer.asked != nil {
+		*observer.asked = configPath
+	}
 	return observer.observation, observer.err
 }
 

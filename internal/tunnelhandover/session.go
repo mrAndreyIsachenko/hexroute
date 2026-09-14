@@ -47,6 +47,28 @@ const (
 	PhaseStarted Phase = "started"
 	PhaseProven  Phase = "proven"
 	PhaseAborted Phase = "aborted"
+
+	// PhaseStopping means a release is stopping this runtime's tunnel. The claim
+	// is still held, so the previous owner starts nothing, and undoing it is
+	// starting this runtime's tunnel again.
+	PhaseStopping Phase = "stopping"
+	// PhaseReleased means the claim is gone and the previous owner is expected
+	// to raise the tunnel. Undoing it is placing the claim again and running
+	// this runtime's tunnel.
+	PhaseReleased Phase = "released"
+	// PhaseRestored means the previous owner did not take the tunnel in time,
+	// and this runtime runs it again under a claim.
+	PhaseRestored Phase = "restored"
+)
+
+// Kind is which transaction a session belongs to. The undo for a phase depends
+// on it: a handover abandoned after its claim gives the tunnel back, a release
+// abandoned after its claim takes it again.
+type Kind string
+
+const (
+	KindHandover Kind = "handover"
+	KindRelease  Kind = "release"
 )
 
 var (
@@ -67,7 +89,13 @@ type Session struct {
 	// StartedPID is what this runtime started, so an abort can stop exactly
 	// that and not whatever holds the name now.
 	StartedPID int `json:"started_pid,omitempty"`
+	// Kind is empty on every session written before releases existed, and an
+	// empty kind is a handover.
+	Kind Kind `json:"kind,omitempty"`
 }
+
+// Release reports whether this session gives the tunnel back.
+func (session Session) Release() bool { return session.Kind == KindRelease }
 
 type Store struct {
 	path string
@@ -109,11 +137,26 @@ func (store *Store) Read() (Session, bool, error) {
 		!validPhase(session.Phase) || session.StartedAt == "" {
 		return Session{}, false, ErrInvalidSession
 	}
+	switch session.Kind {
+	case "", KindHandover, KindRelease:
+	default:
+		return Session{}, false, ErrInvalidSession
+	}
 	return session, true, nil
 }
 
 // Begin records a new transaction, and refuses beside one in flight.
 func (store *Store) Begin(transaction string, rehearsal bool) (Session, error) {
+	return store.begin(transaction, rehearsal, KindHandover)
+}
+
+// BeginRelease records a new release, and refuses beside any transaction in
+// flight, of either kind.
+func (store *Store) BeginRelease(transaction string) (Session, error) {
+	return store.begin(transaction, false, KindRelease)
+}
+
+func (store *Store) begin(transaction string, rehearsal bool, kind Kind) (Session, error) {
 	if transaction == "" {
 		return Session{}, fmt.Errorf("%w: a session without a transaction", ErrInvalidSession)
 	}
@@ -127,6 +170,7 @@ func (store *Store) Begin(transaction string, rehearsal bool) (Session, error) {
 	session := Session{
 		Schema: Schema, Transaction: transaction, Phase: PhasePrepared,
 		StartedAt: store.now().UTC().Format(time.RFC3339), Rehearsal: rehearsal,
+		Kind: kind,
 	}
 	return session, store.write(session)
 }
@@ -171,7 +215,8 @@ func (store *Store) write(session Session) error {
 
 func validPhase(phase Phase) bool {
 	switch phase {
-	case PhasePrepared, PhaseClaimed, PhaseStarted, PhaseProven, PhaseAborted:
+	case PhasePrepared, PhaseClaimed, PhaseStarted, PhaseProven, PhaseAborted,
+		PhaseStopping, PhaseReleased, PhaseRestored:
 		return true
 	default:
 		return false

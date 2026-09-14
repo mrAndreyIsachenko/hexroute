@@ -3,6 +3,7 @@ package tunnelhandover
 import (
 	"context"
 	"errors"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelclaim"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,12 +26,18 @@ type recordingClaim struct {
 	placed, released int
 	held             bool
 	refuse           error
+	refuseRelease    error
 	journal          *order
 }
 
+// Place refuses over a held claim, as the real store does, so a restore that
+// finds its claim still on disk meets the same answer it would on the machine.
 func (claim *recordingClaim) Place(string) error {
 	if claim.refuse != nil {
 		return claim.refuse
+	}
+	if claim.held {
+		return tunnelclaim.ErrHeld
 	}
 	claim.journal.note("claim")
 	claim.placed++
@@ -39,6 +46,10 @@ func (claim *recordingClaim) Place(string) error {
 }
 
 func (claim *recordingClaim) Release() error {
+	if claim.refuseRelease != nil {
+		return claim.refuseRelease
+	}
+	claim.journal.note("release")
 	claim.released++
 	claim.held = false
 	return nil
@@ -112,6 +123,7 @@ type holder struct {
 	err         error
 	refuse      error
 	journal     *order
+	label       string
 }
 
 func (incumbent *holder) Running(context.Context) (int, bool, error) {
@@ -133,7 +145,11 @@ func (incumbent *holder) Stop(pid int) error {
 	if incumbent.refuse != nil {
 		return incumbent.refuse
 	}
-	incumbent.journal.note("possess")
+	step := "possess"
+	if incumbent.label != "" {
+		step = incumbent.label
+	}
+	incumbent.journal.note(step)
 	incumbent.signalled++
 	incumbent.signalledAt = incumbent.readings
 	return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelclaim"
 	"io"
 	"os"
 	"os/signal"
@@ -190,9 +191,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return rejected(errorLog, logging.ReasonInvalidConfiguration)
 	}
+	// Which process is the tunnel follows the claim: this runtime's
+	// configuration while it holds one, the previous owner's otherwise.
+	claims, err := tunnelclaim.Open(tunnelclaim.DefaultPath)
+	if err != nil {
+		return rejected(errorLog, logging.ReasonInvalidConfiguration)
+	}
 	cycle, err := NewCycle(config, network, processes, readiness,
 		WithPayloadObserver(observe.NewPayloadProber()),
-		WithTunnelState(tunnelState))
+		WithTunnelState(tunnelState),
+		WithOwnerConfig(claims.OwnerConfig))
 	if err != nil {
 		return 1
 	}

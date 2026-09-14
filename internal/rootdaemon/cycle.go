@@ -12,6 +12,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelclaim"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelplan"
 )
 
@@ -30,8 +31,12 @@ type NetworkObserver interface {
 	Power(context.Context) (observe.PowerObservation, error)
 }
 
-type SingBoxObserver interface {
-	SingBox(context.Context, int) (observe.ProcessObservation, error)
+// TunnelProcessObserver reports the sing-box running a given configuration.
+//
+// The tunnel is identified by what it runs, never by the executable's name: an
+// ingress probe runs the same executable against a temporary configuration.
+type TunnelProcessObserver interface {
+	Tunnel(context.Context, string) (observe.ProcessObservation, error)
 }
 
 type EndpointObserver interface {
@@ -76,11 +81,14 @@ type PayloadObserver interface {
 type Cycle struct {
 	config    RuntimeConfig
 	network   NetworkObserver
-	processes SingBoxObserver
-	readiness EndpointObserver
-	payload   PayloadObserver
-	tunnel    *tunnelStateStore
-	now       func() time.Time
+	processes TunnelProcessObserver
+	// ownerConfig answers which configuration the tunnel's current owner runs:
+	// this runtime's when it holds the claim, the previous owner's otherwise.
+	ownerConfig func() (string, error)
+	readiness   EndpointObserver
+	payload     PayloadObserver
+	tunnel      *tunnelStateStore
+	now         func() time.Time
 	// steady advances only while the machine is running.
 	//
 	// On this platform Go's monotonic reading is mach_absolute_time, which the
@@ -97,10 +105,20 @@ type Cycle struct {
 	observed     bool
 }
 
+// WithOwnerConfig sets how the cycle learns which configuration the tunnel's
+// owner runs.
+func WithOwnerConfig(ownerConfig func() (string, error)) CycleOption {
+	return func(cycle *Cycle) {
+		if ownerConfig != nil {
+			cycle.ownerConfig = ownerConfig
+		}
+	}
+}
+
 func NewCycle(
 	config RuntimeConfig,
 	network NetworkObserver,
-	processes SingBoxObserver,
+	processes TunnelProcessObserver,
 	readiness EndpointObserver,
 	options ...CycleOption,
 ) (*Cycle, error) {
@@ -114,6 +132,10 @@ func NewCycle(
 		readiness: readiness,
 		now:       wallClock,
 		steady:    steadyClock(),
+		// Without a claim reader the previous owner is taken to hold the tunnel,
+		// which is what every machine is until a handover is made. The daemon
+		// wires the real claim; a test that does not care reads no file.
+		ownerConfig: func() (string, error) { return tunnelclaim.PreviousOwnerConfig, nil },
 	}
 	for _, option := range options {
 		option(cycle)
@@ -159,7 +181,15 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 		return summary
 	}
 
-	process, err := cycle.processes.SingBox(ctx, cycle.config.ExpectedSingBoxParent)
+	// A claim that cannot be read is a failed observation, not an absent
+	// tunnel. Reporting it as absent would decide process_gone from a file this
+	// runtime could not read, which is the unreadable-claim fault the claim
+	// itself refuses.
+	var process observe.ProcessObservation
+	configPath, err := cycle.ownerConfig()
+	if err == nil {
+		process, err = cycle.processes.Tunnel(ctx, configPath)
+	}
 	summary.Observed.Process, summary.Observed.ProcessError = process, err
 	if err != nil {
 		summary.Failures++

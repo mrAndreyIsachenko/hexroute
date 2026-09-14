@@ -96,8 +96,10 @@ func TestAHolderThatWillNotGoAbortsBeforeStarting(t *testing.T) {
 	if claim.released != 1 || claim.held {
 		t.Fatalf("the claim was released %d times and is held=%v", claim.released, claim.held)
 	}
-	if got := strings.Join(journal.steps, ","); got != "claim,possess" {
-		t.Fatalf("the handover went %q, not claim,possess", got)
+	// The claim is released by the abort, and the fake records it now; the
+	// point of the order is that no start appears anywhere in it.
+	if got := strings.Join(journal.steps, ","); got != "claim,possess,release" {
+		t.Fatalf("the handover went %q, not claim,possess,release", got)
 	}
 }
 
