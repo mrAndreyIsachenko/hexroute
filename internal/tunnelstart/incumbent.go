@@ -3,23 +3,29 @@ package tunnelstart
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 )
 
 // ProcessObserver is what answers whether a tunnel process is running.
 //
-// It is the observer the root daemon already uses to decide process_gone. The
-// handover borrows it rather than looking for sing-box its own way, so the
-// runtime that stops the tunnel and the rule that reports on it cannot come to
-// disagree about which process that is.
+// It is the observer the root daemon decides process_gone with. The handover
+// borrows it rather than looking for sing-box its own way, so the runtime that
+// stops the tunnel and the rule that reports on it cannot come to disagree
+// about which process that is.
 type ProcessObserver interface {
-	SingBox(ctx context.Context, expectedParentPID int) (observe.ProcessObservation, error)
+	Tunnel(ctx context.Context, configPath string) (observe.ProcessObservation, error)
 }
 
 // Incumbent is the sing-box that holds the tunnel before this runtime takes it.
 type Incumbent struct {
 	Observer ProcessObserver
+	// ConfigPath is the configuration the incumbent's tunnel runs. The tunnel is
+	// the process running it, and nothing else that runs sing-box: the
+	// incumbent's own ingress probe runs the same executable against a
+	// temporary configuration, and the name alone took it for the tunnel.
+	ConfigPath string
 	// Runner stops it. The same runner that starts this runtime's own tunnel,
 	// so both ends of the exchange are signalled the same way.
 	Runner Runner
@@ -27,14 +33,17 @@ type Incumbent struct {
 
 // Running reports the holder's pid, and whether there is one.
 //
-// Parentage is not asked for. The daemon passes its expected parent to tell its
-// own child from a stranger's; the handover is asking about the stranger's, so
-// a filter on parentage would answer no exactly when there is something to take.
+// Parentage is not asked for. The handover is asking about another runtime's
+// process, and a filter on parentage would answer no exactly when there is
+// something to take.
 func (incumbent *Incumbent) Running(ctx context.Context) (int, bool, error) {
 	if incumbent.Observer == nil {
 		return 0, false, fmt.Errorf("%w: nothing to observe the tunnel with", ErrMisplaced)
 	}
-	observation, err := incumbent.Observer.SingBox(ctx, 0)
+	if !filepath.IsAbs(incumbent.ConfigPath) {
+		return 0, false, fmt.Errorf("%w: the incumbent's configuration is not named", ErrMisplaced)
+	}
+	observation, err := incumbent.Observer.Tunnel(ctx, incumbent.ConfigPath)
 	if err != nil {
 		return 0, false, err
 	}

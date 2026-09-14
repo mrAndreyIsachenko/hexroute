@@ -13,6 +13,7 @@ func store(t *testing.T) (*Store, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "tunnel-claim.json")
 	opened, err := Open(path)
+	opened = opened.WithProcessConfig(HexrouteContent)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -171,5 +172,100 @@ func TestTheClaimCarriesWhenItWasMade(t *testing.T) {
 	}
 	if claim.ClaimedAt != "2026-09-13T18:30:00Z" {
 		t.Fatalf("claimed_at = %q", claim.ClaimedAt)
+	}
+}
+
+// A claim placed now names the configuration its holder runs.
+func TestAPlacedClaimNamesWhatItCovers(t *testing.T) {
+	opened, _ := store(t)
+	if err := opened.Place("handover-covers"); err != nil {
+		t.Fatalf("Place: %v", err)
+	}
+	claim, held, err := opened.Held()
+	if err != nil || !held {
+		t.Fatalf("Held = %v, %v", held, err)
+	}
+	if claim.Schema != Schema || claim.ProcessConfig != HexrouteContent {
+		t.Fatalf("claim = %+v", claim)
+	}
+}
+
+// A claim that would not say what it covers is not placed.
+func TestAClaimWithoutAConfigurationIsNotPlaced(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tunnel-claim.json")
+	opened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := opened.Place("handover-anonymous"); !errors.Is(err, ErrInvalidClaim) {
+		t.Fatalf("Place without a configuration = %v, want ErrInvalidClaim", err)
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Fatal("a claim was written that does not say what it covers")
+	}
+}
+
+// The claim on disk since 2026-09-14 is a v1 claim, and it still holds.
+//
+// Reading it as absent would let the previous owner start a second tunnel
+// beside this runtime's; reading it as unreadable would be safe but would
+// leave the daemon unable to say which process is the tunnel. It covers the
+// path that handover wrote.
+func TestAVersionOneClaimStillHoldsAndCoversTheDefault(t *testing.T) {
+	opened, path := store(t)
+	v1 := `{"schema":"` + SchemaV1 + `","holder":"hexroute","transaction":"handover-1789371131","claimed_at":"2026-09-14T07:32:00Z"}`
+	if err := os.WriteFile(path, []byte(v1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	claim, held, err := opened.Held()
+	if err != nil || !held {
+		t.Fatalf("a v1 claim read as held=%v err=%v", held, err)
+	}
+	if claim.ProcessConfig != HexrouteContent {
+		t.Fatalf("a v1 claim covers %q, want %q", claim.ProcessConfig, HexrouteContent)
+	}
+}
+
+// A v2 claim that does not name an absolute configuration is not a claim.
+func TestAVersionTwoClaimMustNameAConfiguration(t *testing.T) {
+	for _, item := range []struct{ name, config string }{
+		{"absent", ""},
+		{"relative", "tunnel-config.json"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			opened, path := store(t)
+			body := `{"schema":"` + Schema + `","holder":"hexroute","transaction":"x","claimed_at":"now","process_config":"` + item.config + `"}`
+			if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, held, err := opened.Held(); err == nil || held {
+				t.Fatalf("a v2 claim with config %q read as held=%v err=%v", item.config, held, err)
+			}
+		})
+	}
+}
+
+// The owner's configuration follows the claim.
+func TestTheOwnersConfigurationFollowsTheClaim(t *testing.T) {
+	opened, path := store(t)
+
+	config, err := opened.OwnerConfig()
+	if err != nil || config != PreviousOwnerConfig {
+		t.Fatalf("no claim: OwnerConfig = %q, %v; want the previous owner's", config, err)
+	}
+
+	if err := opened.Place("handover-owner"); err != nil {
+		t.Fatal(err)
+	}
+	config, err = opened.OwnerConfig()
+	if err != nil || config != HexrouteContent {
+		t.Fatalf("claimed: OwnerConfig = %q, %v; want this runtime's", config, err)
+	}
+
+	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if config, err := opened.OwnerConfig(); err == nil {
+		t.Fatalf("an unreadable claim answered %q instead of refusing", config)
 	}
 }

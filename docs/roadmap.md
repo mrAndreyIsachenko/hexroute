@@ -77,7 +77,12 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`hand-the-tunnel-back` is open, the first of item 9's three changes. It gives the
+tunnel back to Twilight in one transaction, so that something restarts it again
+and so that the executor can be proved against Twilight acting. It also makes
+this runtime identify the tunnel process by the configuration its owner runs:
+it took the first process named `sing-box`, and an ingress probe is one.
+
 
 `ask-whether-a-tunnel-owner-would-be-allowed` closed on 2026-09-14, and item 8
 with it. The policy model has a root-only `tunnel_ownership` capability, and the
@@ -857,6 +862,43 @@ item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
    Thirty-five rebuilds, none of which now happens. Whether each was needed —
    whether the tunnel was broken or the rebuild precautionary — the log does not
    say, and that is the first thing this item's grill has to establish.
+
+   Its grill ran on 2026-09-14 and settled twelve things, recorded here so they
+   are not derived again.
+
+   The reference is Twilight's rule as it runs, refusals included. The rule
+   this runtime had decided a rebuild 125 times in a window where Twilight
+   rebuilt twice, and the archive showed those were distinct events, not one
+   repeated: the two were different rules. This runtime's carrier signature
+   covered all 21 routes, including the twelve fallback routes that come and go
+   and a configuration edit it counted as a carrier change; Twilight's covers
+   three paths. Twilight does not rebuild on a failed health probe or a returned
+   link, by recorded decision, and rebuilds on the payload path only after
+   failover fails and a 300-second cooldown.
+
+   The executor takes the three causes nobody performs now and whose
+   definitions stand alone: the process gone, a wake gap of 180 seconds, and a
+   carrier change on the three-path signature. Routes and keep-awake stay with
+   Twilight, which still performs them. The payload rebuild waits for item 10,
+   because Twilight's version of it cannot be reproduced without its failover,
+   and the files that record failover are writable by any user on the machine.
+
+   It is proved by a soak against Twilight acting, so the tunnel goes back first
+   — Twilight computes none of the three while the claim is held. The soak lasts
+   at least seven days with no disagreement inside two cycles, and needs at
+   least three natural wake gaps, two carrier changes and one process loss.
+
+   After a rebuild the executor restores exactly the host routes that pointed at
+   the tunnel before it stopped, so corporate traffic never leaves the tunnel
+   waiting for Twilight's tick. It rebuilds at most twice in five minutes, six
+   times an hour and fifteen a day — above anything Twilight did in 63 days — and
+   past that it only observes until an operator resumes it. An authorization is
+   valid only in the cycle it was answered in. The grant is made in a new
+   generation, and its expiry is announced, because an expired generation stops
+   the executor silently.
+
+   Three changes, in order: hand the tunnel back; Twilight's rule, observed and
+   soaked; the executor, its grant and a second handover.
 
 10. Move ingress selection to Hexroute, then retire the supervisor. It is what
     item 8 kept Twilight for: selection with its quarantine and automatic

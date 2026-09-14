@@ -190,3 +190,34 @@ sudo '/Library/Application Support/Hexroute/observe-root/bin/hexroute-handover' 
 
 Aborting when nothing is in flight is not an error. An abort runs when the state
 is uncertain, and a rollback that could only be run once would be no rollback.
+
+## Giving the tunnel back
+
+`abort` does not do this. It undoes a transaction still in flight, and a
+completed handover leaves none, so after one it answers that nothing was in
+flight and changes nothing. Giving the tunnel back is its own transaction.
+
+Ask first, about both runtimes — whether this one holds the claim, whether the
+previous owner can read claims, whether its configuration is present and whether
+its supervisor is running at all:
+
+```sh
+sudo '/Library/Application Support/Hexroute/observe-root/bin/hexroute-handover' \
+  --config '/Library/Application Support/Hexroute/observe-root/config/root-observe.json' \
+  --tunnel-version '/Library/Application Support/Hexroute/observe-root/config/tunnel-version.json' \
+  --target-key "$(sudo cat '/Library/Application Support/Hexroute/observe-root/state/connectivity/node-id')" \
+  --sing-box /opt/homebrew/bin/sing-box \
+  --content '/Library/Application Support/Hexroute/observe-root/state/tunnel-config.json' \
+  check-release
+```
+
+`release` is the same command with `release` in place of `check-release`. It
+stops this runtime's tunnel, then releases the claim — in that order, because
+the previous owner recognises only a sing-box running its own configuration and
+would start a second one beside this runtime's — and completes on two
+consecutive proofs that traffic traversed the tunnel the previous owner raised.
+If the previous owner does not raise one inside the deadline, `release` starts
+this runtime's tunnel again from the signed version and places the claim again,
+and reports that the tunnel was not handed back.
+
+The same flags let `abort` undo a release a closed terminal left behind.

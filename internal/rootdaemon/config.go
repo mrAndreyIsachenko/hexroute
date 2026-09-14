@@ -48,10 +48,14 @@ type Config struct {
 	// TunnelSupervision is what this runtime would decide if it owned the
 	// tunnel. Absent, it decides nothing and says so — the causes that need a
 	// payload probe or a wake threshold simply do not hold.
-	TunnelSupervision     *TunnelSupervisionConfig    `json:"tunnel_supervision,omitempty"`
-	PhysicalInterface     string                      `json:"physical_interface"`
-	ManagedTUNAddress     string                      `json:"managed_tun_address"`
-	UpstreamProbeAddress  string                      `json:"upstream_probe_address,omitempty"`
+	TunnelSupervision    *TunnelSupervisionConfig `json:"tunnel_supervision,omitempty"`
+	PhysicalInterface    string                   `json:"physical_interface"`
+	ManagedTUNAddress    string                   `json:"managed_tun_address"`
+	UpstreamProbeAddress string                   `json:"upstream_probe_address,omitempty"`
+	// ExpectedSingBoxParent is still accepted and no longer used. The tunnel is
+	// identified by the configuration its owner runs, not by who started it;
+	// the field stays because the decoder refuses unknown fields and a live
+	// configuration carrying it would otherwise stop the daemon from starting.
 	ExpectedSingBoxParent int                         `json:"expected_sing_box_parent_pid,omitempty"`
 	Routes                []RouteConfig               `json:"routes"`
 	Endpoints             []EndpointConfig            `json:"endpoints"`
