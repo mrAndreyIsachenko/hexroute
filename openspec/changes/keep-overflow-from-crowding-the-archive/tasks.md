@@ -36,7 +36,10 @@
       required of every record rather than the oldest. The wait mutation did
       not compile as first written — it left the wait unused — and was redone
       before it counted.
-- [ ] 3.2 `make check` green.
+- [x] 3.2 `make check` green.
+
+      On the branch stacked on `decide-by-twilights-rule`, so the daemon
+      installed from it carries both the soaked rule and this.
 - [ ] 3.3 Install the root daemon from this branch with the reinstall shorter than three cycles, and read the archive a day later: overflow records written in that day, and the oldest operational record against its age at installation.
 
 ## 4. Close
