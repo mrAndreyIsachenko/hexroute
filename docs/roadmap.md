@@ -104,6 +104,11 @@ observations are taken first now, before anything that waits on a network and
 whatever the lid is doing, and no cause is decided from an observation nobody
 took. The seven days start again.
 
+`keep-overflow-from-crowding-the-archive` is open beside it, and the soak depends
+on it. The archive wrote a never-evicted overflow record for about every append
+past its bound; on 2026-09-14 those were 14,832 of 65,536 records, and the
+operational records the soak reads went back three days of seven. An eviction
+now frees a sixty-fourth of its bound at once and is named once.
 
 `hand-the-tunnel-back` closed on 2026-09-14, the first of item 9's three changes.
 The tunnel is Twilight's again, handed back by a transaction rather than by hand,
