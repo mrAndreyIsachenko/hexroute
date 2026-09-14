@@ -435,4 +435,13 @@
 
 ## 7. Close
 
-- [ ] 7.1 Sync the delta into the baseline, validate, archive.
+- [x] 7.1 Sync the delta into the baseline, validate, archive.
+
+      Archived 2026-09-14. `tunnel-ownership-handover` is a new baseline
+      capability rather than an amendment to an existing one: six requirements,
+      twenty-one scenarios, all of them ADDED, and nothing in the delta touched
+      a capability that already had a file.
+
+      The coverage was re-checked by name after the merge rather than assumed
+      from a clean validation — the validator asks whether a spec is well
+      formed, not whether it says what the delta asked for.

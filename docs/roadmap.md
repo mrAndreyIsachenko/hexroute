@@ -77,33 +77,6 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`hand-the-tunnel-over-in-one-transaction` is open. It is item 8's fourth change
-and the first in which this runtime performs anything.
-
-Its grill was run on 2026-09-13 against the live supervisor rather than its
-source, and revised two things the item had settled. The supervisor is not
-booted out: it has no reduced mode — `TWILIGHT_SUPERVISOR_MODE` is written by
-its installer and read by nothing — and its ingress selection changed 91 times
-in 61 days, so booting it out to take the tunnel would drop a behaviour that
-fires half again a day to gain one that fires every other week. Six of its
-twelve live behaviours move; six stay.
-
-The grill also found that `TWILIGHT_INTERNET_RESTART_ON_RESTORE` is off. The
-runtime that owns the tunnel is configured never to act on connectivity
-returning, which is one of the six causes this one decides on — recorded as a
-cause that had not occurred in sixty-one days, when it could not have.
-
-Ownership passes through a file both runtimes read and only the operator's
-transaction writes. Completion is two consecutive proofs that traffic traversed,
-within 120 seconds; the deadline aborts to the supervisor rather than leaving
-the tunnel unowned. The configuration becomes a signed version, first byte for
-byte what runs today, and a version that does not verify is not started.
-
-It runs first as a rehearsal that performs every phase except the handover,
-because every part of this runtime applied to the live machine for the first
-time has been wrong about something, and this is the part whose first mistake
-costs the network.
-
 `ask-whether-a-tunnel-owner-would-be-allowed` is open, and it is the third of the
 four changes the grill of item 8 settled — the first that touches authority at
 all. No capability in the policy model covers owning a tunnel; the two that exist
@@ -121,6 +94,42 @@ introduces the capability would make one act of two.
 
 What follows is what the recent ones changed and what they left standing, kept
 because the reasons are worth more than the record of having done them.
+
+`hand-the-tunnel-over-in-one-transaction` closed on 2026-09-14. This runtime owns
+the tunnel. The transaction completed at phase `proven` on two consecutive proofs
+that traffic traversed, the previous process is gone, and a new sing-box runs
+from a signed configuration version this runtime verified before starting it.
+
+Its grill was run against the live supervisor rather than its source, and revised
+two things the item had settled. The supervisor is not booted out: it has no
+reduced mode, and its ingress selection changed 91 times in 61 days, so booting
+it out to take the tunnel would drop a behaviour that fires half again a day to
+gain one that fires every other week. Six of its twelve live behaviours moved;
+six stayed.
+
+Two faults are worth more than the completion. The transaction placed the claim
+and started its own tunnel without stopping the one already running — the
+previous owner stops *restarting* the process when it sees a claim, it does not
+stop the process — and the rehearsal could not have found it, because a rehearsal
+skips exactly those two phases. It was found by reading the code.
+
+One finding of its grill outlived the change and is recorded here because
+nothing else carries it. `TWILIGHT_INTERNET_RESTART_ON_RESTORE` is off on this
+machine. `link_returned` is one of the six causes this runtime decides on, and
+the runtime that owned the tunnel was configured never to act on connectivity
+returning — so that cause was recorded as one that had not occurred in
+sixty-one days, when it could not have. Ownership has moved; whether this
+runtime should act on it is still unanswered.
+
+The other was found only by the handover itself. Every precondition the preflight
+asked held, and every one was a question about this runtime. The other runtime's
+installed program was two days older than the claim mechanism the whole handover
+depends on, so it could not step back: it started its own tunnel against the
+taken interface and was restarted ninety-seven times before anyone noticed.
+Nothing was lost because the interface was never free. The preflight now asks
+whether the previous owner can read a claim, from the installed file rather than
+from a repository.
+
 
 `let-a-decision-carry-its-grounds` closed on 2026-09-13. A recorded tunnel
 decision said what was decided and which causes held, and nothing about what they
