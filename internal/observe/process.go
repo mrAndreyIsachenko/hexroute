@@ -61,6 +61,15 @@ func (observer *ProcessObserver) Tunnel(ctx context.Context, configPath string) 
 		if filepath.Base(process.Executable) != "sing-box" {
 			continue
 		}
+		// Only root runs a tunnel. Both owners start it as root — the previous
+		// owner through sudo from a root supervisor, this runtime from a root
+		// command — so a sing-box under any other uid naming the same
+		// configuration is not a tunnel. Without this, any user on the machine
+		// could run one and be reported as the tunnel, hiding its loss, or be
+		// the process a release stops.
+		if process.UID != 0 {
+			continue
+		}
 		if !runsConfiguration(process.Args, configPath) {
 			continue
 		}
@@ -111,10 +120,14 @@ func parseProcesses(output []byte) ([]Process, error) {
 		if err != nil || uid < 0 {
 			return nil, ErrInvalidProcessObservation
 		}
+		// No bound on the command line. One was here, and on 2026-09-14 two
+		// unrelated processes on the machine had command lines of 5,758 and
+		// 6,109 bytes: the whole listing was refused, the tunnel could be
+		// neither found nor declared absent, and the daemon installed with it
+		// observed a failure on every cycle. A listing is invalid when its
+		// columns are, not when someone else's arguments are long — and any
+		// user on the machine can make their arguments as long as they like.
 		command := strings.Join(fields[3:], " ")
-		if command == "" || len(command) > 4096 {
-			return nil, ErrInvalidProcessObservation
-		}
 		executable, args, _ := strings.Cut(command, " ")
 		processes = append(processes, Process{
 			PID:        pid,

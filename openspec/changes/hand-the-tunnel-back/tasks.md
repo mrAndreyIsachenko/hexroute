@@ -29,6 +29,38 @@
       refused for not saying `run`, so the executable check was never reached.
       It carries the right command line under another name now.
 
+- [x] 1.5 A command line elsewhere of any length does not stop the tunnel being found.
+
+      Found by `check-release` on the machine, 2026-09-14, before `release` ran:
+      "this runtime's tunnel — invalid process observation". Reading `args`
+      instead of `comm` brought in a length bound of 4,096 bytes that refused the
+      whole listing. Measured on the machine: 1,005 processes, two of them with
+      command lines of 5,758 and 6,109 bytes, both unrelated. So the tunnel
+      could be neither found nor declared absent — for any owner.
+
+      The daemon installed at 13:07 from this branch carried it, and observed a
+      failure on every cycle since. It performs nothing, but its decisions from
+      then read the process as gone; they are to be read back and set aside
+      rather than compared.
+
+      No test could see it, because every test's listing was a few short lines.
+      The listing is now invalid only when its columns are, and a test carries a
+      7,000-byte line beside the tunnel; putting a bound back fails it.
+
+- [x] 1.6 Only a root sing-box is the tunnel.
+
+      Measured before deciding: this runtime's tunnel runs as uid 0, and the
+      previous owner starts its own with `sudo -n "$SING_BOX_BIN" run -c
+      "$CONFIG"` from a supervisor whose launchd job runs as root, with no
+      privilege drop anywhere. So requiring uid 0 excludes no real tunnel. What
+      it excludes is any user on the machine running a sing-box that names the
+      owner's configuration — counted, it would hide a lost tunnel, or be what a
+      release stops as root. The previous owner's ingress probe is root too; it
+      is told apart by its configuration, not by this.
+
+      Tested with a user's sing-box listed before root's; removing the check
+      fails it.
+
 ## 2. Release
 
 - [x] 2.1 Sessions record their kind, and release's phases.
