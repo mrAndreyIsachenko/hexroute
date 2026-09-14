@@ -43,6 +43,12 @@
       then read the process as gone; they are to be read back and set aside
       rather than compared.
 
+      Read back after reinstalling the fix at 13:26:02Z: seventeen decisions
+      between 13:07:29Z and 13:25:56Z, every one `rebuild_tunnel` on
+      `process_gone` with `process_running: false`, while the tunnel ran
+      throughout. Those seventeen are set aside. `check-release`, run right
+      after through the same observer, found the tunnel as pid 44094.
+
       No test could see it, because every test's listing was a few short lines.
       The listing is now invalid only when its columns are, and a test carries a
       7,000-byte line beside the tunnel; putting a bound back fails it.
@@ -128,9 +134,53 @@
       and killed.
 
       The baseline in Twilight: driven both ways under 3.2.
-- [ ] 4.2 `make check` green in both repositories.
-- [ ] 4.3 Run `release` on the machine and record what the tunnel did.
+- [x] 4.2 `make check` green in both repositories.
+
+      Twilight on its branch before PR 18 merged; this repository on its branch
+      after every change above, with the exit status read directly rather than
+      through a pipe.
+- [x] 4.3 Run `release` on the machine and record what the tunnel did.
+
+      Installed from both branches first. `check-release` refused once — the
+      listing defect under 1.5 — and after the fix held on every precondition,
+      including that the previous owner's supervisor was running.
+
+      `release-1789392457`, 2026-09-14 13:27:37Z, `--deadline 180s`: completed
+      at `proven` on two proofs. The deadline was raised from 120 s because the
+      previous owner notices on a sixty-second tick and its restart was measured
+      at fifty-seven seconds, which left three seconds of margin.
+
+      What the machine did, read afterwards rather than from the outcome:
+
+          13:27:30Z  HEALTHY -> HANDED_OVER   (its last tick under the claim)
+          13:28:40Z  HANDED_OVER -> SINGBOX_EXITED  process_missing
+          13:28:47Z  SINGBOX_EXITED -> STARTING  singbox_started
+          13:29:16Z  ingress twilight-1 quarantined; STARTING -> FAILOVER
+          13:29:25Z  FAILOVER -> HEALTHY  startup_probe_ok
+
+      One sing-box afterwards, pid 75412, uid 0, running the previous owner's
+      configuration; this runtime's pid 44094 gone. The tunnel address is on
+      utun15, the five inherited destinations route through it, general traffic
+      answers and an address behind the tunnel answers 421. The previous owner
+      recorded no carrier rebuild.
+
+      The quarantine of the first ingress at startup is not attributed to the
+      release: the same ingress was failing with read timeouts in the
+      supervisor's log earlier the same day.
+
+      **A statement made before the run was wrong.** It said the supervisor would
+      read the newly installed script when it restarted after the release. It
+      did not restart as a process: its loop reruns `run_once` inside the same
+      bash process on exit code 75, with the functions it loaded at 11:14. The
+      proof is in its own record — between 13:07 and 13:27 it moved
+      `HANDED_OVER -> HEALTHY` sixteen times, which the installed script cannot
+      do while a claim is held. Without a claim the two versions behave the
+      same, so nothing about this release or the coming soak depends on it. The
+      next handover does: the supervisor has to be restarted as a process first,
+      and `check` has to learn to ask whether the running supervisor is older
+      than the script installed for it, because reading the installed file is
+      reading the wrong thing.
 
 ## 5. Close
 
-- [ ] 5.1 Sync the delta into the baseline, validate, archive.
+- [x] 5.1 Sync the delta into the baseline, validate, archive.
