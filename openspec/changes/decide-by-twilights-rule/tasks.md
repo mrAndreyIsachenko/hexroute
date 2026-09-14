@@ -2,8 +2,25 @@
 
 ## 1. The ground
 
-- [ ] 1.1 Read on the machine: with no claim, the daemon sees the previous owner's tunnel running.
-- [ ] 1.2 Read on the machine: the configured upstream probe and ingress addresses are the ones Twilight's carrier watchdog logs, and the installed wake threshold beside Twilight's.
+- [x] 1.1 Read on the machine: with no claim, the daemon sees the previous owner's tunnel running.
+
+      Read 2026-09-14 14:19Z: no claim on disk, and all 48 decisions since the
+      release carry `process_running: true` — the daemon from change 1 finds the
+      tunnel by the previous owner's configuration.
+- [x] 1.2 Read on the machine: the configured upstream probe and ingress addresses are the ones Twilight's carrier watchdog logs, and the installed wake threshold beside Twilight's.
+
+      The probe and both ingress addresses are the ones Twilight's watchdog logs.
+      The wake threshold was not: 90 seconds installed against Twilight's 180,
+      with a 60-second interval. Under the old meaning that was pure sleep; under
+      this change it would name a wake gap after thirty seconds of sleep. The
+      daemon would have started without complaint and the soak would have meant
+      nothing, which is why this was read before installing rather than after.
+      The installed value is changed to 180 at install.
+
+      The archive at the same reading: 67.7 MiB of its 256 MiB bound, covering
+      2026-09-07 19:32Z to 2026-09-14 14:19Z — six days and nineteen hours, not
+      seven — in exactly 65,536 files, the second reading in a row to land on
+      that number.
 
 ## 2. The rule
 
