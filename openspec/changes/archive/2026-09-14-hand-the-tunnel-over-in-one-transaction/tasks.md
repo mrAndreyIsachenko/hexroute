@@ -367,8 +367,14 @@
       The claim work was merged into the other repository on the 13th and never
       installed. So the previous owner did not step back: it kept starting its
       own tunnel against the interface this runtime had taken, failed, and was
-      restarted by launchd every eighteen seconds. Ninety-seven starts before it
+      restarted by launchd every eighteen seconds. Forty-nine starts before it
       was noticed.
+
+      Forty-nine, not the ninety-seven first recorded here. That figure counted
+      the lines announcing a start across the whole log since July, rather than
+      the supervisor runs inside the handover window. Two sources agree on the
+      smaller one: forty-nine run headers between 10:30 and 11:16, and
+      forty-nine starts that exited during startup.
 
       Nothing was lost, and that is luck rather than design: the tunnel it could
       not build is the one this runtime already held, so the machine kept its

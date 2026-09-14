@@ -834,7 +834,36 @@ item 4 below. The three before it closed on 2026-09-03 and 2026-09-04:
    takes the fallback with it. It is lifted into its own agent first — no
    roadmap item moves it otherwise, and an escape hatch must not belong to the
    experiment it exists to escape.
-9. Complete public qualification, supply-chain evidence and legacy cleanup.
+9. Give Hexroute the executor for what item 8 moved. Decided 2026-09-14 after
+   the handover, when the destination was chosen: Hexroute runs the tunnel, and
+   Twilight is retired rather than kept as a partner.
+
+   Item 8 moved ownership and not the work. Its design lists six behaviours that
+   move — starting sing-box and restarting it when it is gone, the carrier
+   changing, the wake gap, the payload path failing, the scoped routes and
+   keeping the machine awake — and its proposal names the dependency, a
+   generation granting `tunnel_ownership`, without scheduling it anywhere. So
+   since 10:32 on 2026-09-14 four of the six are performed by nobody: the
+   supervisor stands down while the claim is held, the tunnel process has no
+   parent but launchd, and this runtime has no path that restarts anything. The
+   other two, routes and keep-awake, are still Twilight's, because neither is
+   guarded by the claim.
+
+   What that costs was counted from the supervisor's event log over the 63 days
+   it covers, from 2026-07-13, excluding the handover itself: 13 rebuilds on a
+   wake gap, 12 of them in the last 24 days; 19 on a carrier change, 14 of them
+   on one day; 2 on the payload path failing; 1 for the process dying on its own.
+   Thirty-five rebuilds, none of which now happens. Whether each was needed —
+   whether the tunnel was broken or the rebuild precautionary — the log does not
+   say, and that is the first thing this item's grill has to establish.
+
+10. Move ingress selection to Hexroute, then retire the supervisor. It is what
+    item 8 kept Twilight for: selection with its quarantine and automatic
+    restore changed 91 times in 61 days, more often than anything about the
+    tunnel. Nothing else in this list moves it, so without this item the
+    supervisor runs indefinitely and item 11's cleanup cannot include it.
+
+11. Complete public qualification, supply-chain evidence and legacy cleanup.
    Two leftovers are named here rather than left to be found. Hexroute now
    depends on Keychain items under legacy names, on a critical path: they were
    read where they are because moving one means reading a one-time-code seed
