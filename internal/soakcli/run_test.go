@@ -114,3 +114,55 @@ func TestNoteRefusesAnUnjudgedCause(t *testing.T) {
 		t.Fatalf("note of an unjudged cause = %d: %s", code, stderr.String())
 	}
 }
+
+// A collection with nothing to read yet records nothing.
+//
+// Recorded, an empty window would make every later judgement refuse the soak for
+// a collection that read nothing, when the only thing wrong was running it too
+// soon after the last.
+func TestCollectingTooSoonRecordsNothing(t *testing.T) {
+	dir := t.TempDir()
+	archiveDir := filepath.Join(dir, "archive")
+	if err := os.MkdirAll(archiveDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ledgerDir := filepath.Join(dir, "soak")
+	now := func() time.Time { return t0.Add(time.Minute) }
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := Run([]string{"--archive", archiveDir, "--ledger", ledgerDir, "--from", t0.Format(time.RFC3339), "collect"},
+		stdout, stderr, now)
+	if code != 0 {
+		t.Fatalf("collect = %d: %s", code, stderr.String())
+	}
+	ledger, err := soakledger.Open(ledgerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if windows, err := ledger.Coverage(); err != nil || len(windows) != 0 {
+		t.Fatalf("a collection with nothing to read recorded %v, %v", windows, err)
+	}
+}
+
+// A silence longer than a few cycles is recorded, because it is a hole.
+func TestALongSilenceIsRecordedAsAHole(t *testing.T) {
+	dir := t.TempDir()
+	archiveDir := filepath.Join(dir, "archive")
+	if err := os.MkdirAll(archiveDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ledgerDir := filepath.Join(dir, "soak")
+	now := func() time.Time { return t0.Add(time.Hour) }
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := Run([]string{"--archive", archiveDir, "--ledger", ledgerDir, "--from", t0.Format(time.RFC3339), "collect"},
+		stdout, stderr, now); code != 0 {
+		t.Fatalf("collect = %d: %s", code, stderr.String())
+	}
+	ledger, _ := soakledger.Open(ledgerDir)
+	windows, err := ledger.Coverage()
+	if err != nil || len(windows) != 1 || windows[0].Records != 0 {
+		t.Fatalf("an hour of silence was not recorded as a hole: %v, %v", windows, err)
+	}
+	if err := soakledger.Continuous(windows, t0, t0.Add(time.Hour)); err == nil {
+		t.Fatal("an hour of silence was judged continuous")
+	}
+}

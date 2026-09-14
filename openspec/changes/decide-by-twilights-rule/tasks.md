@@ -71,7 +71,7 @@
 
 - [x] 4.1 Mutate each cause's definition, the window and the induced count; confirm the named tests fail.
 
-      Twenty-eight applied, twenty-eight killed.
+      Thirty applied, thirty killed.
 
       The rule, seven: an exclusive wake boundary, the sleep compared alone, a
       returned link acting again, drifted routes acting again, a threshold
@@ -97,6 +97,15 @@
       total that came out the same with the cause ignored, and the lead test used
       a lead six hours long that almost any bound refuses. Both now test at the
       boundary, and both mutations die.
+
+      Two more, for a defect found while writing the install sequence rather
+      than by any test: a collection run straight after the soak's start, or
+      moments after another, reads an empty window, and recording it made every
+      later judgement refuse the soak for reading nothing where there was
+      nothing yet to read. An empty window within three cycles is no longer
+      recorded; a longer one is, because that silence is a hole. Removing the
+      guard fails one test, and a guard that skipped every empty window fails
+      the other.
 - [x] 4.2 `make check` green.
 - [ ] 4.3 Install, and run the soak until it passes or a disagreement stops it.
 
