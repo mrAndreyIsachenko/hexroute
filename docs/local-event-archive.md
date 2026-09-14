@@ -47,6 +47,16 @@ eviction removes diagnostics first, then operational records, and never a
 critical one — an append that could only be satisfied by dropping critical
 evidence is refused instead.
 
+An eviction takes a sixty-fourth of the bound at once rather than one record at
+a time. For size, it frees that share of the bound beyond what the append needs,
+counted in blocks as the bound is. For age, nothing goes until the oldest record
+is that share of the window outside it, and then everything outside the window
+goes, so a record can stay about two and a half hours past seven days. Each
+eviction is named in an overflow record, and overflow records are critical: an
+archive that evicted a record at a time wrote one for about every append, and on
+2026-09-14 the live archive held 14,832 of them among 65,536 records, with its
+oldest operational record three days old.
+
 Only records that decode under a registered event schema may enter. One that
 does not is refused, and the refusal is counted and written into the archive
 as a diagnostic — at the first refusal and at each doubling after it. Every
