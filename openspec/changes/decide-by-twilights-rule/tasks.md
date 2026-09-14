@@ -86,6 +86,11 @@
       the ledger holds a window. The fifth did not compile as first written and
       was redone before it counted.
 
+      Installed 2026-09-14 18:55Z with the archive change stacked on it. The
+      reinstall left a silence of 27 seconds. Collected again from 14:40:35Z:
+      4,058 records, no rebuild decision, and the judgement read not passed for
+      length and counts, not unjudgeable.
+
 ## 4. Gates and evidence
 
 - [x] 4.1 Mutate each cause's definition, the window and the induced count; confirm the named tests fail.
