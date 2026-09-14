@@ -37,6 +37,26 @@ type Coverage struct {
 	Newest      time.Time `json:"newest"`
 	Records     uint32    `json:"records"`
 	CollectedAt time.Time `json:"collected_at"`
+	// LongestSilence is the longest stretch inside the window with no record at
+	// all. The runtime writes several records every cycle, so a silence longer
+	// than a few cycles is a runtime that was not running — and a decision it
+	// did not make there is invisible to a comparison that only looks at where
+	// windows start and meet. Absent on collections made before it was kept,
+	// and absent is not zero: nobody measured those windows' silences.
+	LongestSilence *time.Duration `json:"longest_silence,omitempty"`
+}
+
+// LongestSilence is the longest gap between consecutive moments, in any order.
+func LongestSilence(moments []time.Time) time.Duration {
+	sorted := append([]time.Time(nil), moments...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Before(sorted[j]) })
+	var longest time.Duration
+	for index := 1; index < len(sorted); index++ {
+		if gap := sorted[index].Sub(sorted[index-1]); gap > longest {
+			longest = gap
+		}
+	}
+	return longest
 }
 
 // Entry is one of this runtime's decisions to rebuild.
@@ -155,6 +175,19 @@ func Continuous(windows []Coverage, from, until time.Time) error {
 	if len(windows) == 0 {
 		return fmt.Errorf("%w: nothing was collected", ErrNotContinuous)
 	}
+	// A window whose silences were not kept is not evidence that nothing was
+	// silent in it. It is set aside, and a collection made again from the soak's
+	// start covers what it covered.
+	measured := make([]Coverage, 0, len(windows))
+	for _, window := range windows {
+		if window.LongestSilence != nil {
+			measured = append(measured, window)
+		}
+	}
+	if len(measured) == 0 {
+		return fmt.Errorf("%w: no collection kept its silences; collect again with --from the soak's start", ErrNotContinuous)
+	}
+	windows = measured
 	sort.Slice(windows, func(i, j int) bool { return windows[i].Requested.Before(windows[j].Requested) })
 	if windows[0].Requested.After(from) {
 		return fmt.Errorf("%w: collection starts at %s, after the soak's start %s",
@@ -164,6 +197,10 @@ func Continuous(windows []Coverage, from, until time.Time) error {
 	for index, window := range windows {
 		if window.Records == 0 {
 			return fmt.Errorf("%w: the collection at %s read nothing", ErrNotContinuous, window.CollectedAt.Format(time.RFC3339))
+		}
+		if *window.LongestSilence > MaxLead {
+			return fmt.Errorf("%w: the runtime wrote nothing for %s inside the collection at %s",
+				ErrNotContinuous, window.LongestSilence.Round(time.Second), window.CollectedAt.Format(time.RFC3339))
 		}
 		if lead := window.Oldest.Sub(window.Requested); lead > MaxLead {
 			return fmt.Errorf("%w: from %s the archive held nothing for %s",

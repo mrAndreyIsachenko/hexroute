@@ -11,7 +11,7 @@ import (
 var t0 = time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC)
 
 func window(requested, oldest, newest time.Duration) Coverage {
-	return Coverage{Requested: t0.Add(requested), Oldest: t0.Add(oldest), Newest: t0.Add(newest), Records: 10, CollectedAt: t0.Add(newest)}
+	return Coverage{Requested: t0.Add(requested), Oldest: t0.Add(oldest), Newest: t0.Add(newest), Records: 10, CollectedAt: t0.Add(newest), LongestSilence: silence(time.Minute)}
 }
 
 func TestCollectionsThatOverlapAreContinuous(t *testing.T) {
@@ -108,5 +108,54 @@ func TestOnlyJudgedCausesCanBeNoted(t *testing.T) {
 	inductions, err := ledger.Inductions()
 	if err != nil || len(inductions) != 1 || inductions[0].Cause != soakcompare.ProcessGone {
 		t.Fatalf("Inductions = %v, %v", inductions, err)
+	}
+}
+
+// A silence inside a window is a hole, even when the windows meet.
+//
+// Checking only where collections start and meet would miss a runtime that
+// stopped for hours between two collections: nothing it would have decided in
+// those hours can disagree with anything.
+func TestASilenceInsideAWindowIsRefused(t *testing.T) {
+	week := 7 * 24 * time.Hour
+	quiet := window(0, time.Minute, week)
+	quiet.LongestSilence = silence(3 * time.Hour)
+	if err := Continuous([]Coverage{quiet}, t0, t0.Add(week)); err == nil {
+		t.Fatal("three hours of silence inside a window were accepted")
+	}
+	brief := window(0, time.Minute, week)
+	brief.LongestSilence = silence(MaxLead)
+	if err := Continuous([]Coverage{brief}, t0, t0.Add(week)); err != nil {
+		t.Fatalf("a silence of MaxLead was refused: %v", err)
+	}
+}
+
+func TestTheLongestSilenceIsFoundInAnyOrder(t *testing.T) {
+	moments := []time.Time{t0.Add(10 * time.Minute), t0, t0.Add(2 * time.Minute), t0.Add(3 * time.Minute)}
+	if got := LongestSilence(moments); got != 7*time.Minute {
+		t.Fatalf("LongestSilence = %s, want 7m", got)
+	}
+	if LongestSilence(nil) != 0 || LongestSilence(moments[:1]) != 0 {
+		t.Fatal("fewer than two moments have a silence")
+	}
+}
+
+func silence(d time.Duration) *time.Duration { return &d }
+
+// A window collected before silences were kept proves nothing about them.
+func TestAWindowWithoutItsSilencesIsNotEvidence(t *testing.T) {
+	week := 7 * 24 * time.Hour
+	legacy := window(0, time.Minute, week)
+	legacy.LongestSilence = nil
+	if err := Continuous([]Coverage{legacy}, t0, t0.Add(week)); err == nil {
+		t.Fatal("a week whose silences nobody measured was judged continuous")
+	}
+	again := window(0, time.Minute, week)
+	if err := Continuous([]Coverage{legacy, again}, t0, t0.Add(week)); err != nil {
+		t.Fatalf("collecting again from the start was refused: %v", err)
+	}
+	late := window(time.Hour, time.Hour+time.Minute, week)
+	if err := Continuous([]Coverage{legacy, late}, t0, t0.Add(week)); err == nil {
+		t.Fatal("an unmeasured first hour was counted as covered")
 	}
 }

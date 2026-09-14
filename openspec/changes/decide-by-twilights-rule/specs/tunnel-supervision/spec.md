@@ -133,6 +133,12 @@ The soak SHALL pass only after at least seven days with no disagreement, at
 least three natural wake-gap agreements, two carrier agreements and one induced
 process loss. A change to the rule SHALL restart the seven days.
 
+A stretch in which this runtime wrote nothing for longer than three cycles SHALL
+make the soak not judgeable, wherever it falls: at the start of a collection,
+between two, or inside one. Nothing decided there can disagree with anything. A
+collection that did not measure the silences inside it SHALL NOT count as having
+observed its window.
+
 #### Scenario: A rebuild decided and made
 
 - **WHEN** this runtime decides a rebuild for a cause and the owning runtime rebuilds for the same cause inside the window

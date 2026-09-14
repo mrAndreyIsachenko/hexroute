@@ -66,6 +66,25 @@
       lost more than three cycles of its start, or one that stops short of the
       end. A daemon down for more than three cycles is a hole by the same rule,
       which is right: nothing was observed.
+- [x] 3.4 A silence inside a collection is a hole, and a collection that did not measure its silences is not evidence.
+
+      3.3 said a daemon down for more than three cycles is a hole, and it was
+      true only where a collection started or where two met. Found by reading
+      what `Continuous` compared, after the soak had started: a runtime stopped
+      for hours between two collections left both windows looking whole. Each
+      collection now records the longest gap between consecutive records it
+      read, and the judgement refuses one longer than three cycles.
+
+      The collections made before this were not measured, and absent is not
+      read as zero: those windows are set aside. `collect --from` now wins over
+      where the ledger reached, so collecting once again from the soak's start
+      covers them with a window that was measured.
+
+      Six mutations, six killed: a bound a hundred times looser, a bound
+      exclusive at three cycles, the moments left unsorted, an unmeasured window
+      read as silent for zero, a collection recording zero, `--from` ignored once
+      the ledger holds a window. The fifth did not compile as first written and
+      was redone before it counted.
 
 ## 4. Gates and evidence
 
