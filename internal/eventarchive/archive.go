@@ -46,6 +46,14 @@ const (
 	// window an incident review actually asks about.
 	DefaultMaxAge = 7 * 24 * time.Hour
 
+	// EvictionShare is how much of a bound one eviction frees beyond what it
+	// must: a sixty-fourth of the size, and for age, a sixty-fourth of the
+	// window past it before anything is evicted. An eviction is named in a
+	// critical record that size eviction never removes, so an archive that
+	// evicted a record at a time wrote one of those for about every append
+	// and filled with them: on 2026-09-14 the live archive held 14,832.
+	EvictionShare = 64
+
 	stableSuffix  = ".event"
 	pendingSuffix = ".pending"
 )
@@ -327,7 +335,18 @@ func (archive *Archive) Append(encoded []byte) (uint64, error) {
 		if err != nil {
 			return 0, err
 		}
-		evictions, covered := chooseEvictions(stored, excess)
+		occupied := make(map[uint64]int64, len(kept))
+		for _, entry := range kept {
+			occupied[entry.Sequence] = entry.Size
+		}
+		occupies := func(record Record) int64 {
+			if size, found := occupied[record.Sequence]; found {
+				return size
+			}
+			return diskusage.WillOccupy(record.Size, archive.allocationUnit)
+		}
+		evictions, covered := chooseEvictions(
+			stored, occupies, excess, excess+archive.maxBytes/EvictionShare)
 		if !covered {
 			// Refusing is the answer the bound demands. Dropping a critical
 			// record to make room would trade the evidence for the sample.
@@ -425,6 +444,10 @@ func (archive *Archive) expiredByAge(entries []stableEntry) ([]Record, error) {
 		return nil, nil
 	}
 	boundary := archive.clock.WallNow().UTC().Add(-archive.maxAge)
+	// Nothing is evicted until the oldest record is a share of the window past
+	// it, and then everything outside the window goes at once, so an eviction
+	// is named once per share of the window rather than once per append.
+	due := boundary.Add(-archive.maxAge / EvictionShare)
 	expired := []Record{}
 	for _, entry := range entries {
 		record, err := archive.readRecord(entry.Sequence)
@@ -436,7 +459,11 @@ func (archive *Archive) expiredByAge(entries []stableEntry) ([]Record, error) {
 			// proving is beyond saving.
 			continue
 		}
-		if record.Metadata.WallClock.UTC().Before(boundary) {
+		at := record.Metadata.WallClock.UTC()
+		if len(expired) == 0 && !at.Before(due) {
+			return nil, nil
+		}
+		if at.Before(boundary) {
 			expired = append(expired, record)
 			continue
 		}
@@ -470,7 +497,9 @@ func (archive *Archive) readRecord(sequence uint64) (Record, error) {
 // chooseEvictions removes the cheapest evidence first and never offers a
 // critical record, so a caller that cannot cover its excess is told so rather
 // than handed a plan that costs more than the append is worth.
-func chooseEvictions(records []Record, excess int64) ([]Record, bool) {
+func chooseEvictions(
+	records []Record, occupies func(Record) int64, excess, wanted int64,
+) ([]Record, bool) {
 	order := []event.Priority{
 		event.PriorityDiagnostic,
 		event.PriorityOperational,
@@ -483,13 +512,18 @@ func chooseEvictions(records []Record, excess int64) ([]Record, bool) {
 				continue
 			}
 			chosen = append(chosen, record)
-			freed += record.Size
-			if freed >= excess {
+			// What the filesystem stops charging, which is what the excess is
+			// counted in. Counting contents freed a block's excess by evicting
+			// as many records as fit in one: eight at a time in these tests,
+			// a batch whose size the filesystem chose.
+			freed += occupies(record)
+			if freed >= wanted {
 				return chosen, true
 			}
 		}
 	}
-	return chosen, false
+	// Short of what was wanted is still enough if it covers what was needed.
+	return chosen, freed >= excess
 }
 
 func (archive *Archive) recordOverflow(
