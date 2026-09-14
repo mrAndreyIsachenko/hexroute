@@ -105,9 +105,10 @@ whatever the lid is doing, and no cause is decided from an observation nobody
 took. The seven days start again.
 
 `keep-overflow-from-crowding-the-archive` is open beside it, and the soak depends
-on it. The archive wrote a never-evicted overflow record for about every append
-past its bound; on 2026-09-14 those were 14,832 of 65,536 records, and the
-operational records the soak reads went back three days of seven. An eviction
+on it. The archive wrote an overflow record, which size eviction never removes,
+for about every append that evicted for size or age; on 2026-09-14 those were
+15,076 of 65,536 records, most of them for age, and the operational records the
+soak reads went back three days of seven. Installed 2026-09-14 18:55Z. An eviction
 now frees a sixty-fourth of its bound at once and is named once.
 
 `hand-the-tunnel-back` closed on 2026-09-14, the first of item 9's three changes.
