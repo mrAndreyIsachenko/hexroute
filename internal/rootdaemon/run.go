@@ -555,7 +555,7 @@ func observeLoop(
 		// tunnel is the whole reason for deciding without acting.
 		if err := recordTunnelDecision(
 			reader, summary.Tunnel, uint16(len(summary.Plan.Operations)),
-			authority,
+			authority, operatorSnapshot.Generation,
 		); err != nil {
 			if emitErr := logger.Emit(
 				logging.LevelWarn,
@@ -758,12 +758,13 @@ func recordTunnelDecision(
 	plan tunnelplan.Plan,
 	routesPlanned uint16,
 	authority tunnelAuthorizer,
+	controlGeneration uint64,
 ) error {
 	if reader == nil || !decided(plan) {
 		return nil
 	}
 	return reader.RecordTunnelDecision(
-		tunnelDecisionRecord(plan, routesPlanned, authority))
+		tunnelDecisionRecord(plan, routesPlanned, authority, controlGeneration))
 }
 
 // tunnelAuthorizer is the one question this runtime asks of policy about the
@@ -790,6 +791,7 @@ func tunnelDecisionRecord(
 	plan tunnelplan.Plan,
 	routesPlanned uint16,
 	authority tunnelAuthorizer,
+	controlGeneration uint64,
 ) event.TunnelDecision {
 	causes := make([]string, 0, len(plan.Causes))
 	for _, cause := range plan.Causes {
@@ -822,19 +824,54 @@ func tunnelDecisionRecord(
 	// Asked on the cycles that decided to act, and on no others: a cycle that
 	// decided to do nothing has nothing to be permitted.
 	//
-	// Under the generation active while this was written the answer is a
-	// refusal, and recording it is what proves the question is asked at all.
-	// When a generation carrying the capability is installed these records turn
-	// without a line of code changing, and if they do not, that is learned while
-	// this runtime still owns nothing.
-	if authority != nil && plan.Action != tunnelplan.ActionNone {
-		answer := authority.AuthorizeTunnelOwnership(tunnelAuthorityTarget, 0, "")
+	// The question carries the control state it was reached under and a digest
+	// of the decision itself. It used to carry zero and an empty digest, which
+	// the evaluator rejects as a malformed request before it looks at policy at
+	// all — so on 2026-09-14 the archive held 683 answers, every one
+	// `invalid_request`, and a generation granting the capability would have
+	// left them exactly so. The comment here then promised those records would
+	// turn without a line of code changing; they could not have. The test that
+	// was meant to prove the question reaches policy used an authority that
+	// ignored both arguments, so it proved the record and not the question.
+	//
+	// No control state yet means no question. The first cycle records its
+	// decision before the operator snapshot has a generation, and asking then
+	// would write a refusal where the truth is that nothing could be asked.
+	if authority != nil && plan.Action != tunnelplan.ActionNone && controlGeneration > 0 {
+		answer := authority.AuthorizeTunnelOwnership(
+			tunnelAuthorityTarget, controlGeneration,
+			tunnelPlanDigest(plan, controlGeneration))
 		record.Authorization = &event.TunnelAuthorization{
 			Allowed: answer.Allowed,
 			Reason:  string(answer.Reason),
 		}
 	}
 	return record
+}
+
+// tunnelPlanDigest binds an authorization to this decision rather than to the
+// act in general, the way the Pritunl rescue binds its own: the action, every
+// cause that held, what it is about and the control state it was reached under.
+func tunnelPlanDigest(plan tunnelplan.Plan, controlGeneration uint64) string {
+	causes := make([]string, 0, len(plan.Causes))
+	for _, cause := range plan.Causes {
+		causes = append(causes, string(cause))
+	}
+	digest, _, err := policy.CanonicalSHA256(struct {
+		Action     string   `json:"action"`
+		Causes     []string `json:"causes"`
+		Target     string   `json:"target"`
+		Generation uint64   `json:"generation"`
+	}{
+		Action:     string(plan.Action),
+		Causes:     causes,
+		Target:     tunnelAuthorityTarget,
+		Generation: controlGeneration,
+	})
+	if err != nil {
+		return ""
+	}
+	return digest
 }
 
 // decided says whether a cycle reached a decision at all.

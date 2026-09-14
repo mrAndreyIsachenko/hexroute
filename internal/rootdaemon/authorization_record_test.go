@@ -1,6 +1,7 @@
 package rootdaemon
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/event"
@@ -10,18 +11,26 @@ import (
 )
 
 type answeringAuthority struct {
-	decision policy.ActionAuthorizationDecision
-	asked    int
-	target   string
+	decision   policy.ActionAuthorizationDecision
+	asked      int
+	target     string
+	generation uint64
+	digest     string
 }
 
+// It keeps every argument. The first version of this fake discarded the
+// generation and the digest, returned a policy-shaped refusal, and so passed
+// while the runtime sent zero and an empty string — a request the real
+// evaluator rejects before consulting policy.
 func (authority *answeringAuthority) AuthorizeTunnelOwnership(
 	target string,
-	_ uint64,
-	_ string,
+	generation uint64,
+	digest string,
 ) policy.ActionAuthorizationDecision {
 	authority.asked++
 	authority.target = target
+	authority.generation = generation
+	authority.digest = digest
 	return authority.decision
 }
 
@@ -75,7 +84,7 @@ func TestADecisionToDoNothingAsksNoPermission(t *testing.T) {
 // "invalid request" back — which reads in the record as policy refusing rather
 // than as policy being absent.
 func TestNoPolicyControlRecordsNoAnswer(t *testing.T) {
-	record := tunnelDecisionRecord(planFor(tunnelplan.ActionRebuildTunnel), 1, nil)
+	record := tunnelDecisionRecord(planFor(tunnelplan.ActionRebuildTunnel), 1, nil, 7)
 	if record.Authorization != nil {
 		t.Fatal("a record carried an authorization nobody answered")
 	}
@@ -102,5 +111,58 @@ func recordFor(
 	authority *answeringAuthority,
 ) (event.TunnelDecision, int) {
 	t.Helper()
-	return tunnelDecisionRecord(planFor(action), 1, authority), authority.asked
+	return tunnelDecisionRecord(planFor(action), 1, authority, 7), authority.asked
+}
+
+// The question is one the evaluator will actually consider.
+//
+// A request without a control-state generation or a plan digest is rejected as
+// malformed before any policy is read. Sent that way, every answer is
+// `invalid_request` whatever the active generation grants, which is what the
+// archive held on 2026-09-14.
+func TestTheQuestionCarriesAGenerationAndADigest(t *testing.T) {
+	authority := &answeringAuthority{decision: policy.ActionAuthorizationDecision{
+		Reason: policy.ActionSelectorMismatch,
+	}}
+	tunnelDecisionRecord(planFor(tunnelplan.ActionRebuildTunnel), 1, authority, 7)
+	if authority.generation != 7 {
+		t.Fatalf("asked under control generation %d, want 7", authority.generation)
+	}
+	if len(authority.digest) != 64 || strings.Trim(authority.digest, "0123456789abcdef") != "" {
+		t.Fatalf("plan digest %q is not a SHA-256 the evaluator accepts", authority.digest)
+	}
+}
+
+// With no control state yet, nothing is asked and no refusal is recorded.
+//
+// The first cycle records its decision before the operator snapshot has a
+// generation. Asking then would write `invalid_request` into the record, which
+// reads as policy refusing when nothing could be asked.
+func TestNoControlStateAsksNothing(t *testing.T) {
+	authority := &answeringAuthority{decision: policy.ActionAuthorizationDecision{
+		Reason: policy.ActionSelectorMismatch,
+	}}
+	record := tunnelDecisionRecord(planFor(tunnelplan.ActionRebuildTunnel), 1, authority, 0)
+	if authority.asked != 0 {
+		t.Fatalf("asked policy %d times with no control state", authority.asked)
+	}
+	if record.Authorization != nil {
+		t.Fatal("recorded an answer to a question that was not asked")
+	}
+}
+
+// The digest is this decision's, not the act's in general.
+func TestTheDigestBindsTheDecision(t *testing.T) {
+	rebuild := tunnelPlanDigest(planFor(tunnelplan.ActionRebuildTunnel), 7)
+	later := tunnelPlanDigest(planFor(tunnelplan.ActionRebuildTunnel), 8)
+	other := tunnelPlanDigest(tunnelplan.Plan{
+		Action: tunnelplan.ActionRebuildTunnel,
+		Causes: []tunnelplan.Cause{tunnelplan.CauseRoutesDrifted},
+	}, 7)
+	if rebuild == later {
+		t.Fatal("the digest does not change with the control generation")
+	}
+	if rebuild == other {
+		t.Fatal("the digest does not change with the causes")
+	}
 }
