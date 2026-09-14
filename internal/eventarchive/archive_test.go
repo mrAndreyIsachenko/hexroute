@@ -746,3 +746,98 @@ func archiveFile(t *testing.T, root string) string {
 	t.Fatal("no archived record")
 	return ""
 }
+
+// An archive past its size bound must not fill with records of its own
+// evictions. On 2026-09-14 the live archive wrote one per evicting append:
+// 14,832 of its 65,536 records said what had been evicted, none of them could
+// be evicted for size, and the operational records they reported on were
+// down to three days of a seven-day window.
+func TestEvictingForSizeFreesAShareOfTheBound(t *testing.T) {
+	root := t.TempDir()
+	clock := newClock()
+	sizing := openArchive(t, clock2Root(t), clock, Options{})
+	if _, err := sizing.Append(operational(0)); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	measured, err := sizing.Size()
+	if err != nil {
+		t.Fatalf("size: %v", err)
+	}
+	archive := openArchive(t, root, clock, Options{MaxBytes: measured * 256})
+	for index := 0; index < 512; index++ {
+		if _, err := archive.Append(operational(index)); err != nil {
+			t.Fatalf("append %d: %v", index, err)
+		}
+	}
+	var overflows, evicted int
+	for _, overflow := range archiveOverflows(t, archive) {
+		if overflow.Reason == event.ArchiveOverflowSize {
+			overflows++
+			evicted += int(overflow.Count)
+		}
+	}
+	// A sixty-fourth of 256 records is four, beyond the one each append needs.
+	if overflows == 0 || evicted < overflows*5 {
+		t.Fatalf("%d overflow records for %d evicted records, want at least five evicted for each", overflows, evicted)
+	}
+}
+
+// Freeing room is counted in what the filesystem charges, as the bound is.
+func TestEvictionCountsWhatARecordOccupies(t *testing.T) {
+	var records []Record
+	for sequence := uint64(1); sequence <= 16; sequence++ {
+		records = append(records, Record{Sequence: sequence, Priority: event.PriorityOperational, Size: 500})
+	}
+	block := func(Record) int64 { return 4096 }
+	chosen, covered := chooseEvictions(records, block, 4096, 4096)
+	if !covered || len(chosen) != 1 {
+		t.Fatalf("freeing one block's excess chose %d records, covered %v; want one", len(chosen), covered)
+	}
+	chosen, covered = chooseEvictions(records, block, 4096, 4*4096)
+	if !covered || len(chosen) != 4 {
+		t.Fatalf("freeing four blocks chose %d records, covered %v; want four", len(chosen), covered)
+	}
+	chosen, covered = chooseEvictions(records[:2], block, 4096, 4*4096)
+	if !covered || len(chosen) != 2 {
+		t.Fatalf("two records cover one block needed and not four wanted: chose %d, covered %v", len(chosen), covered)
+	}
+	if _, covered = chooseEvictions(records[:2], block, 3*4096, 4*4096); covered {
+		t.Fatal("two blocks were reported to cover three")
+	}
+}
+
+// The same for age. A record expires about as often as one is appended, so an
+// overflow record per expiring append is one per append, and each of those
+// expires a window later and writes another.
+func TestEvictingForAgeWaitsForAShareOfTheWindow(t *testing.T) {
+	root := t.TempDir()
+	clock := newClock()
+	// Two readings of the clock an append, so about a second an append, and a
+	// share of the window is four of them.
+	clock.step = 500 * time.Millisecond
+	archive := openArchive(t, root, clock, Options{MaxAge: 256 * time.Second})
+	for index := 0; index < 384; index++ {
+		if _, err := archive.Append(operational(index)); err != nil {
+			t.Fatalf("append %d: %v", index, err)
+		}
+	}
+	var overflows, evicted int
+	for _, overflow := range archiveOverflows(t, archive) {
+		if overflow.Reason == event.ArchiveOverflowAge {
+			overflows++
+			evicted += int(overflow.Count)
+		}
+	}
+	if overflows == 0 || evicted < overflows*3 {
+		t.Fatalf("%d overflow records for %d evicted records, want at least three evicted for each", overflows, evicted)
+	}
+	records, err := archive.Records()
+	if err != nil {
+		t.Fatalf("records: %v", err)
+	}
+	oldest := records[0].Metadata.WallClock
+	newest := records[len(records)-1].Metadata.WallClock
+	if kept := newest.Sub(oldest); kept > 256*time.Second+256*time.Second/EvictionShare+time.Second {
+		t.Fatalf("kept %s, more than the window and its share", kept)
+	}
+}
