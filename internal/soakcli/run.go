@@ -96,6 +96,16 @@ func Run(args []string, stdout, stderr io.Writer, now func() time.Time) int {
 			fmt.Fprintln(stderr, "error: the read was truncated; collect more often")
 			return 2
 		}
+		// Nothing yet is not a hole. A collection run moments after the last, or
+		// straight after the soak's start, reads an empty window, and recording
+		// it would make the judgement refuse a soak for reading nothing where
+		// there was nothing to read yet. An empty window longer than a few cycles
+		// is different: the runtime writes several records every cycle, so that
+		// silence is a stretch nobody observed, and it is recorded as one.
+		if reading.Covered.Empty && until.Sub(from) <= soakledger.MaxLead {
+			fmt.Fprintf(stdout, "nothing to collect yet since %s\n", from.Format(time.RFC3339))
+			return 0
+		}
 		entries, err := RebuildEntries(reading.Records)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
