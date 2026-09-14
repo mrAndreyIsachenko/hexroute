@@ -224,3 +224,28 @@ func TestThePreviousOwnerMustBeAbleToReadAClaim(t *testing.T) {
 		t.Fatalf("an absent program was reported as an old one: %v", err)
 	}
 }
+
+// The preflight names what it does not cover.
+//
+// An empty slot in a written list is visible; an absent thought is not. On
+// 2026-09-14 this command reported six preconditions holding, every one a
+// question about this runtime, and the handover then failed on the other
+// runtime's installed revision — which nothing here had asked about. The
+// obligation to print what is skipped is what turns that into a blank line
+// somebody can read.
+func TestCheckNamesWhatItDoesNotCover(t *testing.T) {
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	Run([]string{
+		"--session", filepath.Join(t.TempDir(), "handover.json"),
+		"--claim", filepath.Join(t.TempDir(), "claim.json"),
+		"check",
+	}, stdout, stderr)
+
+	if !strings.Contains(stdout.String(), "not checked:") {
+		t.Fatalf("check does not say what it skips:\n%s", stdout.String())
+	}
+	uncovered := strings.SplitN(stdout.String(), "not checked:", 2)[1]
+	if strings.Count(uncovered, "\n  - ") < 3 {
+		t.Fatalf("the list of what is not covered is too thin to be honest:\n%s", uncovered)
+	}
+}

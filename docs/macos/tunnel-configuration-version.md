@@ -147,7 +147,14 @@ cd ~/Developer/personal/hexroute && make build-observe-root && \
   '/Library/Application Support/Hexroute/observe-root/bin/hexroute-handover'
 ```
 
-Ask whether it would complete, before it takes anything:
+First, that this document still describes this machine. It named a make target
+nobody wrote once, and a signing key this host does not pin once; both were
+found by somebody following it. Absent and unreadable are reported apart, so run
+it under sudo to get answers rather than abstentions:
+
+
+
+Then ask whether the handover would complete, before it takes anything:
 
 ```sh
 sudo '/Library/Application Support/Hexroute/observe-root/bin/hexroute-handover' \

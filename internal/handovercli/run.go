@@ -292,6 +292,25 @@ func check(
 	// handover the other side cannot honour.
 	say("previous owner reads claims", supervisorReadsClaims(previousOwnerProgram), previousOwnerProgram)
 
+	// What this does not cover, named rather than left to be discovered.
+	//
+	// The list exists because an empty slot in it is visible where an absent
+	// thought is not. On 2026-09-14 this preflight reported six preconditions
+	// holding and every one was a question about this runtime; the handover
+	// then failed on the other runtime's installed revision, which nothing here
+	// had asked about. Had the command been obliged to print what it skips, the
+	// missing party would have been a blank line somebody could read.
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "not checked:")
+	for _, uncovered := range [...]string{
+		"whether the signed version's content is what the previous owner runs today",
+		"whether the routes this runtime plans match the ones in place",
+		"whether anything other than a tunnel process holds the tunnel address",
+		"what the previous owner does after the claim is released",
+	} {
+		fmt.Fprintf(stdout, "  - %s\n", uncovered)
+	}
+
 	fmt.Fprintln(stdout)
 	if failures > 0 {
 		fmt.Fprintf(stderr, "%d preconditions refused; begin would not complete\n", failures)
