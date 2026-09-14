@@ -20,16 +20,20 @@ numbers, not a measurement: operational retention falls below a day around
 2026-09-19, and appends start being refused around 2026-09-21, when nothing but
 critical records is left to evict. The soak ends on 2026-09-21.
 
-The age bound has the same shape and has not bitten yet. A record expires about
-as often as one is appended, so an overflow record per expiring append is one per
-append — and each of those expires a week later and writes another.
+The age bound has the same shape, and it was the larger of the two. A record
+expires about as often as one is appended, so an overflow record per expiring
+append is one per append — and each of those expires a week later and writes
+another. An earlier draft of this proposal said the age bound had not bitten yet;
+nobody had read it. Read at installation, 2026-09-14 18:55Z, the archive held
+15,076 overflow records: 9,296 for age, naming 21,306 evicted records, and 5,780
+for size, naming 56,025. In the last day it wrote 2,404 for age naming 2,620 —
+1.1 records each — and 5,366 for size naming 21,464.
 
 A third defect was found measuring the first. Choosing what to evict for size
 counts a record's contents, and the bound it frees room under counts disk blocks.
 In this repository's tests a record of about half a kilobyte on a four-kilobyte
-block was evicted eight at a time to free one block's excess; by the same
-arithmetic, not measured, the live archive's records of about 1.25 kilobytes go
-about three at a time. That is a batch by accident, of a size the filesystem sets.
+block was evicted eight at a time to free one block's excess. The live archive's
+last day before installation evicted 4.0 records per size overflow record. That is a batch by accident, of a size the filesystem sets.
 
 ## What
 
