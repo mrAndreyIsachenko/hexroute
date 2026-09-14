@@ -77,12 +77,25 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`hand-the-tunnel-back` is open, the first of item 9's three changes. It gives the
-tunnel back to Twilight in one transaction, so that something restarts it again
-and so that the executor can be proved against Twilight acting. It also makes
-this runtime identify the tunnel process by the configuration its owner runs:
-it took the first process named `sing-box`, and an ingress probe is one.
+None.
 
+`hand-the-tunnel-back` closed on 2026-09-14, the first of item 9's three changes.
+The tunnel is Twilight's again, handed back by a transaction rather than by hand,
+and something restarts it: `release` stopped this runtime's tunnel, released the
+claim, and completed on two traversals through the tunnel Twilight raised about
+seventy seconds later.
+
+This runtime now finds the tunnel by the configuration its owner runs, and only
+as root. It took the first process named `sing-box`, and Twilight's ingress probe
+is one. The preflight caught a defect of the fix itself before the release ran:
+a length bound on command lines refused the whole process listing because two
+unrelated processes had long ones.
+
+One thing learned belongs to change three. Twilight's supervisor restarts its
+tunnel inside the same process, so it kept running the script it loaded at 11:14
+after a newer one was installed at 13:07. The next handover has to restart it as
+a process first, and its preflight has to compare the running supervisor with the
+installed script rather than read the file alone.
 
 `ask-whether-a-tunnel-owner-would-be-allowed` closed on 2026-09-14, and item 8
 with it. The policy model has a root-only `tunnel_ownership` capability, and the
