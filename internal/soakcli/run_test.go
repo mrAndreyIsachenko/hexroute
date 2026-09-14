@@ -166,3 +166,49 @@ func TestALongSilenceIsRecordedAsAHole(t *testing.T) {
 		t.Fatal("an hour of silence was judged continuous")
 	}
 }
+
+// The longest silence inside a collection is what it records, wherever it falls.
+func TestACollectionRecordsItsLongestSilence(t *testing.T) {
+	at := func(sequence uint64, offset time.Duration) eventarchive.Record {
+		return eventarchive.Record{Sequence: sequence, Metadata: metadata.Metadata{WallClock: t0.Add(offset)}}
+	}
+	reading := eventarchive.Reading{Records: []eventarchive.Record{
+		at(1, time.Minute), at(2, 2*time.Minute), at(3, 4*time.Hour), at(4, 4*time.Hour+time.Minute),
+	}}
+	reading.Covered = eventarchive.Window{Records: 4, Oldest: t0.Add(time.Minute), Newest: t0.Add(4*time.Hour + time.Minute)}
+	coverage := CoverageOf(t0, t0.Add(4*time.Hour+2*time.Minute), reading)
+	if coverage.LongestSilence == nil || *coverage.LongestSilence != 4*time.Hour-2*time.Minute {
+		t.Fatalf("LongestSilence = %v, want 3h58m", coverage.LongestSilence)
+	}
+	if err := soakledger.Continuous([]soakledger.Coverage{coverage}, t0, t0.Add(4*time.Hour+2*time.Minute)); err == nil {
+		t.Fatal("four hours in which the runtime wrote nothing were judged continuous")
+	}
+}
+
+// --from wins over where the ledger reached, so a soak can be collected again.
+func TestCollectingAgainFromTheStartIsAllowed(t *testing.T) {
+	dir := t.TempDir()
+	archiveDir := filepath.Join(dir, "archive")
+	if err := os.MkdirAll(archiveDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ledgerDir := filepath.Join(dir, "soak")
+	ledger, err := soakledger.Open(ledgerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	earlier := soakledger.Coverage{Requested: t0, Oldest: t0, Newest: t0.Add(30 * time.Minute), Records: 5, CollectedAt: t0.Add(30 * time.Minute)}
+	if err := ledger.Collect(nil, earlier); err != nil {
+		t.Fatal(err)
+	}
+	now := func() time.Time { return t0.Add(time.Hour) }
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := Run([]string{"--archive", archiveDir, "--ledger", ledgerDir, "--from", t0.Format(time.RFC3339), "collect"},
+		stdout, stderr, now); code != 0 {
+		t.Fatalf("collect = %d: %s", code, stderr.String())
+	}
+	windows, err := ledger.Coverage()
+	if err != nil || len(windows) != 2 || !windows[1].Requested.Equal(t0) {
+		t.Fatalf("collecting again from the start asked from %v, %v", windows, err)
+	}
+}

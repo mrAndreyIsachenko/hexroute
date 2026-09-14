@@ -73,7 +73,10 @@ func Run(args []string, stdout, stderr io.Writer, now func() time.Time) int {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 2
 		}
-		if !held {
+		// --from always wins. The first collection needs it, and collecting
+		// again from the soak's start is how windows collected before their
+		// silences were kept get measured.
+		if *fromFlag != "" || !held {
 			if from, err = time.Parse(time.RFC3339, *fromFlag); err != nil {
 				fmt.Fprintln(stderr, "error: the first collection needs --from")
 				return 2
@@ -111,10 +114,7 @@ func Run(args []string, stdout, stderr io.Writer, now func() time.Time) int {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 2
 		}
-		coverage := soakledger.Coverage{Requested: from, Records: reading.Covered.Records, CollectedAt: until}
-		if !reading.Covered.Empty {
-			coverage.Oldest, coverage.Newest = reading.Covered.Oldest, reading.Covered.Newest
-		}
+		coverage := CoverageOf(from, until, reading)
 		if err := ledger.Collect(entries, coverage); err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 2
@@ -275,4 +275,21 @@ func TwilightRebuilds(path string) ([]soakcompare.Rebuild, error) {
 	}
 	sort.Slice(rebuilds, func(i, j int) bool { return rebuilds[i].At.Before(rebuilds[j].At) })
 	return rebuilds, nil
+}
+
+// CoverageOf is what one collection can say it observed.
+func CoverageOf(from, until time.Time, reading eventarchive.Reading) soakledger.Coverage {
+	moments := make([]time.Time, 0, len(reading.Records))
+	for _, record := range reading.Records {
+		moments = append(moments, record.Metadata.WallClock.UTC())
+	}
+	longest := soakledger.LongestSilence(moments)
+	coverage := soakledger.Coverage{
+		Requested: from, Records: reading.Covered.Records, CollectedAt: until,
+		LongestSilence: &longest,
+	}
+	if !reading.Covered.Empty {
+		coverage.Oldest, coverage.Newest = reading.Covered.Oldest, reading.Covered.Newest
+	}
+	return coverage
 }

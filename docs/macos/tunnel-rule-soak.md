@@ -17,10 +17,27 @@ sudo '/Library/Application Support/Hexroute/observe-root/bin/hexroute-soak-compa
 ```
 
 The first collection takes `--from` with the soak's start; later ones continue
-from the newest record the last one covered. Measured on 2026-09-14 the archive
-held six days and nineteen hours, so a collection missed for a week loses records
-for good, and the judgement then refuses the soak rather than counting the loss
-as a quiet stretch. Once a day leaves room.
+from the newest record the last one covered. A collection missed for longer than
+the archive keeps operational records loses records for good, and the judgement
+then refuses the soak rather than counting the loss as a quiet stretch.
+
+That is not the archive's age. Measured on 2026-09-14 at 14:19Z the archive held
+six days and nineteen hours; measured at 17:49Z its oldest operational record was
+three days and five hours old, because the records it writes about its own
+evictions are never evicted for size and push the others out. Until the archive
+stops doing that, collect in the morning and in the evening.
+
+A collection records the longest silence inside what it read. The runtime writes
+several records every cycle, so a silence longer than three cycles is a runtime
+that was not running, and the judgement refuses it as a hole. Collections made
+before silences were recorded are not evidence either way; collecting once with
+`--from` the soak's start covers them again:
+
+```sh
+sudo '/Library/Application Support/Hexroute/observe-root/bin/hexroute-soak-compare' --from '<soak start, RFC 3339>' collect
+```
+
+`--from` always wins over where the ledger reached.
 
 A collection can fail with a record that is not found. The daemon evicts records
 while the collection reads, and one removed between the listing and the read is
