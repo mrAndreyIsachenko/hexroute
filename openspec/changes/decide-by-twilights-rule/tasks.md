@@ -168,6 +168,19 @@
 - [x] 4.2 `make check` green.
 - [ ] 4.3 Install, and run the soak until it passes or a disagreement stops it.
 
+      First started 2026-09-14 14:40:35Z and voided a day in, when the wake rule
+      was found unable to pass it (2.2). Its ledger is kept on the machine
+      beside the new one, not deleted.
+
+      Started again 2026-09-15 11:29:38Z, the daemon installed at 11:27:08Z with
+      the configuration in place kept; the reinstall left a silence of 28
+      seconds, before the start. First reading of the corrected rule: three
+      decisions, no causes, three carrier entries, the probe and ingress
+      addresses and the 180-second threshold the same as Twilight's, and a tick
+      gap of 60,030 ms — the wall clock's, where the old rule would have
+      recorded exactly the interval. First collection: 44 records, no rebuild
+      decision. The earliest judgement is 2026-09-22 11:29:38Z.
+
 ## 5. Close
 
 - [ ] 5.1 Sync the delta into the baseline, validate, archive.
