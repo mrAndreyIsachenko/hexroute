@@ -25,7 +25,7 @@ exported method appears.
 | Bound | Default | What it means |
 | --- | --- | --- |
 | age | 7 days | how far back a review can ask |
-| size | 256 MiB | how much disk the answer costs |
+| size | 1 GiB | how much disk the answer costs |
 
 The size bound counts what the filesystem charges for the records, not what the
 records contain. The archive keeps one file per record at about 1.25 kilobytes
@@ -34,6 +34,12 @@ third of the room actually taken: on 2026-09-11 an archive bounded at 256 MiB
 held 96.7 MiB of records and occupied 315 MiB of disk. What the archive reports
 as its size is the number it counts against the bound, so the two cannot drift
 apart again.
+
+The size bound is large enough that the age window is what binds. At 256 MiB it
+was not: measured 2026-09-15 the runtime wrote 19,383 records a day, one block
+each, so the archive held about 3.6 days and its oldest operational record was
+2 days 18 hours old while the window said seven days. A week of that rate is
+about 530 MiB.
 
 The window was thirty days and never applied. At about twelve megabytes a day
 the byte bound arrives in roughly three weeks, so the age an operator read off

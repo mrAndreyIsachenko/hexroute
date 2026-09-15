@@ -841,3 +841,22 @@ func TestEvictingForAgeWaitsForAShareOfTheWindow(t *testing.T) {
 		t.Fatalf("kept %s, more than the window and its share", kept)
 	}
 }
+
+// The default bound holds the window the archive states.
+//
+// A size bound that binds first makes the age window a number nothing uses,
+// which is how a seven-day archive came to answer for 3.6 days: measured
+// 2026-09-15, 19,383 records a day at one four-kilobyte block each.
+func TestTheDefaultBoundHoldsTheDefaultWindow(t *testing.T) {
+	const recordsADay = 19_383
+	const block = 4096
+	week := int64(recordsADay) * int64(DefaultMaxAge/(24*time.Hour)) * block
+	if DefaultMaxBytes < week {
+		t.Fatalf("the bound holds %d bytes, short of the %d a week of records occupies",
+			DefaultMaxBytes, week)
+	}
+	// And the share one eviction frees stays a share, not the whole archive.
+	if DefaultMaxBytes/EvictionShare > week/8 {
+		t.Fatalf("one eviction frees %d bytes of a week's %d", DefaultMaxBytes/EvictionShare, week)
+	}
+}

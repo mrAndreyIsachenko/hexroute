@@ -109,7 +109,14 @@ on it. The archive wrote an overflow record, which size eviction never removes,
 for about every append that evicted for size or age; on 2026-09-14 those were
 15,076 of 65,536 records, most of them for age, and the operational records the
 soak reads went back three days of seven. Installed 2026-09-14 18:55Z. An eviction
-now frees a sixty-fourth of its bound at once and is named once.
+now frees a sixty-fourth of its bound at once and is named once: overflow records
+written in a day fell from 7,770 to 19.
+
+Retention did not recover with it, and the prediction that it would was wrong.
+At 19,383 records a day, measured 2026-09-15, one four-kilobyte block each, a
+256-megabyte bound holds 3.6 days whatever else is in it. The bound is a gigabyte
+now, so the seven-day window is what removes records, and the change stays open
+until the machine shows that.
 
 `hand-the-tunnel-back` closed on 2026-09-14, the first of item 9's three changes.
 The tunnel is Twilight's again, handed back by a transaction rather than by hand,
