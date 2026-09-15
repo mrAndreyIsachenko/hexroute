@@ -48,6 +48,11 @@ last day before installation evicted 4.0 records per size overflow record. That 
 - The overflow record stays durable and written when the eviction happens. A
   summary kept in memory and written later was rejected: a crash would lose the
   only record that records were lost.
+- The size bound is a gigabyte rather than 256 megabytes, so that the seven-day
+  window is what removes records. At the measured 19,383 records a day, one
+  four-kilobyte block each, a week occupies about 530 megabytes; 256 megabytes
+  held 3.6 days. The archive will hold about 136,000 records and 530 megabytes
+  of the 170 gigabytes free on this disk.
 
 ## Impact
 
@@ -60,6 +65,17 @@ last day before installation evicted 4.0 records per size overflow record. That 
 
 ## Closing measurement
 
-On the live archive, a day after installation: overflow records written in the
-last day fall from thousands to tens, and the oldest operational record is older
-than it was at installation rather than younger.
+Two readings on the live archive.
+
+The first, a day after installing the batched eviction, is done: overflow records
+written in the last day fell from 7,770 to 19 — 1,025 records evicted for each
+one written, as predicted — and critical records stopped growing. The second half
+of that reading failed, and the prediction was what was wrong: the oldest
+operational record was 2 days 18 hours old, younger than at installation, because
+the size bound holds 3.6 days of this rate however little the overflow records
+take.
+
+The second, two days after installing the raised bound: the oldest operational
+record is older than 3 days 5 hours — what it was before any of this — and
+climbing toward the seven-day window, with the archive holding more than 65,536
+records and no `size` overflow record written since the installation.
