@@ -16,6 +16,14 @@ What the archive reports as its size SHALL be what it counts against that bound,
 so a reader cannot be left to guess which of the two a number means. Choosing
 what to evict SHALL count what each record occupies in the same units.
 
+The size bound SHALL be large enough that the age window is what binds. A size
+bound reached first makes the window a number nothing uses, which is what the
+thirty-day window was before it: measured 2026-09-15 the runtime wrote 19,383
+records a day, one four-kilobyte block each, so a 256-megabyte bound held about
+3.6 days against a window of seven, and the oldest operational record was 2 days
+18 hours old. A week of that rate occupies about 530 megabytes; the bound is a
+gigabyte.
+
 The age bound SHALL be a window an operator can state. Thirty days was
 configured and never applied: at twelve megabytes a day the archive reached its
 byte bound in about twenty-one, so the age was a number nothing ever used. Seven
@@ -76,6 +84,12 @@ eviction happens, never held back to be written later.
 - **WHEN** records reach the end of the window about as often as they are appended
 - **THEN** nothing is evicted for age until the oldest is a sixty-fourth of the window outside it
 - **AND** no record is kept longer than the window and that share
+
+#### Scenario: The window is what binds
+
+- **WHEN** the runtime writes at the rate measured on this machine
+- **THEN** records leave because they fall outside the window, not because the archive is full
+- **AND** the archive reports the window it states
 
 #### Scenario: Less than the share can be evicted
 

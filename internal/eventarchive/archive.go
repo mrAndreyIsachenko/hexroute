@@ -40,8 +40,13 @@ import (
 )
 
 const (
-	// DefaultMaxBytes bounds the archive on disk.
-	DefaultMaxBytes int64 = 256 * 1024 * 1024
+	// DefaultMaxBytes bounds the archive on disk. It is large enough that the
+	// age window is what binds, because a size bound reached first makes the
+	// window a number nothing uses. Measured on 2026-09-15: 19,383 records a
+	// day, and one record occupies one four-kilobyte block, so a week is about
+	// 530 megabytes. At 256 megabytes the archive held 3.6 days of that rate
+	// and its oldest operational record was 2 days 18 hours old.
+	DefaultMaxBytes int64 = 1024 * 1024 * 1024
 	// DefaultMaxAge bounds how far back the archive answers for. It is the
 	// window an incident review actually asks about.
 	DefaultMaxAge = 7 * 24 * time.Hour

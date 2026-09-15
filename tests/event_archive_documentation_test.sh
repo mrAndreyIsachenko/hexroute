@@ -47,11 +47,23 @@ grep -qE "\| $age days \|" "$document" || {
   printf 'the age bound is %s days and the document does not say so\n' "$age" >&2
   status=1
 }
-grep -q '256 \* 1024 \* 1024' internal/eventarchive/archive.go &&
-  { grep -qE '\| 256 MiB \|' "$document" || {
-    printf 'the size bound is 256 MiB and the document does not say so\n' >&2
-    status=1
-  }; }
+# The size bound is read from the constant rather than written here twice. A
+# gate that hunted for a literal stopped checking anything the day the literal
+# changed, and said nothing.
+size="$(/usr/bin/python3 - <<'SIZE'
+import re
+source = open("internal/eventarchive/archive.go").read()
+match = re.search(r"DefaultMaxBytes int64 = ([0-9 *]+)", source)
+if not match:
+    raise SystemExit("DefaultMaxBytes not found in internal/eventarchive/archive.go")
+value = eval(match.group(1))
+print("%d GiB" % (value >> 30) if value >= 1 << 30 else "%d MiB" % (value >> 20))
+SIZE
+)" || { printf 'cannot read the size bound from the constant\n' >&2; status=1; }
+grep -qE "\| $size \|" "$document" || {
+  printf 'the size bound is %s and the document does not say so\n' "$size" >&2
+  status=1
+}
 
 # The commands it tells an operator to run, and the flag that enables the
 # whole thing.

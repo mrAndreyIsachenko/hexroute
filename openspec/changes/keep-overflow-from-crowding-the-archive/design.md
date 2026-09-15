@@ -19,8 +19,8 @@ Three ways to stop overflow records crowding the archive were weighed.
 
 The share is the same for both bounds, so there is one number to reason about.
 
-For size it is 4 MiB of the default 256 MiB — about a thousand records at one
-four-kilobyte block each. By arithmetic from the measured day of 2026-09-14,
+For size it is 16 MiB of the default gigabyte — about four thousand records at
+one four-kilobyte block each. By arithmetic from the measured day of 2026-09-14,
 about seventeen thousand records a day, that is a size eviction every hour and a
 half: tens of overflow records a day where thousands were written. That is a
 prediction, and the closing measurement is what settles it.
@@ -34,6 +34,22 @@ still one.
 
 The retained window for size shrinks by at most the share: just after an
 eviction the archive holds a sixty-fourth less than its bound.
+
+## The bound is raised so the window binds
+
+Stopping the overflow records was half of it. The other half is that the archive
+answered for 3.6 days while stating seven: at 19,383 records a day, measured
+2026-09-15, one block each, 256 megabytes holds that long with no critical record
+at all. The bound is a gigabyte, so a week — about 530 megabytes — fits and the
+age window is what removes records.
+
+Measured on a generated archive of 136,000 records, the size a week of that rate
+reaches: opening it took 0.5 to 2.2 seconds, an append 10.9 milliseconds, an age
+eviction batch of 3,806 records 407 milliseconds. One path is expensive: an
+append that evicts for size took 6.1 seconds, because choosing by priority reads
+every stored record. At this bound that path does not run in a steady state —
+the window binds first — and it is recorded as its own issue rather than fixed
+here.
 
 ## Counting in blocks
 

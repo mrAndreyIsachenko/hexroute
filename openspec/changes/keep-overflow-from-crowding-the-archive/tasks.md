@@ -34,6 +34,31 @@
       Driven before the fix: 384 appends past a 256-second window wrote one
       overflow record per expiring append.
 
+- [x] 2.4 The size bound is large enough that the age window is what binds.
+
+      Measured 2026-09-15 on the machine: 19,383 records a day — 17,919
+      connectivity observations, of which 10,724 are the user daemon's two
+      components at about one every 16 seconds, 1,440 tunnel decisions, and the
+      rest critical. One record occupies one four-kilobyte block, so 256
+      megabytes holds about 3.6 days against a window of seven. Writing less
+      would not have reached seven either: at one observation a cycle for every
+      component it is about 11,500 a day, or 5.7 days.
+
+      The bound is a gigabyte. A week of that rate is about 530 megabytes, and
+      the disk has 170 gigabytes free. Measured on a generated archive of that
+      size, 136,000 records: open 0.5-2.2 s, append 10.9 ms, an age eviction
+      batch of 3,806 records 407 ms, a twelve-hour read 8.3 s. An append that
+      evicts for size took 6.1 s, because choosing by priority reads every
+      record; at this bound the window binds first and that path does not run in
+      a steady state. It is recorded as HEX-19 rather than fixed here.
+
+      Two mutations, two killed: the bound at 512 megabytes, and at 556
+      megabytes — a week of records to the byte, which is where the test sits.
+      The documentation gate is a third: it checked the document against a
+      literal in the source, so it would have stopped checking anything the day
+      the literal changed. It reads the constant now, and both a stale document
+      and a changed bound fail it.
+
 ## 3. Gates and evidence
 
 - [x] 3.1 Mutate the share, the counting, the covering and the age wait; confirm the named tests fail.
@@ -72,6 +97,17 @@
       reached back into sparser records from 2026-09-11. Retention is now
       limited by the bound itself, and seven days cannot be reached at this
       rate. The change stays open to reach them.
+
+- [ ] 3.4 Install the raised bound, and read two days later that the window is what removes records.
+
+      The soak of `decide-by-twilights-rule` is running, so this reinstall has
+      to leave a silence shorter than three cycles or it puts a hole in it. The
+      previous two left 27 and 28 seconds.
+
+      What the reading has to show: the archive holds more than 65,536 records,
+      no overflow record for size has been written since the installation, and
+      the oldest operational record is older than 3 days 5 hours and climbing
+      toward seven days.
 
 ## 4. Close
 
