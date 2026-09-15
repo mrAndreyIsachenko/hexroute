@@ -99,8 +99,9 @@ type Cycle struct {
 	//
 	// On this platform Go's monotonic reading is mach_absolute_time, which the
 	// kernel suspends across sleep, while the wall clock is not suspended. The
-	// difference between the two is the sleep, and asking for it directly is
-	// what separates a machine that slept from an observer that was slow.
+	// difference between the two is recorded as the sleep. It decides nothing:
+	// the kernel did not suspend it across idle sleeps on 2026-09-14, and the
+	// wake gap is the wall time between cycles, as the owning runtime measures.
 	steady func() time.Duration
 	// lastObserved and lastSteady are when the previous cycle ran, on each
 	// clock. Neither is durable on purpose: across a restart there is no
@@ -417,8 +418,8 @@ func WithSteadyClock(steady func() time.Duration) CycleOption {
 // Stripping it is the whole point. A time.Time from time.Now carries both a wall
 // value and a monotonic one, and Sub prefers the monotonic one when both
 // operands have it — so subtracting two of them would silently give the same
-// quantity the steady clock gives, the divergence would always be zero, and the
-// wake gap would never hold however long the machine slept.
+// quantity the steady clock gives: the recorded sleep would always be zero, and
+// the gap between cycles would leave out every sleep that clock stops for.
 //
 // This cannot be caught by a test in one process: a test cannot make a real
 // clock pair diverge without really sleeping. So the property is asserted of
@@ -444,13 +445,16 @@ func (cycle *Cycle) decideTunnel(
 	// stripped and a monotonic reading here would silently zero the divergence.
 	at := cycle.now().Round(0)
 	steady := cycle.steady()
-	slept := time.Duration(0)
+	slept, tickGap := time.Duration(0), time.Duration(0)
 	if cycle.observed {
 		wall := at.Sub(cycle.lastObserved)
 		ran := steady - cycle.lastSteady
-		// A clock that went backwards says nothing about sleep.
+		// A clock that went backwards says nothing about sleep or about a gap.
 		if slept = wall - ran; slept < 0 {
 			slept = 0
+		}
+		if tickGap = wall; tickGap < 0 {
+			tickGap = 0
 		}
 	}
 	cycle.lastObserved, cycle.lastSteady, cycle.observed = at, steady, true
@@ -473,6 +477,7 @@ func (cycle *Cycle) decideTunnel(
 		tunnelplan.Observed{
 			ProcessRunning: summary.SingBoxRunning,
 			Slept:          slept,
+			TickGap:        tickGap,
 			Carrier:        summary.Carrier,
 			Complete:       summary.Complete,
 			LinkPresent:    summary.OuterReady,

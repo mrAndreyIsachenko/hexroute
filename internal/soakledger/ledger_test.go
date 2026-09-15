@@ -19,7 +19,7 @@ func TestCollectionsThatOverlapAreContinuous(t *testing.T) {
 		window(0, time.Minute, 48*time.Hour),
 		window(48*time.Hour, 48*time.Hour+time.Minute, 7*24*time.Hour),
 	}
-	if err := Continuous(windows, t0, t0.Add(7*24*time.Hour)); err != nil {
+	if err := Continuous(windows, nil, t0, t0.Add(7*24*time.Hour)); err != nil {
 		t.Fatalf("Continuous: %v", err)
 	}
 }
@@ -30,7 +30,7 @@ func TestAHoleBetweenCollectionsIsRefused(t *testing.T) {
 		window(0, time.Minute, 48*time.Hour),
 		window(50*time.Hour, 50*time.Hour+time.Minute, 7*24*time.Hour),
 	}
-	if err := Continuous(windows, t0, t0.Add(7*24*time.Hour)); err == nil {
+	if err := Continuous(windows, nil, t0, t0.Add(7*24*time.Hour)); err == nil {
 		t.Fatal("a two-hour hole was accepted")
 	}
 }
@@ -43,33 +43,33 @@ func TestAHoleBetweenCollectionsIsRefused(t *testing.T) {
 // would have passed here.
 func TestAnArchiveThatLostTheStartIsRefused(t *testing.T) {
 	week := 7 * 24 * time.Hour
-	if err := Continuous([]Coverage{window(0, MaxLead, week)}, t0, t0.Add(week)); err != nil {
+	if err := Continuous([]Coverage{window(0, MaxLead, week)}, nil, t0, t0.Add(week)); err != nil {
 		t.Fatalf("a lead of exactly MaxLead was refused: %v", err)
 	}
-	if err := Continuous([]Coverage{window(0, MaxLead+time.Minute, week)}, t0, t0.Add(week)); err == nil {
+	if err := Continuous([]Coverage{window(0, MaxLead+time.Minute, week)}, nil, t0, t0.Add(week)); err == nil {
 		t.Fatal("a lead a minute past MaxLead was accepted")
 	}
-	if err := Continuous([]Coverage{window(0, 6*time.Hour, week)}, t0, t0.Add(week)); err == nil {
+	if err := Continuous([]Coverage{window(0, 6*time.Hour, week)}, nil, t0, t0.Add(week)); err == nil {
 		t.Fatal("a collection whose first six hours were already evicted was accepted")
 	}
 }
 
 func TestCollectionThatStopsShortOfTheEndIsRefused(t *testing.T) {
 	windows := []Coverage{window(0, time.Minute, 6*24*time.Hour)}
-	if err := Continuous(windows, t0, t0.Add(7*24*time.Hour)); err == nil {
+	if err := Continuous(windows, nil, t0, t0.Add(7*24*time.Hour)); err == nil {
 		t.Fatal("collection a day short of the end was accepted")
 	}
 }
 
 func TestCollectionThatStartsAfterTheSoakIsRefused(t *testing.T) {
 	windows := []Coverage{window(time.Hour, time.Hour+time.Minute, 7*24*time.Hour)}
-	if err := Continuous(windows, t0, t0.Add(7*24*time.Hour)); err == nil {
+	if err := Continuous(windows, nil, t0, t0.Add(7*24*time.Hour)); err == nil {
 		t.Fatal("collection starting an hour late was accepted")
 	}
 }
 
 func TestNothingCollectedIsRefused(t *testing.T) {
-	if err := Continuous(nil, t0, t0.Add(time.Hour)); err == nil {
+	if err := Continuous(nil, nil, t0, t0.Add(time.Hour)); err == nil {
 		t.Fatal("an empty ledger was accepted")
 	}
 }
@@ -120,12 +120,12 @@ func TestASilenceInsideAWindowIsRefused(t *testing.T) {
 	week := 7 * 24 * time.Hour
 	quiet := window(0, time.Minute, week)
 	quiet.LongestSilence = silence(3 * time.Hour)
-	if err := Continuous([]Coverage{quiet}, t0, t0.Add(week)); err == nil {
+	if err := Continuous([]Coverage{quiet}, nil, t0, t0.Add(week)); err == nil {
 		t.Fatal("three hours of silence inside a window were accepted")
 	}
 	brief := window(0, time.Minute, week)
 	brief.LongestSilence = silence(MaxLead)
-	if err := Continuous([]Coverage{brief}, t0, t0.Add(week)); err != nil {
+	if err := Continuous([]Coverage{brief}, nil, t0, t0.Add(week)); err != nil {
 		t.Fatalf("a silence of MaxLead was refused: %v", err)
 	}
 }
@@ -147,15 +147,82 @@ func TestAWindowWithoutItsSilencesIsNotEvidence(t *testing.T) {
 	week := 7 * 24 * time.Hour
 	legacy := window(0, time.Minute, week)
 	legacy.LongestSilence = nil
-	if err := Continuous([]Coverage{legacy}, t0, t0.Add(week)); err == nil {
+	if err := Continuous([]Coverage{legacy}, nil, t0, t0.Add(week)); err == nil {
 		t.Fatal("a week whose silences nobody measured was judged continuous")
 	}
 	again := window(0, time.Minute, week)
-	if err := Continuous([]Coverage{legacy, again}, t0, t0.Add(week)); err != nil {
+	if err := Continuous([]Coverage{legacy, again}, nil, t0, t0.Add(week)); err != nil {
 		t.Fatalf("collecting again from the start was refused: %v", err)
 	}
 	late := window(time.Hour, time.Hour+time.Minute, week)
-	if err := Continuous([]Coverage{legacy, late}, t0, t0.Add(week)); err == nil {
+	if err := Continuous([]Coverage{legacy, late}, nil, t0, t0.Add(week)); err == nil {
 		t.Fatal("an unmeasured first hour was counted as covered")
+	}
+}
+
+// A sleep is a silence the runtime ended by deciding a wake.
+func TestASilenceEndedByAWakeIsObserved(t *testing.T) {
+	week := 7 * 24 * time.Hour
+	start, end := t0.Add(24*time.Hour), t0.Add(32*time.Hour)
+	asleep := window(0, time.Minute, week)
+	asleep.LongestSilence = silence(end.Sub(start))
+	asleep.Silences = []Span{{From: start, To: end}}
+	windows := []Coverage{asleep}
+	if err := Continuous(windows, []time.Time{end.Add(time.Minute)}, t0, t0.Add(week)); err != nil {
+		t.Fatalf("a night's sleep ended by a wake was refused: %v", err)
+	}
+	if err := Continuous(windows, nil, t0, t0.Add(week)); err == nil {
+		t.Fatal("eight hours with no record and no wake were accepted")
+	}
+	if err := Continuous(windows, []time.Time{end.Add(MaxLead + time.Second)}, t0, t0.Add(week)); err == nil {
+		t.Fatal("a wake decided more than three cycles after the silence excused it")
+	}
+	if err := Continuous(windows, []time.Time{end.Add(-time.Second)}, t0, t0.Add(week)); err == nil {
+		t.Fatal("a wake decided before the silence ended excused it")
+	}
+}
+
+// A sleep between two collections is observed the same way.
+func TestASleepBeforeACollectionsFirstRecordIsObserved(t *testing.T) {
+	week := 7 * 24 * time.Hour
+	first := window(0, time.Minute, 24*time.Hour)
+	second := window(24*time.Hour, 32*time.Hour, week)
+	second.LongestSilence = silence(8 * time.Hour)
+	second.Silences = []Span{{From: t0.Add(24 * time.Hour), To: t0.Add(32 * time.Hour)}}
+	windows := []Coverage{first, second}
+	if err := Continuous(windows, []time.Time{t0.Add(32*time.Hour + time.Minute)}, t0, t0.Add(week)); err != nil {
+		t.Fatalf("a sleep before a collection's first record, ended by a wake, was refused: %v", err)
+	}
+	if err := Continuous(windows, nil, t0, t0.Add(week)); err == nil {
+		t.Fatal("eight hours before a collection's first record, with no wake, were accepted")
+	}
+}
+
+// A long silence that was not located cannot be excused by anything.
+func TestAnUnlocatedLongSilenceIsRefused(t *testing.T) {
+	week := 7 * 24 * time.Hour
+	quiet := window(0, time.Minute, week)
+	quiet.LongestSilence = silence(8 * time.Hour)
+	var everywhere []time.Time
+	for at := t0; at.Before(t0.Add(week)); at = at.Add(time.Minute) {
+		everywhere = append(everywhere, at)
+	}
+	if err := Continuous([]Coverage{quiet}, everywhere, t0, t0.Add(week)); err == nil {
+		t.Fatal("a silence nobody located was excused")
+	}
+}
+
+func TestSilencesAreLocatedFromTheStart(t *testing.T) {
+	moments := []time.Time{t0.Add(6 * time.Hour), t0.Add(time.Minute), t0.Add(6*time.Hour + time.Minute), t0.Add(2 * time.Minute)}
+	got := Silences(t0, moments)
+	if len(got) != 1 || !got[0].From.Equal(t0.Add(2*time.Minute)) || !got[0].To.Equal(t0.Add(6*time.Hour)) {
+		t.Fatalf("Silences = %v, want one from 2m to 6h", got)
+	}
+	late := Silences(t0, []time.Time{t0.Add(MaxLead + time.Second)})
+	if len(late) != 1 || !late[0].From.Equal(t0) {
+		t.Fatalf("a first record past MaxLead gave %v, want a silence from the start", late)
+	}
+	if Silences(t0, []time.Time{t0.Add(MaxLead)}) != nil {
+		t.Fatal("a silence of exactly MaxLead was located")
 	}
 }

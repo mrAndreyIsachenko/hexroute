@@ -27,9 +27,11 @@ three days and five hours old, because the records it writes about its own
 evictions are never evicted for size and push the others out. Until the archive
 stops doing that, collect in the morning and in the evening.
 
-A collection records the longest silence inside what it read. The runtime writes
-several records every cycle, so a silence longer than three cycles is a runtime
-that was not running, and the judgement refuses it as a hole. Collections made
+A collection records the silences inside what it read. The runtime writes several
+records every cycle, so a silence longer than three cycles is a machine asleep or a
+runtime that was not running. A silence the runtime ended by deciding a wake gap
+was a sleep and counts as observed; any other is a hole, and the judgement refuses
+it. Collections made
 before silences were recorded are not evidence either way; collecting once with
 `--from` the soak's start covers them again:
 

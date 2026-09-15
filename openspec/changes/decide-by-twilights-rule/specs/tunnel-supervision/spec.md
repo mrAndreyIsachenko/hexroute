@@ -28,20 +28,28 @@ nor reset it, and a runtime that has not yet decided anything SHALL treat the
 link as present rather than absent, so that its first successful probe is not a
 return.
 
-A wake gap SHALL be the configured cycle interval plus the time the machine
-spent asleep, compared with the threshold inclusively. The owning runtime compares
-the wall time between the starts of two ticks that sleep sixty seconds apart, so
-what it compares is the interval and any sleep; comparing the sleep alone would
-miss every sleep that falls short of the threshold by less than an interval.
+A wake gap SHALL be the wall time between two cycles of the same runtime
+process, compared with the threshold inclusively. The owning runtime reads the
+wall clock after each sixty-second sleep and compares it with the previous tick's,
+so what it compares is the interval, the previous tick's work and any time the
+machine was asleep, and nothing in it tells those apart.
 
-The sleep SHALL be measured from the divergence of two clocks, one that advances
-while the machine sleeps and one that does not, and not inferred from the time
-between observations. A runtime that is slow is not a machine that slept.
-Measured on 2026-09-12: the first fold after a reinstall cost 32.4 seconds and a
-wake gap was named on a machine that had been awake throughout. The work of a
-cycle is therefore left out of the gap, and where the owning runtime's own tick is
-slow enough to cross the threshold without a sleep, the two will disagree; that is
-for the comparison to find.
+This runtime measured the sleep instead, as the divergence of a clock that stops
+while the machine sleeps from one that does not, so that a slow runtime would not
+look like a sleeping machine. That clock does not stop for every sleep this
+machine takes. With `pmset sleepnow` on 2026-09-13 it stopped for all but one
+second of a sleep of two and a half minutes; across idle sleeps of 136, 997 and
+394 seconds on 2026-09-14 it did not stop at all, and over 2,365 recorded
+decisions the largest sleep it measured was 115 milliseconds. A rule built on it
+decides no wake the owning runtime rebuilds on. The sleep SHALL still be recorded
+as a ground, and SHALL decide nothing.
+
+A runtime slow enough that two of its cycles are the threshold apart therefore
+names a wake gap, as the owning runtime does when its own tick is that slow. The
+slowest cycle measured, a fold costing 32.4 seconds after a reinstall on
+2026-09-12, made a gap of 93 seconds against this threshold of 180. The first
+cycle of a process has no previous cycle and names no gap, so a reinstall is not
+a wake.
 
 The carrier SHALL be which interface carries the upstream probe address and each
 ingress target, and nothing else. A signature over every configured destination
@@ -56,18 +64,28 @@ signature counted both.
 
 #### Scenario: A wake gap
 
-- **WHEN** the configured interval plus the measured sleep reaches the wake threshold
+- **WHEN** the wall time since the previous cycle of the same process reaches the wake threshold
 - **THEN** the decision is to rebuild, naming the gap
 
-#### Scenario: A sleep shorter than the threshold still makes a gap
+#### Scenario: A sleep the steady clock did not see
 
-- **WHEN** the machine slept for less than the threshold, and the interval plus that sleep reaches it
-- **THEN** a wake gap is named, as the owning runtime's tick gap would name it
+- **WHEN** the machine slept, the clock that stops across sleep kept running, and the wall time between two cycles reaches the threshold
+- **THEN** a wake gap is named, and the sleep recorded as a ground is what that clock measured
+
+#### Scenario: A gap short of the threshold
+
+- **WHEN** 179 seconds of wall time pass between two cycles at a threshold of 180
+- **THEN** no wake gap is named
 
 #### Scenario: The observer was slow and the machine was awake
 
-- **WHEN** more than the wake threshold passes between two observations while the machine stayed awake
-- **THEN** no wake gap is named and no rebuild is decided
+- **WHEN** the wake threshold passes between two cycles while the machine stayed awake
+- **THEN** a wake gap is named, as the owning runtime names one when its own tick is that slow
+
+#### Scenario: The first cycle of a process
+
+- **WHEN** a runtime process decides for the first time
+- **THEN** no wake gap is named, however long ago another process decided
 
 #### Scenario: The carrier changed
 
@@ -138,6 +156,22 @@ make the soak not judgeable, wherever it falls: at the start of a collection,
 between two, or inside one. Nothing decided there can disagree with anything. A
 collection that did not measure the silences inside it SHALL NOT count as having
 observed its window.
+
+A silence SHALL count as observed instead when this runtime decided a wake gap
+within three cycles of its end. A machine asleep writes nothing, and the soak
+needs wakes; the same process ran on both sides of that silence, and the decision
+it made about it is the one the comparison judges. A runtime stopped and started
+again has no previous cycle and decides no wake, so its silence stays a hole.
+
+#### Scenario: A sleep inside the soak
+
+- **WHEN** no record was written for longer than three cycles and this runtime decided a wake gap within three cycles of the silence ending
+- **THEN** the silence counts as observed, wherever it falls
+
+#### Scenario: A runtime restarted inside the soak
+
+- **WHEN** no record was written for longer than three cycles and no wake gap was decided after it
+- **THEN** the soak is not judgeable
 
 #### Scenario: A rebuild decided and made
 

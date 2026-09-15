@@ -126,13 +126,13 @@ func NewSignature(carried []CarriedDestination) Signature {
 }
 
 type Policy struct {
-	// Interval is how long the runtime waits between cycles. A wake gap is the
-	// interval plus the time the machine slept, because that is what the runtime
-	// this rule reproduces compares: the wall time between the starts of two
-	// ticks that sleep an interval apart.
+	// Interval is how long the runtime waits between cycles. Every cycle is at
+	// least an interval after the last, so a threshold at or below it would name
+	// a wake gap on every cycle.
 	Interval time.Duration
-	// WakeThreshold is the interval since the previous cycle beyond which the
-	// gap is a sleep rather than a slow cycle.
+	// WakeThreshold is the wall time since the previous cycle at which the gap
+	// is a wake, compared inclusively, as the runtime this rule reproduces
+	// compares the wall time between two of its ticks.
 	WakeThreshold time.Duration
 	// PayloadFailures is how many consecutive cycles the payload path must
 	// fail before it is a cause. One failure is a network; several are a path.
@@ -162,14 +162,16 @@ type Observed struct {
 	// trouble and the rebuild would be decided for the wrong reason.
 	Complete       bool
 	ProcessRunning bool
-	// Slept is how long the machine was asleep between this cycle and the one
-	// before it, measured rather than inferred from how long the runtime took.
-	//
-	// It was the interval between cycles, and that made a slow runtime
-	// indistinguishable from a sleeping machine. Measured on 2026-09-12: a fold
-	// costing 32.4 seconds turned a sixty-one second period into a ninety-three
-	// second gap and named a wake on a machine that had been awake throughout.
-	Slept         time.Duration
+	// Slept is how long the steady clock says the machine was asleep between
+	// this cycle and the one before it. It is a ground and decides nothing: the
+	// steady clock does not stop for every sleep. Across idle sleeps of 136, 997
+	// and 394 seconds on 2026-09-14 it measured none.
+	Slept time.Duration
+	// TickGap is the wall time since this process's previous cycle, and zero on
+	// its first. It is what the wake cause compares, as the runtime this rule
+	// reproduces compares the wall time between two of its ticks, and a slow
+	// cycle makes a gap as a sleep does in both.
+	TickGap       time.Duration
 	Carrier       Signature
 	LinkPresent   bool
 	PayloadOK     bool
@@ -223,7 +225,8 @@ type Grounds struct {
 	Complete       bool
 	ProcessRunning bool
 	Slept          time.Duration
-	// TickGap is what the wake cause was compared on: the interval plus the sleep.
+	// TickGap is what the wake cause was compared on: the wall time since the
+	// previous cycle.
 	TickGap         time.Duration
 	Carrier         Signature
 	CarrierEntries  int
@@ -248,7 +251,7 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 		policy.WakeThreshold <= policy.Interval {
 		return Plan{}, State{}, ErrInvalidPolicy
 	}
-	if observed.Slept < 0 {
+	if observed.Slept < 0 || observed.TickGap < 0 {
 		return Plan{}, State{}, ErrInvalidInput
 	}
 
@@ -297,10 +300,11 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 	if !observed.ProcessRunning {
 		causes = append(causes, CauseProcessGone)
 	}
-	// The tick gap, inclusive, as that runtime compares it. The sleep is measured
-	// rather than inferred, so a slow cycle does not look like a sleeping machine;
-	// the interval is added because that runtime's gap always contains one.
-	if policy.Interval+observed.Slept >= policy.WakeThreshold {
+	// The tick gap, inclusive, on the wall clock, as that runtime compares it.
+	// It was the interval plus the sleep the steady clock measured, and that
+	// clock does not stop for every sleep this machine takes: across the idle
+	// sleeps of 2026-09-14 it measured none, and the rule decided no wake.
+	if observed.TickGap >= policy.WakeThreshold {
 		causes = append(causes, CauseWakeGap)
 	}
 	// A carrier change compares against a previous cycle. Without one there is
@@ -321,7 +325,7 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 		Complete:       observed.Complete,
 		ProcessRunning: observed.ProcessRunning,
 		Slept:          observed.Slept,
-		TickGap:        policy.Interval + observed.Slept,
+		TickGap:        observed.TickGap,
 		LinkPresent:    next.LinkPresent,
 		LinkFailures:   next.LinkFailures,
 		PayloadOK:      observed.PayloadOK,

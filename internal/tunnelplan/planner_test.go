@@ -1,6 +1,7 @@
 package tunnelplan
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -24,7 +25,7 @@ func steady() (State, Observed) {
 		Observed{
 			Complete:       true,
 			ProcessRunning: true,
-			Slept:          0,
+			TickGap:        time.Minute,
 			Carrier:        carrier,
 			LinkPresent:    true,
 			PayloadOK:      true,
@@ -47,7 +48,7 @@ func TestEachActingCauseIsReached(t *testing.T) {
 		cause  Cause
 	}{
 		{"the process is gone", func(_ *State, o *Observed) { o.ProcessRunning = false }, CauseProcessGone},
-		{"a wake gap", func(_ *State, o *Observed) { o.Slept = 20 * time.Minute }, CauseWakeGap},
+		{"a wake gap", func(_ *State, o *Observed) { o.TickGap = 20 * time.Minute }, CauseWakeGap},
 		{"the carrier changed", func(_ *State, o *Observed) {
 			o.Carrier = NewSignature([]CarriedDestination{{Destination: "203.0.113.20", Interface: "en1"}})
 		}, CauseCarrierChanged},
@@ -69,35 +70,59 @@ func TestEachActingCauseIsReached(t *testing.T) {
 	}
 }
 
-// The wake gap is the tick gap, compared inclusively.
+// The wake gap is the wall time between two cycles, compared inclusively.
 //
-// The runtime this rule reproduces sleeps sixty seconds between ticks and
-// rebuilds when the wall time between two tick starts reaches 180 seconds. So a
-// sleep of two minutes makes a gap, and a sleep a second shorter does not.
-// Comparing the sleep alone against 180 seconds would miss every sleep between
-// two and three minutes that runtime rebuilds on.
+// The runtime this rule reproduces reads the wall clock after each sixty-second
+// sleep and rebuilds when two readings are 180 seconds apart.
 func TestAWakeGapIsTheTickGapInclusive(t *testing.T) {
 	for _, item := range []struct {
-		slept time.Duration
-		gap   bool
+		tickGap time.Duration
+		gap     bool
 	}{
-		{0, false},
-		{119 * time.Second, false},
-		{120 * time.Second, true},
-		{121 * time.Second, true},
+		{time.Minute, false},
+		{179 * time.Second, false},
+		{180 * time.Second, true},
+		{181 * time.Second, true},
 	} {
 		previous, observed := steady()
-		observed.Slept = item.slept
+		observed.TickGap = item.tickGap
 		plan, _, err := Decide(policy(), previous, observed)
 		if err != nil {
 			t.Fatalf("Decide() error: %v", err)
 		}
 		if causes(plan)[CauseWakeGap] != item.gap {
-			t.Fatalf("slept %s: wake gap named = %v, want %v", item.slept, !item.gap, item.gap)
+			t.Fatalf("tick gap %s: wake gap named = %v, want %v", item.tickGap, !item.gap, item.gap)
 		}
-		if plan.Grounds.TickGap != policy().Interval+item.slept {
-			t.Fatalf("slept %s: tick gap recorded %s", item.slept, plan.Grounds.TickGap)
+		if plan.Grounds.TickGap != item.tickGap {
+			t.Fatalf("tick gap %s: recorded %s", item.tickGap, plan.Grounds.TickGap)
 		}
+	}
+}
+
+// A sleep the steady clock measured decides nothing by itself.
+//
+// That clock did not stop across the idle sleeps of 2026-09-14, so what it
+// measures is kept as a ground and the wall clock decides.
+func TestAMeasuredSleepAloneIsNotAWakeGap(t *testing.T) {
+	previous, observed := steady()
+	observed.Slept = 20 * time.Minute
+	plan, _, err := Decide(policy(), previous, observed)
+	if err != nil {
+		t.Fatalf("Decide() error: %v", err)
+	}
+	if causes(plan)[CauseWakeGap] {
+		t.Fatalf("a sleep with a one-minute tick gap named a wake: %v", plan.Causes)
+	}
+	if plan.Grounds.Slept != 20*time.Minute {
+		t.Fatalf("the measured sleep was not kept as a ground: %s", plan.Grounds.Slept)
+	}
+}
+
+func TestANegativeTickGapIsRefused(t *testing.T) {
+	previous, observed := steady()
+	observed.TickGap = -time.Second
+	if _, _, err := Decide(policy(), previous, observed); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("a negative tick gap gave %v, want %v", err, ErrInvalidInput)
 	}
 }
 
@@ -161,7 +186,7 @@ func TestPayloadFailuresAreCountedUntilThePathAnswers(t *testing.T) {
 func TestEveryActingCauseThatHeldIsNamed(t *testing.T) {
 	previous, observed := steady()
 	observed.ProcessRunning = false
-	observed.Slept = 20 * time.Minute
+	observed.TickGap = 20 * time.Minute
 	observed.RoutesDrifted = true
 	plan, _, err := Decide(policy(), previous, observed)
 	if err != nil {

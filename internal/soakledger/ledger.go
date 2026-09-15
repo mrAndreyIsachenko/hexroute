@@ -44,6 +44,46 @@ type Coverage struct {
 	// windows start and meet. Absent on collections made before it was kept,
 	// and absent is not zero: nobody measured those windows' silences.
 	LongestSilence *time.Duration `json:"longest_silence,omitempty"`
+	// Silences are where the stretches longer than MaxLead fell, including one
+	// from the requested start to the first record. A machine asleep writes
+	// nothing, so a silence is a hole only if nothing after it says the machine
+	// woke. Absent on collections made before they were kept.
+	Silences []Span `json:"silences,omitempty"`
+}
+
+// Span is a stretch of time.
+type Span struct {
+	From time.Time `json:"from"`
+	To   time.Time `json:"to"`
+}
+
+// Silences are the stretches longer than MaxLead with no moment in them, from
+// the start of what was asked for, in any order of moments.
+func Silences(from time.Time, moments []time.Time) []Span {
+	if len(moments) == 0 {
+		return nil
+	}
+	sorted := append([]time.Time(nil), moments...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Before(sorted[j]) })
+	var silences []Span
+	previous := from
+	for _, moment := range sorted {
+		if moment.Sub(previous) > MaxLead {
+			silences = append(silences, Span{From: previous, To: moment})
+		}
+		previous = moment
+	}
+	return silences
+}
+
+// woke says a wake gap was decided within MaxLead of a silence ending.
+func woke(wakes []time.Time, silence Span) bool {
+	for _, wake := range wakes {
+		if !wake.Before(silence.To) && wake.Sub(silence.To) <= MaxLead {
+			return true
+		}
+	}
+	return false
 }
 
 // LongestSilence is the longest gap between consecutive moments, in any order.
@@ -171,7 +211,7 @@ func (ledger *Ledger) Next() (time.Time, bool, error) {
 // Each collection must start within MaxLead of where it asked to, the first must
 // ask from no later than the soak's start, each must ask from no later than the
 // previous one's newest record, and the last must reach the soak's end.
-func Continuous(windows []Coverage, from, until time.Time) error {
+func Continuous(windows []Coverage, wakes []time.Time, from, until time.Time) error {
 	if len(windows) == 0 {
 		return fmt.Errorf("%w: nothing was collected", ErrNotContinuous)
 	}
@@ -198,11 +238,18 @@ func Continuous(windows []Coverage, from, until time.Time) error {
 		if window.Records == 0 {
 			return fmt.Errorf("%w: the collection at %s read nothing", ErrNotContinuous, window.CollectedAt.Format(time.RFC3339))
 		}
-		if *window.LongestSilence > MaxLead {
-			return fmt.Errorf("%w: the runtime wrote nothing for %s inside the collection at %s",
-				ErrNotContinuous, window.LongestSilence.Round(time.Second), window.CollectedAt.Format(time.RFC3339))
+		if *window.LongestSilence > MaxLead && len(window.Silences) == 0 {
+			return fmt.Errorf("%w: the collection at %s holds a silence of %s it did not locate; collect again with --from the soak's start",
+				ErrNotContinuous, window.CollectedAt.Format(time.RFC3339), window.LongestSilence.Round(time.Second))
 		}
-		if lead := window.Oldest.Sub(window.Requested); lead > MaxLead {
+		for _, silence := range window.Silences {
+			if !woke(wakes, silence) {
+				return fmt.Errorf("%w: the runtime wrote nothing from %s to %s and decided no wake after it",
+					ErrNotContinuous, silence.From.Format(time.RFC3339), silence.To.Format(time.RFC3339))
+			}
+		}
+		if lead := window.Oldest.Sub(window.Requested); lead > MaxLead &&
+			!woke(wakes, Span{From: window.Requested, To: window.Oldest}) {
 			return fmt.Errorf("%w: from %s the archive held nothing for %s",
 				ErrNotContinuous, window.Requested.Format(time.RFC3339), lead.Round(time.Second))
 		}

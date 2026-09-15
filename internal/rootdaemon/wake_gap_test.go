@@ -10,61 +10,69 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelplan"
 )
 
-// A slow observer is not a sleeping machine.
+// A gap the steady clock did not see is still a wake gap.
 //
-// This is the regression for the third defect the tunnel decision's soak found,
-// and the only one that fires on a machine that is behaving. On 2026-09-12 the
-// first fold after a reinstall cost 32.4 seconds, the loop then waited its
-// interval, and ninety-three seconds passed between two observations against a
-// threshold of ninety. The cycle named a wake gap and the machine had been awake
-// throughout. With authority that decision rebuilds a working tunnel every time
-// this daemon is installed.
-//
-// The two clocks are what make the distinction testable without a real sleep:
-// advancing both is a slow runtime, advancing only the wall clock is a sleep.
-func TestASlowObserverIsNotASleepingMachine(t *testing.T) {
+// On 2026-09-14 the machine slept for 136, 997 and 394 seconds while idle, the
+// clock that should have stopped kept running, and every cycle after recorded a
+// sleep of zero. The runtime this rule reproduces rebuilt after every sleep it
+// held the tunnel for, by the wall clock alone. So the gap is the wall clock's,
+// and a slow cycle makes one too, as a slow tick does there.
+func TestAGapTheSteadyClockDidNotSeeIsAWakeGap(t *testing.T) {
 	clocks := &pairedClocks{at: time.Unix(1_700_000_000, 0)}
 	cycle := clockedCycle(t, clocks)
 
-	// Two cycles, ninety-three seconds apart on both clocks: the runtime was
-	// busy and the machine never stopped.
-	first := cycle.Observe(context.Background())
-	clocks.advance(93*time.Second, 93*time.Second)
-	second := cycle.Observe(context.Background())
+	cycle.Observe(context.Background())
+	clocks.advance(3*time.Minute, 3*time.Minute)
+	summary := cycle.Observe(context.Background())
 
-	for index, summary := range []Summary{first, second} {
-		for _, cause := range summary.Tunnel.Causes {
-			if cause == tunnelplan.CauseWakeGap {
-				t.Fatalf("cycle %d named a wake gap on a machine that stayed "+
-					"awake: %v", index, summary.Tunnel.Causes)
-			}
-		}
+	if !namesWakeGap(summary) {
+		t.Fatalf("three minutes between cycles and no wake gap: %v", summary.Tunnel.Causes)
+	}
+	if summary.Tunnel.Grounds.TickGap != 3*time.Minute || summary.Tunnel.Grounds.Slept != 0 {
+		t.Fatalf("grounds: tick gap %s, slept %s; want 3m0s and 0s",
+			summary.Tunnel.Grounds.TickGap, summary.Tunnel.Grounds.Slept)
 	}
 }
 
-// A machine that slept is named, however quick the observer was.
+// A sleep the steady clock did see is a wake gap, and is recorded as one.
 func TestASleepingMachineIsAWakeGap(t *testing.T) {
 	clocks := &pairedClocks{at: time.Unix(1_700_000_000, 0)}
 	cycle := clockedCycle(t, clocks)
 
 	cycle.Observe(context.Background())
-	// Three minutes on the wall, one second of running: the machine slept. Two
-	// minutes would not do: with a sixty-second interval the tick gap would be
-	// 179 seconds, short of 180, and the runtime this rule reproduces would not
-	// rebuild on it either.
 	clocks.advance(3*time.Minute, time.Second)
 	summary := cycle.Observe(context.Background())
 
-	named := false
-	for _, cause := range summary.Tunnel.Causes {
-		if cause == tunnelplan.CauseWakeGap {
-			named = true
-		}
-	}
-	if !named {
+	if !namesWakeGap(summary) {
 		t.Fatalf("the machine slept for three minutes and nothing said so: %v",
 			summary.Tunnel.Causes)
 	}
+	if summary.Tunnel.Grounds.Slept != 3*time.Minute-time.Second {
+		t.Fatalf("slept recorded %s, want 2m59s", summary.Tunnel.Grounds.Slept)
+	}
+}
+
+// A second short of the threshold is not a gap, however much of it was sleep.
+func TestAGapShortOfTheThresholdIsNotAWakeGap(t *testing.T) {
+	clocks := &pairedClocks{at: time.Unix(1_700_000_000, 0)}
+	cycle := clockedCycle(t, clocks)
+
+	cycle.Observe(context.Background())
+	clocks.advance(179*time.Second, time.Second)
+	summary := cycle.Observe(context.Background())
+
+	if namesWakeGap(summary) {
+		t.Fatalf("179 seconds named a wake at a threshold of 180: %v", summary.Tunnel.Causes)
+	}
+}
+
+func namesWakeGap(summary Summary) bool {
+	for _, cause := range summary.Tunnel.Causes {
+		if cause == tunnelplan.CauseWakeGap {
+			return true
+		}
+	}
+	return false
 }
 
 // The first cycle has nothing to measure against.

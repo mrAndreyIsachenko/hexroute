@@ -19,10 +19,10 @@ func configWithSupervision(wakeThresholdSeconds string) string {
   },`, 1)
 }
 
-// The rule compares the interval plus the sleep, so it needs the interval the
+// The rule refuses a threshold within one interval, so it needs the interval the
 // configuration runs at.
 //
-// Without it the rule has no interval to add, and refuses every decision — a
+// Without it the rule has no interval to check against, and refuses every decision — a
 // runtime that quietly decides nothing looks, in its record, like a machine on
 // which nothing happened.
 func TestTheRuleTakesTheConfiguredInterval(t *testing.T) {
