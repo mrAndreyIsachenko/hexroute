@@ -109,6 +109,12 @@
       the oldest operational record is older than 3 days 5 hours and climbing
       toward seven days.
 
+      Installed 2026-09-15 23:38:20Z, configuration in place kept, silence 37
+      seconds. Five minutes later the archive held 64,909 records, up from
+      64,835, with no overflow record for size since the installation — but
+      64,909 is still under 65,536, so nothing yet proves the bound rather than
+      a quiet five minutes. The crossing is what proves it.
+
 ## 4. Close
 
 - [ ] 4.1 Sync the delta into the baseline, validate, archive.
