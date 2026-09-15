@@ -55,7 +55,23 @@
       seconds, and the installation would have stopped above 120. This one left
       27 seconds. The soak was collected again from its start with silences
       measured, 4,058 records and no rebuild decision, and judged not passed for
-      length and counts only — not unjudgeable. The day-later reading is owed.
+      length and counts only — not unjudgeable.
+
+      Read 2026-09-15 21:39Z, 27 hours after installing. The first half holds:
+      overflow records written in the last day fell from 7,770 to 19 — 17 for
+      size naming 1,025.0 evicted each, as predicted, and 2 for age naming 660.5
+      each. Critical records stopped growing: 15,718, against 17,005 at
+      installation.
+
+      The second half does not. The oldest operational record was 2 days 18
+      hours old, younger than the 3 days 5 hours at installation, not older.
+      The prediction was wrong rather than the fix: 49,557 operational records
+      covered 66.6 hours, about 17,900 a day, and at one block each a bound of
+      65,536 records holds about 3.6 days of them with no critical record at
+      all — by arithmetic, not measured. The 3 days 5 hours at installation
+      reached back into sparser records from 2026-09-11. Retention is now
+      limited by the bound itself, and seven days cannot be reached at this
+      rate. The change stays open to reach them.
 
 ## 4. Close
 
