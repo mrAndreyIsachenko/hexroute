@@ -150,14 +150,23 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
 	}
-	if err := soakledger.Continuous(windows, from, until); err != nil {
-		fmt.Fprintf(stdout, "NOT JUDGEABLE  %v\n", err)
-		return 1
-	}
 	entries, err := ledger.Decisions()
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
+	}
+	// A silence this runtime ended by deciding a wake was a sleep it observed.
+	var wakes []time.Time
+	for _, entry := range entries {
+		for _, cause := range entry.Causes {
+			if cause == soakcompare.WakeGap {
+				wakes = append(wakes, entry.At)
+			}
+		}
+	}
+	if err := soakledger.Continuous(windows, wakes, from, until); err != nil {
+		fmt.Fprintf(stdout, "NOT JUDGEABLE  %v\n", err)
+		return 1
 	}
 	decisions := make([]soakcompare.Decision, 0, len(entries))
 	for _, entry := range entries {
@@ -287,6 +296,7 @@ func CoverageOf(from, until time.Time, reading eventarchive.Reading) soakledger.
 	coverage := soakledger.Coverage{
 		Requested: from, Records: reading.Covered.Records, CollectedAt: until,
 		LongestSilence: &longest,
+		Silences:       soakledger.Silences(from, moments),
 	}
 	if !reading.Covered.Empty {
 		coverage.Oldest, coverage.Newest = reading.Covered.Oldest, reading.Covered.Newest

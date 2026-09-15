@@ -291,8 +291,10 @@ type TunnelGrounds struct {
 	Complete       bool  `json:"complete"`
 	ProcessRunning bool  `json:"process_running"`
 	SleptMS        int64 `json:"slept_ms"`
-	// TickGapMS is what the wake cause was compared on, the interval plus the
-	// sleep. Records written before it was carried have none, and are read so.
+	// TickGapMS is what the wake cause was compared on, the wall time since the
+	// previous cycle. Records written before it was carried have none, and are
+	// read so. Records from 2026-09-14 14:40Z until the rule was corrected on
+	// 2026-09-15 carry the interval plus the measured sleep under this name.
 	TickGapMS       *int64  `json:"tick_gap_ms,omitempty"`
 	CarrierDigest   string  `json:"carrier_digest,omitempty"`
 	CarrierEntries  *int    `json:"carrier_entries,omitempty"`

@@ -10,25 +10,39 @@ failure and drifted routes are still observed and still recorded as grounds, so
 the record keeps saying what the cycle saw; they no longer decide anything.
 `reapply_routes` is no longer produced.
 
-## The tick gap, not the sleep
+## The tick gap, on the wall clock
 
-Twilight sleeps sixty seconds, does its tick, and compares the wall clock at the
-start of this tick with the start of the last against 180 seconds. What it
-compares is therefore the interval plus the tick's own work plus any time the
-machine was suspended.
+Twilight sleeps sixty seconds, reads the wall clock, and compares it with the
+reading from the tick before against 180 seconds, with `>=`. What it compares is
+the interval, the previous tick's work and any time the machine was suspended,
+and nothing in it tells those apart.
 
-This runtime measures the suspended time directly, as wall time minus the steady
-clock, which is what separates a machine that slept from an observer that was
-slow. Comparing that sleep alone against 180 seconds would miss every sleep
-between 120 and 180 seconds that Twilight rebuilds on. Comparing the raw wall gap
-would bring back the fault the steady clock fixed: a slow fold named a wake on a
-machine that was awake.
+This design first measured the suspended time directly, as wall time minus the
+steady clock, and compared the interval plus that sleep. It was written so a slow
+fold would not name a wake on a machine that was awake, as one had on 2026-09-12
+against the old threshold of 90 seconds. It rested on the steady clock stopping
+whenever the machine sleeps, verified once with `pmset sleepnow`.
 
-So the cause holds when the configured interval plus the measured sleep reaches
-the threshold, with `>=` as Twilight has it. The work of a tick is left out on
-purpose. Where Twilight's own tick is slow enough to cross 180 seconds without a
-sleep, the two will disagree, and that disagreement is the soak's to find and
-record rather than this design's to reproduce in advance.
+It does not stop for every sleep. The soak had run a day when the archive was read
+across the three idle sleeps of 2026-09-14 morning — 136, 997 and 394 seconds by
+the power log, with the archive silent for 162 and 1586 seconds across them — and
+every decision after them recorded a sleep of zero. Across all 2,365 decisions
+carrying grounds, the largest was 115 milliseconds. Twilight, holding the tunnel,
+recorded a wake after each of the three sleeps in the power log from 2026-09-11 to
+2026-09-13. The rule as designed would have decided none of those, and the soak
+would have failed on its first night.
+
+So the cause holds when the wall time between two cycles of the same process
+reaches the threshold, as Twilight's does. The measured sleep stays in the record
+as a ground. What this gives up is the distinction the steady clock was for: a
+cycle slow enough to be 180 seconds after the last names a wake. The slowest
+measured was 93 seconds apart. Where this runtime's cycle is that slow and
+Twilight's tick is not, the two disagree, and that is the soak's to find.
+
+A reinstall is not a wake. The previous cycle is kept in memory and not on disk,
+so the first cycle of a process has nothing to be a gap from.
+
+The rule changed a day into the soak, so the seven days start again.
 
 The meaning of `wake_threshold_seconds` changes with this. Its installed value is
 read on the machine before installing; it has to be Twilight's value, which the

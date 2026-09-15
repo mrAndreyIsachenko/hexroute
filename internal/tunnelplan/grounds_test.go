@@ -23,10 +23,8 @@ func TestEveryActingCauseHasAGround(t *testing.T) {
 			func(_ *State, o *Observed) { o.ProcessRunning = false },
 			func(g Grounds) bool { return !g.ProcessRunning }},
 		{CauseWakeGap,
-			func(_ *State, o *Observed) { o.Slept = 20 * time.Minute },
-			func(g Grounds) bool {
-				return g.Slept == 20*time.Minute && g.TickGap == 21*time.Minute
-			}},
+			func(_ *State, o *Observed) { o.TickGap = 21 * time.Minute },
+			func(g Grounds) bool { return g.TickGap == 21*time.Minute }},
 		{CauseCarrierChanged,
 			func(_ *State, o *Observed) {
 				o.Carrier = NewSignature([]CarriedDestination{{Destination: "198.51.100.9", Interface: "en0"}})

@@ -31,13 +31,30 @@
       the record's vocabulary, because the archive holds records that use them.
       The payload count is now consecutive and stands until the path answers;
       it used to be spent on the decision it caused, and there is no decision.
-- [x] 2.2 The wake cause holds when the interval plus the measured sleep reaches the threshold, inclusive.
+- [x] 2.2 The wake cause holds when the wall time between two cycles of the same process reaches the threshold, inclusive.
 
-      A sleep of 120 s at a 60 s interval is a gap and 119 s is not. The old
-      test of a two-minute sleep had to become three minutes: two minutes of
-      wall time with a second of running is 179 s of tick gap, which the runtime
-      this reproduces does not rebuild on either. A threshold at or below the
-      interval is refused, by the rule and by the configuration.
+      First built as the interval plus the sleep the steady clock measured, so
+      that a slow cycle would not look like a sleeping machine. A day into the
+      soak that rule was found unable to pass it, by reading the archive rather
+      than by any test: across idle sleeps of 136, 997 and 394 seconds on
+      2026-09-14 — the archive silent for 162 and 1,586 seconds across them —
+      every decision after recorded a sleep of zero, and over 2,365 decisions
+      carrying grounds the largest was 115 milliseconds. The steady clock had
+      been verified once, with `pmset sleepnow`, and did not stop for these
+      idle sleeps. Twilight, holding the tunnel, recorded a wake after each of
+      the three sleeps in the power log from 2026-09-11 to 2026-09-13; a
+      clamshell entry into dark wake on 2026-09-12 has no wake record from it.
+
+      Now the gap is the wall time since the previous cycle of the same
+      process, as Twilight's is, and the measured sleep is a ground that decides
+      nothing. 180 s is a gap and 179 s is not. A slow cycle names a wake, as a
+      slow tick does in Twilight; the slowest measured was 93 s apart. The first
+      cycle of a process names none, so a reinstall is not a wake. A threshold at
+      or below the interval is still refused. The seven days start again.
+
+      Seven mutations, seven killed: an exclusive threshold, the old interval
+      plus sleep, the sleep added to the gap, the old value recorded, a negative
+      gap accepted, the cycle's gap taken as its sleep, the gap not passed.
 - [x] 2.3 The carrier signature is the upstream probe and the ingress targets.
 
       Built while observing, keyed by the address asked about. An ingress route
@@ -90,6 +107,24 @@
       reinstall left a silence of 27 seconds. Collected again from 14:40:35Z:
       4,058 records, no rebuild decision, and the judgement read not passed for
       length and counts, not unjudgeable.
+- [x] 3.5 A silence the runtime ended by deciding a wake is a sleep it observed, wherever it falls.
+
+      3.4 made every silence longer than three cycles a hole, and the soak needs
+      three sleeps: the first night would have made it unjudgeable. Found the
+      next morning by reasoning about what 3.4 refused, before any sleep had
+      happened in the soak. A collection now records where each long silence
+      fell, including one before its first record, and a silence counts as
+      observed when a wake gap was decided within three cycles of its end. A
+      restarted runtime has no previous cycle and decides no wake, so its
+      silence stays a hole. A long silence recorded without its place is refused.
+
+      Eleven mutations, eleven killed: a wake window a hundred times wider, a
+      wake before the silence ended counting, silences not checked, a lead never
+      excused, a lead always excused, an unlocated silence accepted, silences
+      not measured from the requested start, the bound inclusive, moments left
+      unsorted, a collection keeping no silences, the judgement taking another
+      cause as a wake. The last survived its first run — nothing drove the
+      judgement through a sleep — and a test that does now kills it.
 
 ## 4. Gates and evidence
 

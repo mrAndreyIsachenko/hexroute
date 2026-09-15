@@ -162,7 +162,7 @@ func TestALongSilenceIsRecordedAsAHole(t *testing.T) {
 	if err != nil || len(windows) != 1 || windows[0].Records != 0 {
 		t.Fatalf("an hour of silence was not recorded as a hole: %v, %v", windows, err)
 	}
-	if err := soakledger.Continuous(windows, t0, t0.Add(time.Hour)); err == nil {
+	if err := soakledger.Continuous(windows, nil, t0, t0.Add(time.Hour)); err == nil {
 		t.Fatal("an hour of silence was judged continuous")
 	}
 }
@@ -180,8 +180,15 @@ func TestACollectionRecordsItsLongestSilence(t *testing.T) {
 	if coverage.LongestSilence == nil || *coverage.LongestSilence != 4*time.Hour-2*time.Minute {
 		t.Fatalf("LongestSilence = %v, want 3h58m", coverage.LongestSilence)
 	}
-	if err := soakledger.Continuous([]soakledger.Coverage{coverage}, t0, t0.Add(4*time.Hour+2*time.Minute)); err == nil {
+	if err := soakledger.Continuous([]soakledger.Coverage{coverage}, nil, t0, t0.Add(4*time.Hour+2*time.Minute)); err == nil {
 		t.Fatal("four hours in which the runtime wrote nothing were judged continuous")
+	}
+	if len(coverage.Silences) != 1 || !coverage.Silences[0].From.Equal(t0.Add(2*time.Minute)) || !coverage.Silences[0].To.Equal(t0.Add(4*time.Hour)) {
+		t.Fatalf("Silences = %v, want one from 2m to 4h", coverage.Silences)
+	}
+	wake := []time.Time{t0.Add(4*time.Hour + 30*time.Second)}
+	if err := soakledger.Continuous([]soakledger.Coverage{coverage}, wake, t0, t0.Add(4*time.Hour+2*time.Minute)); err != nil {
+		t.Fatalf("four hours ended by a wake were refused: %v", err)
 	}
 }
 
@@ -210,5 +217,35 @@ func TestCollectingAgainFromTheStartIsAllowed(t *testing.T) {
 	windows, err := ledger.Coverage()
 	if err != nil || len(windows) != 2 || !windows[1].Requested.Equal(t0) {
 		t.Fatalf("collecting again from the start asked from %v, %v", windows, err)
+	}
+}
+
+// A night's sleep inside the soak is judged, not refused.
+//
+// The judgement takes the wakes from the decisions it collected. Without them
+// every sleep is a hole, and the soak needs three.
+func TestJudgeCountsASleepEndedByAWakeAsObserved(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := soakledger.Open(filepath.Join(dir, "soak"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	week := 7 * 24 * time.Hour
+	night := 8 * time.Hour
+	asleep, awake := t0.Add(24*time.Hour), t0.Add(24*time.Hour+night)
+	wake := []soakledger.Entry{{Sequence: 7, At: awake.Add(time.Minute), Causes: []string{soakcompare.WakeGap}}}
+	if err := ledger.Collect(wake, soakledger.Coverage{
+		Requested: t0, Oldest: t0.Add(time.Minute), Newest: t0.Add(week), Records: 5, CollectedAt: t0.Add(week),
+		LongestSilence: &night, Silences: []soakledger.Span{{From: asleep, To: awake}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	twilight := writeTwilight(t, `{"timestamp":"2026-09-16T08:01:00Z","from":"HEALTHY","to":"STARTING","reason":"wake_gap_detected","pid":1}`)
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	Run([]string{"--ledger", filepath.Join(dir, "soak"), "--twilight", twilight,
+		"--from", t0.Format(time.RFC3339), "--until", t0.Add(week).Format(time.RFC3339), "judge"},
+		stdout, stderr, nil)
+	if strings.Contains(stdout.String(), "NOT JUDGEABLE") || stderr.Len() > 0 {
+		t.Fatalf("a sleep ended by a wake made the soak unjudgeable: %q %q", stdout.String(), stderr.String())
 	}
 }

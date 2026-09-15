@@ -82,6 +82,14 @@ this runtime's decision rule Twilight's three causes in Twilight's definitions,
 records what a comparison needs, and soaks the rule against Twilight acting for
 at least a week before the executor is written against it.
 
+A day into the soak the rule was found unable to pass it. Its wake gap was the
+interval plus the sleep a steady clock measured, and across three idle sleeps on
+2026-09-14 that clock measured none: 2,365 decisions, the largest sleep 115
+milliseconds. Twilight, holding the tunnel, recorded a wake after each of three
+sleeps in the power log. The wake gap is now the wall time between cycles, as
+Twilight's is, and the seven days start again from the installation that carries
+it.
+
 
 `hand-the-tunnel-back` closed on 2026-09-14, the first of item 9's three changes.
 The tunnel is Twilight's again, handed back by a transaction rather than by hand,
