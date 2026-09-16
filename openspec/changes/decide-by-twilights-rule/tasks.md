@@ -181,6 +181,19 @@
       recorded exactly the interval. First collection: 44 records, no rebuild
       decision. The earliest judgement is 2026-09-22 11:29:38Z.
 
+      The first night passed without a sleep, and the reason is that the machine
+      cannot have one: Twilight holds `caffeinate -i -s` for as long as its
+      supervisor runs. Read 2026-09-16 12:25Z: that assertion had been held for
+      two days and one hour, and the last sleep in the power log was twelve
+      minutes before it started. The soak needs three natural wake gaps and
+      would have waited for them for a week without one.
+
+      Neither flag covers the lid, so the lid on battery is how the machine
+      sleeps; on mains it reaches dark wake, which is no gap. The operator
+      closes it for five minutes or more, three times over the soak. It is not
+      recorded as an induction: nothing is told to either runtime, both see the
+      same gap, and neither gets a hint the other lacks.
+
 ## 5. Close
 
 - [ ] 5.1 Sync the delta into the baseline, validate, archive.

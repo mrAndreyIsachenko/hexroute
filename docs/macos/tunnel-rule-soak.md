@@ -59,6 +59,23 @@ started; it restarts it within about a minute. A carrier change is switching the
 upstream VPN off, or on. The cause names are `process_gone`, `wake_gap` and
 `carrier_changed`; a wake gap is not induced, because the soak needs natural ones.
 
+## The machine will not sleep on its own
+
+The owning runtime holds `caffeinate -i -s` for as long as its supervisor runs, so
+the machine does not sleep while idle and the soak would wait for wake gaps that
+never come. Measured 2026-09-16: that assertion had been held for two days and one
+hour, and the last sleep in the power log was twelve minutes before it started.
+
+Neither flag covers the lid. `-i` refuses an idle sleep and `-s` refuses one on
+mains power, so closing the lid on battery sleeps the machine — while on mains it
+reaches dark wake instead, which is not a gap. Close the lid on battery for five
+minutes or more, three times over the soak; a night is enough.
+
+That is not an induction and is not noted: nothing is told to either runtime, both
+see the same gap, and neither is given a hint the other lacks. What is checked
+after one is that this runtime decided a wake gap and the owning runtime recorded
+`wake_gap_detected` for the same moment.
+
 ## Judge
 
 ```sh
