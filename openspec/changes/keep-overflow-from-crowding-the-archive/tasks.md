@@ -115,6 +115,13 @@
       64,909 is still under 65,536, so nothing yet proves the bound rather than
       a quiet five minutes. The crossing is what proves it.
 
+      It crossed at 2026-09-16 01:50Z: 66,299 records, past the 65,536 the old
+      bound held to twice over two days. No overflow record for size since the
+      installation; the only eviction was one age batch naming 337 records,
+      which fell due when the oldest critical record passed seven days and a
+      sixty-fourth. The oldest operational record is climbing — 2 days 20 hours,
+      from 2 days 18 hours at the installation. The two-day reading is owed.
+
 ## 4. Close
 
 - [ ] 4.1 Sync the delta into the baseline, validate, archive.
