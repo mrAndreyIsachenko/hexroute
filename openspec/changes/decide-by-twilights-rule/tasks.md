@@ -194,6 +194,21 @@
       recorded as an induction: nothing is told to either runtime, both see the
       same gap, and neither gets a hint the other lacks.
 
+      The first, 2026-09-16: the lid closed on battery at 22:55:54Z, the machine
+      woke at 23:06:44Z, and the archive was silent from 22:55:51Z to 23:06:51Z.
+      This runtime decided `rebuild_tunnel` for `wake_gap` at 23:07:48Z with a
+      tick gap of 711,378 ms; Twilight recorded `wake_gap_detected` at 23:07:53Z.
+      The judgement counted one natural wake-gap agreement, no disagreement, and
+      the silence as observed. The steady clock measured 648,176 ms of sleep
+      this time, against 650 seconds in the power log: it stops for a lid sleep
+      and did not for the idle sleeps of 2026-09-14, which is why the rule does
+      not rest on it.
+
+      Judged a minute after the wake, before either runtime's next cycle, the
+      same silence read as a hole with no wake decided after it. Refusing was
+      right — the decision had not been collected — but the message said no wake
+      was decided, not that none had been collected yet.
+
 ## 5. Close
 
 - [ ] 5.1 Sync the delta into the baseline, validate, archive.
