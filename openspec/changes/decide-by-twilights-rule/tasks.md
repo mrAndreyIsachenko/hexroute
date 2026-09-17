@@ -261,6 +261,15 @@
       so this soak is void from 2026-09-17 11:38Z and starts again when the
       change is installed. Its ledger is kept beside the next one.
 
+      Started again 2026-09-17 19:46:24Z, the daemon installed at 19:43:54Z with
+      the configuration in place kept and the voided ledger moved to
+      `soak.pid-rule-void-2026-09-17`; the reinstall left a silence of 28
+      seconds. First reading: three decisions, no causes, no replacement named —
+      the first cycle of a process compares none — tick gap 60,023 ms, three
+      carrier entries, and the probe, ingress addresses and threshold the same
+      as Twilight's. First collection: 44 records, no rebuild decision. The
+      earliest judgement is 2026-09-24 19:46:24Z.
+
 ## 5. Close
 
 - [ ] 5.1 Sync the delta into the baseline, validate, archive.
