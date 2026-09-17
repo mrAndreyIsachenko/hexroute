@@ -209,6 +209,18 @@
       right — the decision had not been collected — but the message said no wake
       was decided, not that none had been collected yet.
 
+      Carrier changes, 2026-09-17: three agreed, one natural and two induced,
+      none disagreed. The natural one was at 06:06:41Z, when the route to one
+      ingress target moved off the upstream carrier during an outage of every
+      ingress. The runbook said to induce one by toggling the upstream VPN, and
+      that was read as Pritunl for two attempts that changed nothing; Pritunl
+      runs inside Twilight's tunnel, and Twilight's own code names the carrier
+      as whatever interface carries the probe address — AdGuard VPN's. Toggling
+      it breaks this repository's standing rule never to stop AdGuard, so the
+      operator authorised it once. Noted at 11:11:16Z and switched off, the
+      probe moved to `en0`; noted at 11:22:07Z and switched back on, it returned
+      to `utun4`. Both inductions matched Twilight's rebuilds.
+
 ## 5. Close
 
 - [ ] 5.1 Sync the delta into the baseline, validate, archive.
