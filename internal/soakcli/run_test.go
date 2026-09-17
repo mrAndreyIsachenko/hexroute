@@ -249,3 +249,56 @@ func TestJudgeCountsASleepEndedByAWakeAsObserved(t *testing.T) {
 		t.Fatalf("a sleep ended by a wake made the soak unjudgeable: %q %q", stdout.String(), stderr.String())
 	}
 }
+
+// Every restart of the owner's tunnel is read, whatever its reason.
+func TestTwilightRestartsAreEveryReplacement(t *testing.T) {
+	path := writeTwilight(t,
+		`{"timestamp":"2026-09-15T00:10:00Z","from":"HEALTHY","to":"SINGBOX_EXITED","reason":"process_missing","pid":1}`,
+		`{"timestamp":"2026-09-15T00:10:04Z","from":"SINGBOX_EXITED","to":"STARTING","reason":"singbox_started","pid":1}`,
+		`{"timestamp":"2026-09-15T00:20:00Z","from":"HEALTHY","to":"STARTING","reason":"wake_gap_detected","pid":1}`,
+		`{"timestamp":"2026-09-15T00:40:00Z","from":"HEALTHY","to":"DEGRADED","reason":"pritunl_public_probe_failed","pid":1}`,
+		`{"timestamp":"2026-09-15T00:50:00Z","event":"reserve_probe","target":"x","reason":"","pid":1,"verdict":"ok"}`,
+		`{"timestamp":"2026-09-15T00:55:00Z","from":"OUTER_DOWN","to":"STARTING","reason":"outer_path_restored","pid":1}`,
+	)
+	rebuilds, restarts, err := TwilightLog(path)
+	if err != nil {
+		t.Fatalf("TwilightLog: %v", err)
+	}
+	if len(rebuilds) != 2 {
+		t.Fatalf("rebuilds = %+v, want the process loss and the wake gap", rebuilds)
+	}
+	if len(restarts) != 4 {
+		t.Fatalf("restarts = %v, want the four transitions that replace the process", restarts)
+	}
+}
+
+// A process-gone decision beside the owner's own restart is explained, not
+// reported as a disagreement: the judgement reads the owner's restarts and
+// passes them on.
+func TestJudgeExplainsAProcessGoneByTheOwnersRestart(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := soakledger.Open(filepath.Join(dir, "soak"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	week := 7 * 24 * time.Hour
+	restart := t0.Add(time.Hour)
+	quiet := time.Duration(0)
+	decided := []soakledger.Entry{{Sequence: 3, At: restart.Add(20 * time.Second),
+		Causes: []string{soakcompare.ProcessGone, soakcompare.CarrierChanged}}}
+	if err := ledger.Collect(decided, soakledger.Coverage{
+		Requested: t0, Oldest: t0.Add(time.Minute), Newest: t0.Add(week), Records: 5, CollectedAt: t0.Add(week),
+		LongestSilence: &quiet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	twilight := writeTwilight(t, `{"timestamp":"2026-09-15T01:00:00Z","from":"HEALTHY","to":"STARTING","reason":"carrier_changed","pid":1}`)
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	Run([]string{"--ledger", filepath.Join(dir, "soak"), "--twilight", twilight,
+		"--from", t0.Format(time.RFC3339), "--until", t0.Add(week).Format(time.RFC3339), "judge"},
+		stdout, stderr, nil)
+	if !strings.Contains(stdout.String(), "explained by the owner's own restart") ||
+		strings.Contains(stdout.String(), "decided, not made") {
+		t.Fatalf("a process loss beside the owner's restart was judged as: %q %q", stdout.String(), stderr.String())
+	}
+}

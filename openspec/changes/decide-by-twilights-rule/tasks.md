@@ -62,6 +62,19 @@
       runtime writes `unknown` for one. The old helper keyed every route and is
       gone; its test was moved onto the cycle rather than left testing dead code.
 - [x] 2.4 The record carries the tick gap and remains readable for records written before it.
+- [x] 2.5 The process is gone when the one the previous cycle saw is not the one running, replaced or not.
+
+      Found by the soak's first induced process loss, 2026-09-17: stopped at
+      11:38:09Z, Twilight noticed at 11:38:28Z and restarted it at 11:38:32Z,
+      and this runtime — asking only whether a tunnel ran — saw one on both
+      cycles around it and decided nothing. The PID the last cycle saw is kept
+      in memory only, updated only by a cycle that saw a tunnel running, so a
+      loss spanning a cycle with no tunnel is still seen and an installation is
+      not a loss. The record carries `process_replaced`.
+
+      Six mutations, six killed: a replacement not deciding, a replacement never
+      seen, the first cycle counting one, a cycle with no tunnel forgetting the
+      last, the replacement not passed to the rule, the record dropping it.
 
 ## 3. The comparison
 
@@ -125,6 +138,29 @@
       unsorted, a collection keeping no silences, the judgement taking another
       cause as a wake. The last survived its first run — nothing drove the
       judgement through a sleep — and a test that does now kills it.
+
+- [x] 3.6 A process-gone episode beside the owner's own restart is explained, not a disagreement.
+
+      Watching from outside, every restart Twilight makes for its own reasons
+      replaces the process as a loss does. The judgement reads every transition
+      to `STARTING` or `SINGBOX_EXITED` in Twilight's log, and a process-gone
+      episode with no process rebuild but a restart inside the window is listed
+      as explained. An agreement is taken before an explanation, and no other
+      cause is explained.
+
+      Five mutations, five killed: no explanation, an explanation for any cause,
+      any restart explaining, `SINGBOX_EXITED` not read as a restart, and the
+      judgement not passing the restarts on — which survived its first run
+      because nothing drove the judgement through an explained loss, and a test
+      that does now kills it.
+
+      The first run of all eleven was void. The harness named its files in one
+      shell variable, zsh did not split it, so no backup was taken and no
+      mutation was undone: each applied on top of the last, several with
+      stray backslashes that did not compile. The intended lines were restored
+      one by one against the diff, the tests passed again, and the run was
+      repeated by a harness that copies each file, compares it byte for byte
+      after restoring, and stops if it differs.
 
 ## 4. Gates and evidence
 
@@ -220,6 +256,10 @@
       operator authorised it once. Noted at 11:11:16Z and switched off, the
       probe moved to `en0`; noted at 11:22:07Z and switched back on, it returned
       to `utun4`. Both inductions matched Twilight's rebuilds.
+
+      The induced process loss disagreed — see 2.5 — and the rule was changed,
+      so this soak is void from 2026-09-17 11:38Z and starts again when the
+      change is installed. Its ledger is kept beside the next one.
 
 ## 5. Close
 

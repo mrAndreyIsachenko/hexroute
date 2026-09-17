@@ -51,6 +51,15 @@ slowest cycle measured, a fold costing 32.4 seconds after a reinstall on
 cycle of a process has no previous cycle and names no gap, so a reinstall is not
 a wake.
 
+The process SHALL count as gone when the tunnel process the previous cycle of
+this runtime saw is no longer the one running, whether or not another has
+replaced it. The owning runtime watches its own child and restarts it within
+seconds, faster than a cycle: measured 2026-09-17, a tunnel process stopped at
+11:38:09Z was noticed at 11:38:28Z and running again at 11:38:32Z, and a rule that
+asked only whether a tunnel ran saw one on both cycles around it. The process a
+cycle saw SHALL be remembered only in the running runtime, so the first cycle
+after an installation compares nothing.
+
 The carrier SHALL be which interface carries the upstream probe address and each
 ingress target, and nothing else. A signature over every configured destination
 changes whenever a fallback route comes or goes and whenever the configuration
@@ -61,6 +70,16 @@ signature counted both.
 
 - **WHEN** the tunnel process is not running
 - **THEN** the decision is to rebuild, naming the process
+
+#### Scenario: The process was replaced between two cycles
+
+- **WHEN** a tunnel process is running and it is not the one the previous cycle saw
+- **THEN** the decision is to rebuild, naming the process, and the grounds say it was replaced
+
+#### Scenario: A runtime's first cycle
+
+- **WHEN** a runtime process observes the tunnel for the first time
+- **THEN** no replacement is named, however the process came to be running
 
 #### Scenario: A wake gap
 
@@ -172,6 +191,22 @@ again has no previous cycle and decides no wake, so its silence stays a hole.
 
 - **WHEN** no record was written for longer than three cycles and no wake gap was decided after it
 - **THEN** the soak is not judgeable
+
+A process-gone episode the owning runtime made no process rebuild for SHALL NOT be
+a disagreement when the owning runtime restarted its tunnel within the window for
+a reason of its own. Watching from outside, a restart replaces the process as a
+loss does, and the owner's log says which it was. Such episodes SHALL be listed
+as explained rather than dropped. Only a process-gone episode is explained so.
+
+#### Scenario: The owner restarted its tunnel for another reason
+
+- **WHEN** this runtime decided the process gone and the owning runtime restarted its tunnel inside the window for a carrier change, a wake gap or any reason other than a lost process
+- **THEN** the episode is listed as explained and is not a disagreement
+
+#### Scenario: Nothing explains the process-gone episode
+
+- **WHEN** this runtime decided the process gone and the owning runtime neither rebuilt for a lost process nor restarted its tunnel inside the window
+- **THEN** it is a disagreement
 
 #### Scenario: A rebuild decided and made
 

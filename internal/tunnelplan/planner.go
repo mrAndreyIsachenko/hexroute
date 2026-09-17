@@ -162,6 +162,13 @@ type Observed struct {
 	// trouble and the rebuild would be decided for the wrong reason.
 	Complete       bool
 	ProcessRunning bool
+	// ProcessReplaced says the tunnel process the previous cycle of this
+	// runtime saw is no longer the one running: it went, and the owner started
+	// another before this cycle looked. The owner watches its own child and
+	// restarts it within seconds, faster than a cycle, so a rule asking only
+	// whether a tunnel runs sees one both times. Measured 2026-09-17: stopped at
+	// 11:38:09Z, noticed by the owner at 11:38:28Z, running again at 11:38:32Z.
+	ProcessReplaced bool
 	// Slept is how long the steady clock says the machine was asleep between
 	// this cycle and the one before it. It is a ground and decides nothing: the
 	// steady clock does not stop for every sleep. Across idle sleeps of 136, 997
@@ -222,9 +229,10 @@ type Plan struct {
 // without Complete a reader cannot tell a cause that did not hold from one that
 // was never asked.
 type Grounds struct {
-	Complete       bool
-	ProcessRunning bool
-	Slept          time.Duration
+	Complete        bool
+	ProcessRunning  bool
+	ProcessReplaced bool
+	Slept           time.Duration
 	// TickGap is what the wake cause was compared on: the wall time since the
 	// previous cycle.
 	TickGap         time.Duration
@@ -297,7 +305,10 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 	// Measured before this change: the rule that acted on them decided 125
 	// rebuilds in a window where that runtime made 2.
 	causes := make([]Cause, 0, 3)
-	if !observed.ProcessRunning {
+	// Gone now, or gone and replaced since the last cycle: either is the loss
+	// that runtime restarts on, because it watches its own child rather than
+	// asking whether some tunnel runs.
+	if !observed.ProcessRunning || observed.ProcessReplaced {
 		causes = append(causes, CauseProcessGone)
 	}
 	// The tick gap, inclusive, on the wall clock, as that runtime compares it.
@@ -322,13 +333,14 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 	// second gathering could drift from the first, and a record that says
 	// something the decision did not is worse than one that says nothing.
 	grounds := Grounds{
-		Complete:       observed.Complete,
-		ProcessRunning: observed.ProcessRunning,
-		Slept:          observed.Slept,
-		TickGap:        observed.TickGap,
-		LinkPresent:    next.LinkPresent,
-		LinkFailures:   next.LinkFailures,
-		PayloadOK:      observed.PayloadOK,
+		Complete:        observed.Complete,
+		ProcessRunning:  observed.ProcessRunning,
+		ProcessReplaced: observed.ProcessReplaced,
+		Slept:           observed.Slept,
+		TickGap:         observed.TickGap,
+		LinkPresent:     next.LinkPresent,
+		LinkFailures:    next.LinkFailures,
+		PayloadOK:       observed.PayloadOK,
 		// How many consecutive cycles the payload path has failed. It is a
 		// ground, not a cause, and the count stands until the path answers.
 		PayloadFailures: payloadFailuresBehind,

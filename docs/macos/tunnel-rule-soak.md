@@ -92,4 +92,7 @@ sudo '/Library/Application Support/Hexroute/observe-root/bin/hexroute-soak-compa
 `PASSED`, `NOT PASSED` with what is missing, or `NOT JUDGEABLE` with the stretch
 nobody observed. Every disagreement is listed with its time, in both directions:
 a rebuild this runtime decided that the owner did not make, and one the owner made
-that this runtime did not decide.
+that this runtime did not decide. A process loss this runtime decided beside a
+restart the owner made for another reason is listed as explained by the owner's
+own restart, and is not a disagreement: watching from outside, both replace the
+process.

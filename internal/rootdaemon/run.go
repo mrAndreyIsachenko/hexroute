@@ -809,6 +809,7 @@ func tunnelDecisionRecord(
 	recorded := event.TunnelGrounds{
 		Complete:        grounds.Complete,
 		ProcessRunning:  grounds.ProcessRunning,
+		ProcessReplaced: grounds.ProcessReplaced,
 		SleptMS:         grounds.Slept.Milliseconds(),
 		CarrierDigest:   grounds.Carrier.Digest(),
 		LinkPresent:     grounds.LinkPresent,

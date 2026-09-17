@@ -361,3 +361,24 @@ func run(t *testing.T, previous State, cycles []Observed) ([]Plan, State) {
 	}
 	return plans, previous
 }
+
+// A process the owner replaced between two cycles is a process that went.
+func TestAReplacedProcessIsGone(t *testing.T) {
+	previous, observed := steady()
+	observed.ProcessReplaced = true
+	plan, _, err := Decide(policy(), previous, observed)
+	if err != nil {
+		t.Fatalf("Decide() error: %v", err)
+	}
+	if !causes(plan)[CauseProcessGone] || plan.Action != ActionRebuildTunnel || !plan.Grounds.ProcessReplaced {
+		t.Fatalf("a replaced process decided %v, %q, grounds %+v", plan.Causes, plan.Action, plan.Grounds)
+	}
+	previous, observed = steady()
+	plan, _, err = Decide(policy(), previous, observed)
+	if err != nil {
+		t.Fatalf("Decide() error: %v", err)
+	}
+	if causes(plan)[CauseProcessGone] {
+		t.Fatalf("the same process running decided a loss: %v", plan.Causes)
+	}
+}

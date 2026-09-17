@@ -29,3 +29,18 @@ func TestTheRecordCarriesTheTickGap(t *testing.T) {
 		t.Fatalf("tick gap recorded %d ms, want 190000", *record.Grounds.TickGapMS)
 	}
 }
+
+// The record says when the process was replaced rather than absent.
+func TestTheRecordCarriesAReplacedProcess(t *testing.T) {
+	plan := tunnelplan.Plan{
+		Action: tunnelplan.ActionRebuildTunnel,
+		Causes: []tunnelplan.Cause{tunnelplan.CauseProcessGone},
+		Grounds: tunnelplan.Grounds{
+			Complete: true, ProcessRunning: true, ProcessReplaced: true, TickGap: time.Minute,
+		},
+	}
+	record := tunnelDecisionRecord(plan, 0, nil, 7)
+	if record.Grounds == nil || !record.Grounds.ProcessReplaced {
+		t.Fatalf("the record does not say the process was replaced: %+v", record.Grounds)
+	}
+}

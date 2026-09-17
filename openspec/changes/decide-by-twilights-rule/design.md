@@ -48,6 +48,27 @@ The meaning of `wake_threshold_seconds` changes with this. Its installed value i
 read on the machine before installing; it has to be Twilight's value, which the
 supervisor logs.
 
+## A process gone, as the owner watches its child
+
+The first induced process loss of the soak, on 2026-09-17, disagreed. Twilight
+watches the process it started with `kill -0` on its own child every tick, and
+restarts it within seconds: stopped at 11:38:09Z, noticed at 11:38:28Z, running
+again at 11:38:32Z. This runtime asked each cycle whether a tunnel process ran,
+and one did on both cycles around the loss.
+
+So a process is gone when the one the previous cycle saw is not the one running
+— by PID, remembered in memory only, so an installation is not a loss. That
+brings in what the owner does for its own reasons: every restart it makes for a
+carrier change, a wake, a restored outer path or a payload failure replaces the
+process too, and this runtime sees a loss it cannot tell from those. The
+comparison therefore reads every restart in Twilight's log — each transition to
+`STARTING` or `SINGBOX_EXITED` — and a process-gone episode with no process
+rebuild beside it but a restart inside the window is listed as explained, not as
+a disagreement. As an owner, change three's executor knows which restarts are
+its own and needs none of this.
+
+The rule changed again, so the seven days start again.
+
 ## The carrier is three paths
 
 The signature is which interface carries the upstream probe address and each
