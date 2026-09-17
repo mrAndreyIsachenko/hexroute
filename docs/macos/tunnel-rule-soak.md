@@ -56,7 +56,14 @@ sudo '/Library/Application Support/Hexroute/observe-root/bin/hexroute-soak-compa
 
 Then induce it. A process loss is stopping the tunnel process the owning runtime
 started; it restarts it within about a minute. A carrier change is switching the
-upstream VPN off, or on. The cause names are `process_gone`, `wake_gap` and
+upstream VPN off, or on — and on this machine the upstream VPN is AdGuard VPN, not
+Pritunl. Twilight's carrier is whichever interface carries the probe address, and
+in its `upstream-vpn` mode that is AdGuard VPN's tunnel; Pritunl runs inside
+Twilight's own tunnel and toggling it changes no route that counts, as two attempts
+on 2026-09-17 showed. Switching AdGuard off breaks this repository's rule never to
+stop it, so it needs the operator's explicit permission each time. Note before
+switching it off and note again before switching it on: Twilight rebuilds on its
+next tick after each, and one note matches only a rebuild within two minutes. The cause names are `process_gone`, `wake_gap` and
 `carrier_changed`; a wake gap is not induced, because the soak needs natural ones.
 
 ## The machine will not sleep on its own
