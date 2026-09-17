@@ -90,6 +90,12 @@ sleeps in the power log. The wake gap is now the wall time between cycles, as
 Twilight's is, and the seven days start again from the installation that carries
 it.
 
+Two days later the soak's first induced process loss disagreed. Twilight watches
+its own child and restarted it 23 seconds after it went, inside one cycle, and
+this runtime saw a tunnel running both times. A process is now gone when the one
+the last cycle saw is not the one running, and a loss beside Twilight's own
+restart for another reason is reported as explained. The seven days start again.
+
 
 `hand-the-tunnel-back` closed on 2026-09-14, the first of item 9's three changes.
 The tunnel is Twilight's again, handed back by a transaction rather than by hand,

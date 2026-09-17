@@ -172,7 +172,7 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 	for _, entry := range entries {
 		decisions = append(decisions, soakcompare.Decision{At: entry.At, Causes: entry.Causes})
 	}
-	rebuilds, err := TwilightRebuilds(twilightPath)
+	rebuilds, restarts, err := TwilightLog(twilightPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
@@ -182,7 +182,7 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
 	}
-	report, err := soakcompare.Compare(decisions, rebuilds, inductions, Window, from, until)
+	report, err := soakcompare.Compare(decisions, rebuilds, inductions, restarts, Window, from, until)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
@@ -198,6 +198,10 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 		}
 		for _, rebuild := range result.MadeNotDecided {
 			fmt.Fprintf(stdout, "      made, not decided: %s\n", rebuild.At.Format(time.RFC3339))
+		}
+		for _, episode := range result.Explained {
+			fmt.Fprintf(stdout, "      explained by the owner's own restart: %s .. %s (%d decisions)\n",
+				episode.First.Format(time.RFC3339), episode.Last.Format(time.RFC3339), episode.Decisions)
 		}
 	}
 	passed, missing := report.Passes(soakcompare.Pass)
@@ -243,12 +247,21 @@ func RebuildEntries(records []eventarchive.Record) ([]soakledger.Entry, error) {
 // read from its event log. That log is not evicted, so it is read whole at
 // judgement rather than collected.
 func TwilightRebuilds(path string) ([]soakcompare.Rebuild, error) {
+	rebuilds, _, err := TwilightLog(path)
+	return rebuilds, err
+}
+
+// TwilightLog is the owning runtime's rebuilds of the three judged kinds and
+// every restart of its tunnel, whatever the reason. A restart replaces the
+// process, and a runtime watching from outside sees that as the process going.
+func TwilightLog(path string) ([]soakcompare.Rebuild, []time.Time, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer file.Close()
 	var rebuilds []soakcompare.Rebuild
+	var restarts []time.Time
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	lines := 0
@@ -257,33 +270,41 @@ func TwilightRebuilds(path string) ([]soakcompare.Rebuild, error) {
 		var transition struct {
 			Timestamp string `json:"timestamp"`
 			From      string `json:"from"`
+			To        string `json:"to"`
 			Event     string `json:"event"`
 			Reason    string `json:"reason"`
 		}
 		if err := json.Unmarshal(scanner.Bytes(), &transition); err != nil {
-			return nil, fmt.Errorf("%s line %d: %w", path, lines, err)
+			return nil, nil, fmt.Errorf("%s line %d: %w", path, lines, err)
 		}
 		if transition.Event != "" || transition.From == "" {
 			continue
 		}
-		cause, ok := twilightReasons[transition.Reason]
-		if !ok {
+		cause, judged := twilightReasons[transition.Reason]
+		restart := transition.To == "STARTING" || transition.To == "SINGBOX_EXITED"
+		if !judged && !restart {
 			continue
 		}
 		at, err := time.Parse(time.RFC3339, transition.Timestamp)
 		if err != nil {
-			return nil, fmt.Errorf("%s line %d: %w", path, lines, err)
+			return nil, nil, fmt.Errorf("%s line %d: %w", path, lines, err)
 		}
-		rebuilds = append(rebuilds, soakcompare.Rebuild{At: at.UTC(), Cause: cause})
+		if restart {
+			restarts = append(restarts, at.UTC())
+		}
+		if judged {
+			rebuilds = append(rebuilds, soakcompare.Rebuild{At: at.UTC(), Cause: cause})
+		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if lines == 0 {
-		return nil, errors.New("the owning runtime's event log is empty; a judgement against it would be about nothing")
+		return nil, nil, errors.New("the owning runtime's event log is empty; a judgement against it would be about nothing")
 	}
 	sort.Slice(rebuilds, func(i, j int) bool { return rebuilds[i].At.Before(rebuilds[j].At) })
-	return rebuilds, nil
+	sort.Slice(restarts, func(i, j int) bool { return restarts[i].Before(restarts[j]) })
+	return rebuilds, restarts, nil
 }
 
 // CoverageOf is what one collection can say it observed.

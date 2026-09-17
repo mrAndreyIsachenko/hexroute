@@ -14,7 +14,7 @@ func at(minutes int) time.Time { return start.Add(time.Duration(minutes) * time.
 
 func compare(t *testing.T, decisions []Decision, rebuilds []Rebuild, inductions []Induction, days int) Report {
 	t.Helper()
-	report, err := Compare(decisions, rebuilds, inductions, window, start, start.Add(time.Duration(days)*24*time.Hour))
+	report, err := Compare(decisions, rebuilds, inductions, nil, window, start, start.Add(time.Duration(days)*24*time.Hour))
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -176,10 +176,73 @@ func TestEachConditionIsRequired(t *testing.T) {
 }
 
 func TestAnInvalidComparisonIsRefused(t *testing.T) {
-	if _, err := Compare(nil, nil, nil, 0, start, start.Add(time.Hour)); err == nil {
+	if _, err := Compare(nil, nil, nil, nil, 0, start, start.Add(time.Hour)); err == nil {
 		t.Fatal("a zero window was accepted")
 	}
-	if _, err := Compare(nil, nil, nil, window, start, start); err == nil {
+	if _, err := Compare(nil, nil, nil, nil, window, start, start); err == nil {
 		t.Fatal("an empty soak was accepted")
+	}
+}
+
+// A process-gone decision the owner's own restart explains is not a
+// disagreement: watching from outside, a restart replaces the process too.
+func TestAProcessGoneTheOwnersRestartExplainsIsNotADisagreement(t *testing.T) {
+	restart := at(10).Add(-30 * time.Second)
+	report, err := Compare(
+		[]Decision{{At: at(10), Causes: []string{ProcessGone, CarrierChanged}}},
+		[]Rebuild{{At: restart, Cause: CarrierChanged}}, nil, []time.Time{restart},
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone := report.Results[ProcessGone]
+	if len(gone.Explained) != 1 || len(gone.DecidedNotMade) != 0 || report.Disagreements() != 0 {
+		t.Fatalf("process_gone = %+v, disagreements = %d", gone, report.Disagreements())
+	}
+	if report.Results[CarrierChanged].Agreements != 1 {
+		t.Fatalf("carrier = %+v", report.Results[CarrierChanged])
+	}
+}
+
+// A restart outside the window explains nothing.
+func TestAProcessGoneNoRestartExplainsIsADisagreement(t *testing.T) {
+	report, err := Compare(
+		[]Decision{{At: at(10), Causes: []string{ProcessGone}}},
+		nil, nil, []time.Time{at(10).Add(window + time.Second)},
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone := report.Results[ProcessGone]
+	if len(gone.DecidedNotMade) != 1 || len(gone.Explained) != 0 {
+		t.Fatalf("process_gone = %+v", gone)
+	}
+}
+
+// Only a process loss is explained by a restart; another cause still disagrees.
+func TestARestartExplainsOnlyAProcessGone(t *testing.T) {
+	report, err := Compare(
+		[]Decision{{At: at(10), Causes: []string{CarrierChanged}}},
+		nil, nil, []time.Time{at(10)},
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if carrier := report.Results[CarrierChanged]; len(carrier.DecidedNotMade) != 1 || len(carrier.Explained) != 0 {
+		t.Fatalf("carrier = %+v", carrier)
+	}
+}
+
+// A process loss the owner rebuilt for agrees, even with a restart beside it.
+func TestAnAgreementComesBeforeAnExplanation(t *testing.T) {
+	report, err := Compare(
+		[]Decision{{At: at(10), Causes: []string{ProcessGone}}},
+		[]Rebuild{{At: at(10), Cause: ProcessGone}}, nil, []time.Time{at(10)},
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gone := report.Results[ProcessGone]; gone.Agreements != 1 || len(gone.Explained) != 0 {
+		t.Fatalf("process_gone = %+v", gone)
 	}
 }

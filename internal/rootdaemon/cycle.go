@@ -110,6 +110,11 @@ type Cycle struct {
 	lastObserved time.Time
 	lastSteady   time.Duration
 	observed     bool
+	// lastTunnelPID is the tunnel process the last cycle that saw one saw. Not
+	// durable, for the reason the clocks are not: a process replaced while this
+	// runtime was not running is not one it watched go, and remembering it
+	// across an installation would decide a loss on every restart.
+	lastTunnelPID int
 }
 
 // WithOwnerConfig sets how the cycle learns which configuration the tunnel's
@@ -459,6 +464,16 @@ func (cycle *Cycle) decideTunnel(
 	}
 	cycle.lastObserved, cycle.lastSteady, cycle.observed = at, steady, true
 
+	// Only a cycle that saw a tunnel running learns which one it was. A cycle
+	// that saw none, or could not look, keeps what the last one saw, so a loss
+	// spanning it is still seen when a replacement appears.
+	replaced := false
+	if summary.Observed.ProcessError == nil && summary.Observed.Process.Running {
+		pid := summary.Observed.Process.Process.PID
+		replaced = cycle.lastTunnelPID != 0 && pid != 0 && pid != cycle.lastTunnelPID
+		cycle.lastTunnelPID = pid
+	}
+
 	summary.Carrier = tunnelplan.NewSignature(summary.Carried)
 
 	// A path that cannot be exercised is not a failed path. Without a probe the
@@ -475,14 +490,15 @@ func (cycle *Cycle) decideTunnel(
 		cycle.config.TunnelSupervision.Policy,
 		previous,
 		tunnelplan.Observed{
-			ProcessRunning: summary.SingBoxRunning,
-			Slept:          slept,
-			TickGap:        tickGap,
-			Carrier:        summary.Carrier,
-			Complete:       summary.Complete,
-			LinkPresent:    summary.OuterReady,
-			PayloadOK:      payloadOK,
-			RoutesDrifted:  len(summary.Plan.Operations) > 0,
+			ProcessRunning:  summary.SingBoxRunning,
+			ProcessReplaced: replaced,
+			Slept:           slept,
+			TickGap:         tickGap,
+			Carrier:         summary.Carrier,
+			Complete:        summary.Complete,
+			LinkPresent:     summary.OuterReady,
+			PayloadOK:       payloadOK,
+			RoutesDrifted:   len(summary.Plan.Operations) > 0,
 		})
 	if err != nil {
 		return

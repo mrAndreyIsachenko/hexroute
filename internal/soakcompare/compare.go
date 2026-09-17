@@ -75,6 +75,12 @@ type Result struct {
 	DecidedNotMade []Episode
 	// MadeNotDecided are rebuilds no episode was decided for.
 	MadeNotDecided []Rebuild
+	// Explained are process-gone episodes the owner made no process rebuild for
+	// but restarted the tunnel inside the window for another reason of its own.
+	// Watching from outside, a runtime sees the process replaced either way and
+	// cannot tell the owner's own restart from a loss; neither is a disagreement
+	// about the rule. They are listed rather than dropped.
+	Explained []Episode
 }
 
 // Natural is the agreements that were not induced.
@@ -96,7 +102,7 @@ var ErrInvalidSoak = errors.New("invalid soak comparison")
 // decision; each rebuild agrees with at most one episode and each episode with at
 // most one rebuild. An agreement is induced when an induction for the same cause
 // falls within the window of the rebuild.
-func Compare(decisions []Decision, rebuilds []Rebuild, inductions []Induction, window time.Duration, from, until time.Time) (Report, error) {
+func Compare(decisions []Decision, rebuilds []Rebuild, inductions []Induction, restarts []time.Time, window time.Duration, from, until time.Time) (Report, error) {
 	if window <= 0 || !until.After(from) {
 		return Report{}, ErrInvalidSoak
 	}
@@ -117,6 +123,10 @@ func Compare(decisions []Decision, rebuilds []Rebuild, inductions []Induction, w
 				}
 			}
 			if best < 0 {
+				if cause == ProcessGone && restartedWithin(restarts, episode, window) {
+					result.Explained = append(result.Explained, episode)
+					continue
+				}
 				result.DecidedNotMade = append(result.DecidedNotMade, episode)
 				continue
 			}
@@ -224,6 +234,17 @@ func induced(inductions []Induction, cause string, at time.Time, window time.Dur
 			continue
 		}
 		if gap := at.Sub(induction.At); gap >= -window && gap <= window {
+			return true
+		}
+	}
+	return false
+}
+
+// restartedWithin says the owner restarted the tunnel inside the window of an
+// episode.
+func restartedWithin(restarts []time.Time, episode Episode, window time.Duration) bool {
+	for _, restart := range restarts {
+		if within(episode, restart, window) {
 			return true
 		}
 	}

@@ -288,9 +288,13 @@ type TunnelAuthorization struct {
 // cycle that saw none and a cycle that saw nothing are different claims and a
 // zero would say the first.
 type TunnelGrounds struct {
-	Complete       bool  `json:"complete"`
-	ProcessRunning bool  `json:"process_running"`
-	SleptMS        int64 `json:"slept_ms"`
+	Complete       bool `json:"complete"`
+	ProcessRunning bool `json:"process_running"`
+	// ProcessReplaced says the tunnel process the previous cycle saw had been
+	// replaced by another: a loss its owner repaired inside one cycle. Records
+	// written before it was carried have none, and are read as not replaced.
+	ProcessReplaced bool  `json:"process_replaced,omitempty"`
+	SleptMS         int64 `json:"slept_ms"`
 	// TickGapMS is what the wake cause was compared on, the wall time since the
 	// previous cycle. Records written before it was carried have none, and are
 	// read so. Records from 2026-09-14 14:40Z until the rule was corrected on
