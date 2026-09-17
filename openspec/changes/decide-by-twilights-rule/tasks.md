@@ -270,6 +270,11 @@
       as Twilight's. First collection: 44 records, no rebuild decision. The
       earliest judgement is 2026-09-24 19:46:24Z.
 
+      The induced process loss agreed at the first attempt under the corrected
+      rule: noted at 20:06:26Z, the process stopped, and the judgement reads one
+      induced agreement with no disagreement — the same induction that
+      disagreed under the old rule four hours earlier.
+
 ## 5. Close
 
 - [ ] 5.1 Sync the delta into the baseline, validate, archive.
