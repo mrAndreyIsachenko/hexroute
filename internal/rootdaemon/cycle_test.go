@@ -164,12 +164,16 @@ func TestCycleObservesHealthyBaselineWithoutMutation(t *testing.T) {
 func TestCycleSuspendsDuringDarkWakeWithoutNetworkProposals(t *testing.T) {
 	config, network, processes, endpoints := healthyCycleFixtures(t)
 	network.power.WakeKind = observe.WakeKindDark
-	network.routes = nil
 	cycle, _ := NewCycle(config, network, processes, endpoints)
 
 	summary := cycle.Observe(context.Background())
 	if summary.State != CycleSuspended || len(summary.Plan.Operations) != 0 {
 		t.Fatalf("Observe() = %+v", summary)
+	}
+	// It stops before the probes, not before the tunnel: the runtime this rule
+	// reproduces checks its process on every tick whatever the lid is doing.
+	if !summary.ProcessObserved || !summary.SingBoxRunning {
+		t.Fatalf("a dark wake did not look at the tunnel: %+v", summary)
 	}
 }
 

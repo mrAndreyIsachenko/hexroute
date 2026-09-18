@@ -94,7 +94,15 @@ Two days later the soak's first induced process loss disagreed. Twilight watches
 its own child and restarted it 23 seconds after it went, inside one cycle, and
 this runtime saw a tunnel running both times. A process is now gone when the one
 the last cycle saw is not the one running, and a loss beside Twilight's own
-restart for another reason is reported as explained. The seven days start again.
+restart for another reason is reported as explained.
+
+The first night on battery then showed the rule deciding too late and too often:
+21 dark wakes, six rebuilds by Twilight against eight named here, four of them
+the same event, and eight losses reported where none happened, because the cycle
+returned at its lid gate before it looked at the process. The tunnel's
+observations are taken first now, before anything that waits on a network and
+whatever the lid is doing, and no cause is decided from an observation nobody
+took. The seven days start again.
 
 
 `hand-the-tunnel-back` closed on 2026-09-14, the first of item 9's three changes.

@@ -48,11 +48,14 @@ type Summary struct {
 	// Complete says the cycle reached the end rather than stopping at an
 	// observation it could not take. Eight of them can end it early, and the
 	// decision below is reached either way — but not from what was never seen.
-	Complete       bool
-	SingBoxRunning bool
-	OuterReady     bool
-	Failures       uint32
-	Plan           routeplan.Plan
+	Complete bool
+	// ProcessObserved says this cycle looked at the tunnel process. A cycle
+	// that never reached the observation has not seen the tunnel gone.
+	ProcessObserved bool
+	SingBoxRunning  bool
+	OuterReady      bool
+	Failures        uint32
+	Plan            routeplan.Plan
 	// Observed carries the raw observations this cycle already made, so a
 	// reader can build facts from them without probing the host a second
 	// time. The cycle gathers all of it either way; keeping it was the only
@@ -115,6 +118,10 @@ type Cycle struct {
 	// runtime was not running is not one it watched go, and remembering it
 	// across an installation would decide a loss on every restart.
 	lastTunnelPID int
+	// lastPayloadOK is the last answer the payload probe gave. A suspended
+	// cycle does not probe and carries it, so the ground says the last thing
+	// known rather than a failure nobody measured.
+	lastPayloadOK bool
 }
 
 // WithOwnerConfig sets how the cycle learns which configuration the tunnel's
@@ -147,7 +154,8 @@ func NewCycle(
 		// Without a claim reader the previous owner is taken to hold the tunnel,
 		// which is what every machine is until a handover is made. The daemon
 		// wires the real claim; a test that does not care reads no file.
-		ownerConfig: func() (string, error) { return tunnelclaim.PreviousOwnerConfig, nil },
+		ownerConfig:   func() (string, error) { return tunnelclaim.PreviousOwnerConfig, nil },
+		lastPayloadOK: true,
 	}
 	for _, option := range options {
 		option(cycle)
@@ -178,9 +186,37 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 		summary.Failures++
 		return summary
 	}
-	if power.WakeKind == observe.WakeKindDark || power.Lid == observe.LidStateClosed {
-		summary.State = CycleSuspended
-		return summary
+	// A dark wake or a closed lid suspends what this cycle proposes for the
+	// network, not what it sees of the tunnel. The runtime this rule reproduces
+	// checks its own process on every tick whatever the lid is doing, and a
+	// cycle that stopped here saw no tunnel and named it gone: on the night of
+	// 2026-09-18 a machine cycling through dark wakes on battery was reported
+	// to have lost its tunnel eight times, and had not.
+	suspended := power.WakeKind == observe.WakeKindDark || power.Lid == observe.LidStateClosed
+
+	// The tunnel's own observations come first and cost a process listing: a
+	// dark wake lasts seconds and the probes below can outlast it. The runtime
+	// this rule reproduces decides on a tick of a sleep and a few quick checks,
+	// and deciding later named wakes it did not.
+	//
+	// A claim that cannot be read is a failed observation, not an absent
+	// tunnel. Reporting it as absent would decide process_gone from a file this
+	// runtime could not read, which is the unreadable-claim fault the claim
+	// itself refuses.
+	var process observe.ProcessObservation
+	configPath, processErr := cycle.ownerConfig()
+	if processErr == nil {
+		process, processErr = cycle.processes.Tunnel(ctx, configPath)
+	}
+	summary.Observed.Process, summary.Observed.ProcessError = process, processErr
+	if processErr != nil {
+		summary.Failures++
+	} else {
+		summary.ProcessObserved = true
+		summary.SingBoxRunning = process.Running
+		if !process.Running {
+			summary.Failures++
+		}
 	}
 
 	physical, err := cycle.network.PhysicalNetwork(ctx, cycle.config.PhysicalInterface)
@@ -191,25 +227,6 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 		summary.Failures++
 		summary.State = CycleSuspended
 		return summary
-	}
-
-	// A claim that cannot be read is a failed observation, not an absent
-	// tunnel. Reporting it as absent would decide process_gone from a file this
-	// runtime could not read, which is the unreadable-claim fault the claim
-	// itself refuses.
-	var process observe.ProcessObservation
-	configPath, err := cycle.ownerConfig()
-	if err == nil {
-		process, err = cycle.processes.Tunnel(ctx, configPath)
-	}
-	summary.Observed.Process, summary.Observed.ProcessError = process, err
-	if err != nil {
-		summary.Failures++
-	} else {
-		summary.SingBoxRunning = process.Running
-		if !process.Running {
-			summary.Failures++
-		}
 	}
 
 	tunInterfaces, err := cycle.network.TUNInterfaces(ctx)
@@ -270,6 +287,13 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 			Gateway:     observation.Gateway,
 			Owned:       routeMatchesTarget(observation, target, physical, managedTUN),
 		}
+	}
+
+	// Everything above is a local lookup; everything below waits on a network.
+	// A suspended cycle stops here, with the tunnel seen and the carrier known.
+	if suspended {
+		summary.State = CycleSuspended
+		return summary
 	}
 
 	codex := routeplan.CodexState{}
@@ -478,11 +502,17 @@ func (cycle *Cycle) decideTunnel(
 
 	// A path that cannot be exercised is not a failed path. Without a probe the
 	// cause simply does not hold, rather than holding on every cycle.
-	payloadOK := true
-	if cycle.payload != nil {
+	//
+	// A suspended cycle does not probe: the probe waits on a network that is not
+	// there, and its timeout would put the decision after the dark wake it was
+	// to be decided in. The last answer stands until one is taken, which costs
+	// the rule nothing — the payload is a ground here and decides nothing.
+	payloadOK := cycle.lastPayloadOK
+	if cycle.payload != nil && summary.State != CycleSuspended {
 		observation, err := cycle.payload.Payload(
 			ctx, cycle.config.TunnelSupervision.Payload)
 		payloadOK = err == nil && observation.Traversed
+		cycle.lastPayloadOK = payloadOK
 	}
 
 	previous := cycle.tunnel.Load()
@@ -490,6 +520,7 @@ func (cycle *Cycle) decideTunnel(
 		cycle.config.TunnelSupervision.Policy,
 		previous,
 		tunnelplan.Observed{
+			ProcessObserved: summary.ProcessObserved,
 			ProcessRunning:  summary.SingBoxRunning,
 			ProcessReplaced: replaced,
 			Slept:           slept,

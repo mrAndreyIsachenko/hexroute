@@ -76,6 +76,28 @@
       seen, the first cycle counting one, a cycle with no tunnel forgetting the
       last, the replacement not passed to the rule, the record dropping it.
 
+- [x] 2.6 The tunnel's observations are taken before anything that waits on a network, whatever the lid is doing, and no cause is decided from an observation nobody took.
+
+      Measured on the night of 2026-09-18, a machine on battery with the lid
+      closed: 21 dark wakes, each seconds long. Twilight rebuilt for six wakes,
+      this runtime named eight, four were the same event. Its cycle reached the
+      decision after probes that outlast a dark wake; one recorded gap covered
+      112 minutes and four of Twilight's ticks. The cycle now observes the
+      process and the carrier first and decides before the probes.
+
+      The same night named a lost process eight times and lost none: the cycle
+      returned at the lid gate before looking at the process, and the rule read
+      "not running" from an observation nobody took. A cause needs its
+      observation now, and the record says whether it was taken. A suspended
+      cycle does not wait on the payload probe and carries its last answer.
+
+      Seven mutations, seven killed: an unobserved process deciding, the ground
+      dropped, the cycle never marking the observation, a suspended cycle
+      running the probes, a suspended cycle probing the payload, a suspended
+      cycle inventing an answer, the record dropping the field. The last
+      survived its first run — nothing asserted the record carried it — and the
+      record test now does.
+
 ## 3. The comparison
 
 - [x] 3.1 A package that pairs this runtime's rebuild decisions with Twilight's rebuilds by cause inside a window, and reports agreements and disagreements in both directions.
