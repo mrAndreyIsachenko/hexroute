@@ -160,8 +160,13 @@ type Observed struct {
 	// out of an incomplete cycle would rebuild the tunnel every time an
 	// observation failed — which is exactly when the tunnel is already in
 	// trouble and the rebuild would be decided for the wrong reason.
-	Complete       bool
-	ProcessRunning bool
+	Complete bool
+	// ProcessObserved says the cycle looked at the tunnel process at all. A
+	// cycle that could not look has not seen a loss: reading "not running" out
+	// of an observation never taken named a loss on every cycle a machine spent
+	// in dark wake, measured on the night of 2026-09-18.
+	ProcessObserved bool
+	ProcessRunning  bool
 	// ProcessReplaced says the tunnel process the previous cycle of this
 	// runtime saw is no longer the one running: it went, and the owner started
 	// another before this cycle looked. The owner watches its own child and
@@ -230,6 +235,7 @@ type Plan struct {
 // was never asked.
 type Grounds struct {
 	Complete        bool
+	ProcessObserved bool
 	ProcessRunning  bool
 	ProcessReplaced bool
 	Slept           time.Duration
@@ -308,7 +314,7 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 	// Gone now, or gone and replaced since the last cycle: either is the loss
 	// that runtime restarts on, because it watches its own child rather than
 	// asking whether some tunnel runs.
-	if !observed.ProcessRunning || observed.ProcessReplaced {
+	if observed.ProcessObserved && (!observed.ProcessRunning || observed.ProcessReplaced) {
 		causes = append(causes, CauseProcessGone)
 	}
 	// The tick gap, inclusive, on the wall clock, as that runtime compares it.
@@ -334,6 +340,7 @@ func Decide(policy Policy, previous State, observed Observed) (Plan, State, erro
 	// something the decision did not is worse than one that says nothing.
 	grounds := Grounds{
 		Complete:        observed.Complete,
+		ProcessObserved: observed.ProcessObserved,
 		ProcessRunning:  observed.ProcessRunning,
 		ProcessReplaced: observed.ProcessReplaced,
 		Slept:           observed.Slept,

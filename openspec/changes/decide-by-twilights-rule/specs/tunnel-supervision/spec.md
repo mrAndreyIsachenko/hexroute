@@ -60,6 +60,22 @@ asked only whether a tunnel ran saw one on both cycles around it. The process a
 cycle saw SHALL be remembered only in the running runtime, so the first cycle
 after an installation compares nothing.
 
+A process nobody looked at SHALL NOT be named gone. A cycle that could not take
+the observation has seen nothing, and reading "not running" out of it named a
+loss on every cycle a machine spent in dark wake: measured on the night of
+2026-09-18, eight losses reported and none of them real.
+
+The observations the causes are decided from SHALL be taken before any
+observation that waits on a network, and a cycle SHALL take them whatever the
+lid is doing. The owning runtime decides on a tick of a sixty-second sleep and a
+few local checks, and it decides in the seconds a dark wake lasts. Measured over
+that same night, a machine cycling on battery through 21 dark wakes: the owning
+runtime rebuilt for six wakes, this runtime named eight, and only four of them
+were the same event, because its cycle reached its decision after probes that
+outlasted the wake. What waits on a network SHALL therefore be a ground only,
+and a cycle that did not take such an observation SHALL carry the last answer
+rather than invent one.
+
 The carrier SHALL be which interface carries the upstream probe address and each
 ingress target, and nothing else. A signature over every configured destination
 changes whenever a fallback route comes or goes and whenever the configuration
@@ -75,6 +91,17 @@ signature counted both.
 
 - **WHEN** a tunnel process is running and it is not the one the previous cycle saw
 - **THEN** the decision is to rebuild, naming the process, and the grounds say it was replaced
+
+#### Scenario: A cycle that could not look at the process
+
+- **WHEN** a cycle did not take the process observation
+- **THEN** no loss is named, and the grounds say the process was not observed
+
+#### Scenario: A dark wake or a closed lid
+
+- **WHEN** the machine is in a dark wake or its lid is closed
+- **THEN** the cycle observes the tunnel process and the carrier and decides from them
+- **AND** it proposes nothing for the network and waits on no probe, carrying the last payload answer as a ground
 
 #### Scenario: A runtime's first cycle
 

@@ -36,11 +36,17 @@ func TestTheRecordCarriesAReplacedProcess(t *testing.T) {
 		Action: tunnelplan.ActionRebuildTunnel,
 		Causes: []tunnelplan.Cause{tunnelplan.CauseProcessGone},
 		Grounds: tunnelplan.Grounds{
-			Complete: true, ProcessRunning: true, ProcessReplaced: true, TickGap: time.Minute,
+			Complete: true, ProcessObserved: true, ProcessRunning: true,
+			ProcessReplaced: true, TickGap: time.Minute,
 		},
 	}
 	record := tunnelDecisionRecord(plan, 0, nil, 7)
 	if record.Grounds == nil || !record.Grounds.ProcessReplaced {
 		t.Fatalf("the record does not say the process was replaced: %+v", record.Grounds)
+	}
+	// And that the cycle looked at all: without it a record cannot tell a cycle
+	// that saw no tunnel from one that never looked.
+	if !record.Grounds.ProcessObserved {
+		t.Fatalf("the record does not say the process was observed: %+v", record.Grounds)
 	}
 }

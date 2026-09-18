@@ -288,8 +288,12 @@ type TunnelAuthorization struct {
 // cycle that saw none and a cycle that saw nothing are different claims and a
 // zero would say the first.
 type TunnelGrounds struct {
-	Complete       bool `json:"complete"`
-	ProcessRunning bool `json:"process_running"`
+	Complete bool `json:"complete"`
+	// ProcessObserved says the cycle looked at the tunnel process. Absent on
+	// records written before it was carried, where a cycle that could not look
+	// reads the same as one that saw no tunnel.
+	ProcessObserved bool `json:"process_observed,omitempty"`
+	ProcessRunning  bool `json:"process_running"`
 	// ProcessReplaced says the tunnel process the previous cycle saw had been
 	// replaced by another: a loss its owner repaired inside one cycle. Records
 	// written before it was carried have none, and are read as not replaced.

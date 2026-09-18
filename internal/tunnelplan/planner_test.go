@@ -23,12 +23,13 @@ func steady() (State, Observed) {
 	})
 	return State{Known: true, Carrier: carrier, LinkPresent: true},
 		Observed{
-			Complete:       true,
-			ProcessRunning: true,
-			TickGap:        time.Minute,
-			Carrier:        carrier,
-			LinkPresent:    true,
-			PayloadOK:      true,
+			Complete:        true,
+			ProcessObserved: true,
+			ProcessRunning:  true,
+			TickGap:         time.Minute,
+			Carrier:         carrier,
+			LinkPresent:     true,
+			PayloadOK:       true,
 		}
 }
 
@@ -380,5 +381,30 @@ func TestAReplacedProcessIsGone(t *testing.T) {
 	}
 	if causes(plan)[CauseProcessGone] {
 		t.Fatalf("the same process running decided a loss: %v", plan.Causes)
+	}
+}
+
+// A cycle that could not look at the tunnel has not seen it gone.
+//
+// Reading "not running" out of an observation never taken named a loss on every
+// cycle a machine spent in dark wake: measured on the night of 2026-09-18,
+// eight losses reported and none of them real.
+func TestAProcessNobodyLookedAtIsNotGone(t *testing.T) {
+	previous, observed := steady()
+	observed.ProcessObserved, observed.ProcessRunning = false, false
+	plan, _, err := Decide(policy(), previous, observed)
+	if err != nil {
+		t.Fatalf("Decide() error: %v", err)
+	}
+	if causes(plan)[CauseProcessGone] {
+		t.Fatalf("a process nobody looked at was named gone: %v", plan.Causes)
+	}
+	observed.ProcessObserved = true
+	plan, _, err = Decide(policy(), previous, observed)
+	if err != nil {
+		t.Fatalf("Decide() error: %v", err)
+	}
+	if !causes(plan)[CauseProcessGone] || !plan.Grounds.ProcessObserved {
+		t.Fatalf("a process seen to be gone decided %v, grounds %+v", plan.Causes, plan.Grounds)
 	}
 }

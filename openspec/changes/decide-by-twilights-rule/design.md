@@ -69,6 +69,29 @@ its own and needs none of this.
 
 The rule changed again, so the seven days start again.
 
+## Deciding inside a dark wake
+
+A night on battery is not one sleep. Measured 2026-09-18, a machine with its lid
+closed went through 21 dark wakes: it woke for seconds, wrote a few records and
+slept again. Twilight's tick — a sleep and a few local checks — fits in that
+window and decided six wakes. This runtime's cycle reached its decision after
+probes that wait on a network, often did not finish, and named eight wakes, only
+four of which were the same events as Twilight's. Its longest recorded gap
+covered 112 minutes and four of Twilight's ticks.
+
+So the tunnel's own observations — the process and what carries the three
+addresses — are taken first and cost a process listing and a few route lookups,
+and they are taken whatever the lid is doing. The probes follow the decision. A
+cycle in a dark wake stops before them, which is what the state already meant
+for the network it proposes; it no longer means the tunnel goes unwatched.
+
+That gate is also what made every one of those nights' decisions name a lost
+process: the cycle returned before looking, and the rule read "not running" out
+of an observation nobody took. A cause now needs its observation.
+
+The payload path waits on a network, so a suspended cycle does not probe it and
+carries the last answer as a ground. It decides nothing either way.
+
 ## The carrier is three paths
 
 The signature is which interface carries the upstream probe address and each

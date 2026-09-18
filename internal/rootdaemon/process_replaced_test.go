@@ -98,3 +98,55 @@ func TestAReplacementAcrossAnAbsenceIsStillSeen(t *testing.T) {
 		t.Fatalf("the process that came back was not seen as another one: %+v", summary.Tunnel.Grounds)
 	}
 }
+
+// countingPayload answers what the test says and counts the asking.
+type countingPayload struct {
+	traversed *bool
+	asked     *int
+}
+
+func (payload countingPayload) Payload(context.Context, observe.PayloadEndpoint) (observe.PayloadObservation, error) {
+	*payload.asked++
+	return observe.PayloadObservation{Traversed: *payload.traversed}, nil
+}
+
+// A suspended cycle does not wait on a probe, and carries its last answer.
+//
+// The probe waits on a network a dark wake does not have, and its timeout would
+// put the decision after the wake it was to be decided in.
+func TestASuspendedCycleDoesNotProbeThePayload(t *testing.T) {
+	config, network, _, endpoints := healthyCycleFixtures(t)
+	config.TunnelSupervision = &RuntimeTunnelSupervision{
+		Policy: tunnelplan.Policy{
+			Interval: 60 * time.Second, WakeThreshold: 180 * time.Second, PayloadFailures: 2, LinkFailures: 2,
+		},
+		Payload: observe.PayloadEndpoint{Name: "payload", URL: "http://198.51.100.1/", Timeout: time.Second},
+	}
+	store, err := newTunnelStateStore(filepath.Join(t.TempDir(), "tunnel.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	traversed, asked := false, 0
+	current := &observe.ProcessObservation{Running: true, Process: observe.Process{PID: 100}}
+	cycle, err := NewCycle(config, network, swappableProcesses{current: current}, endpoints,
+		WithPayloadObserver(countingPayload{traversed: &traversed, asked: &asked}),
+		WithTunnelState(store))
+	if err != nil {
+		t.Fatalf("NewCycle: %v", err)
+	}
+	summary := cycle.Observe(context.Background())
+	if asked != 1 || summary.Tunnel.Grounds.PayloadOK {
+		t.Fatalf("an awake cycle asked %d times, ground %v", asked, summary.Tunnel.Grounds.PayloadOK)
+	}
+	network.power.WakeKind = observe.WakeKindDark
+	summary = cycle.Observe(context.Background())
+	if summary.State != CycleSuspended {
+		t.Fatalf("the cycle was not suspended: %+v", summary.State)
+	}
+	if asked != 1 {
+		t.Fatalf("a suspended cycle waited on the payload probe: asked %d times", asked)
+	}
+	if summary.Tunnel.Grounds.PayloadOK {
+		t.Fatalf("a suspended cycle invented a payload answer: %+v", summary.Tunnel.Grounds)
+	}
+}
