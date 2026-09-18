@@ -98,8 +98,6 @@
       limited by the bound itself, and seven days cannot be reached at this
       rate. The change stays open to reach them.
 
-- [ ] 3.4 Install the raised bound, and read two days later that the window is what removes records.
-
       The soak of `decide-by-twilights-rule` is running, so this reinstall has
       to leave a silence shorter than three cycles or it puts a hole in it. The
       previous two left 27 and 28 seconds.
@@ -109,11 +107,20 @@
       the oldest operational record is older than 3 days 5 hours and climbing
       toward seven days.
 
+- [x] 3.4 Install the raised bound, and read two days later that the window is what removes records.
+
       Installed 2026-09-15 23:38:20Z, configuration in place kept, silence 37
       seconds. Five minutes later the archive held 64,909 records, up from
       64,835, with no overflow record for size since the installation — but
       64,909 is still under 65,536, so nothing yet proves the bound rather than
       a quiet five minutes. The crossing is what proves it.
+
+      Read 2026-09-18 09:44Z, two days after: 101,047 records, oldest
+      operational 5 days 4 hours — older than the 3 days 5 hours at the first
+      installation, and climbing — with no `size` overflow record written since
+      the bound was raised and eight `age` records naming 414 evicted. Read
+      again at 13:51Z the archive spans 7 days and 47 minutes, from 2026-09-11
+      13:05Z: the window it states is what removes records now.
 
       It crossed at 2026-09-16 01:50Z: 66,299 records, past the 65,536 the old
       bound held to twice over two days. No overflow record for size since the
