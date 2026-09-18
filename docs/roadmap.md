@@ -104,19 +104,20 @@ observations are taken first now, before anything that waits on a network and
 whatever the lid is doing, and no cause is decided from an observation nobody
 took. The seven days start again.
 
-`keep-overflow-from-crowding-the-archive` is open beside it, and the soak depends
-on it. The archive wrote an overflow record, which size eviction never removes,
-for about every append that evicted for size or age; on 2026-09-14 those were
-15,076 of 65,536 records, most of them for age, and the operational records the
-soak reads went back three days of seven. Installed 2026-09-14 18:55Z. An eviction
-now frees a sixty-fourth of its bound at once and is named once: overflow records
-written in a day fell from 7,770 to 19.
+`keep-overflow-from-crowding-the-archive` closed on 2026-09-18. The archive wrote
+an overflow record for about every append that evicted, and such a record is
+critical and never evicted for size: on 2026-09-14 they were 15,076 of its 65,536
+records, and the operational records the tunnel soak reads went back three days of
+seven. An eviction now frees a sixty-fourth of the bound at once and is named
+once — overflow records written in a day fell from 7,770 to 19, each naming about
+a thousand evicted.
 
-Retention did not recover with it, and the prediction that it would was wrong.
-At 19,383 records a day, measured 2026-09-15, one four-kilobyte block each, a
-256-megabyte bound holds 3.6 days whatever else is in it. The bound is a gigabyte
-now, so the seven-day window is what removes records, and the change stays open
-until the machine shows that.
+Stopping them did not restore the retention, and the prediction that it would was
+wrong: at 19,383 records a day, one four-kilobyte block each, a 256-megabyte bound
+holds 3.6 days whatever else is in it. The bound is a gigabyte now, and the
+archive spans seven days and holds 104,397 records. One path is still expensive —
+a size eviction reads every stored record, 6.1 seconds at that size — and does not
+run while the window binds first; it is recorded as its own issue.
 
 `hand-the-tunnel-back` closed on 2026-09-14, the first of item 9's three changes.
 The tunnel is Twilight's again, handed back by a transaction rather than by hand,

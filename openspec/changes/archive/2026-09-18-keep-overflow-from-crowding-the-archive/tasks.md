@@ -133,4 +133,8 @@
 
 ## 4. Close
 
-- [ ] 4.1 Sync the delta into the baseline, validate, archive.
+- [x] 4.1 Sync the delta into the baseline, validate, archive.
+
+      Merged as #147 into `decide-by-twilights-rule`, which the soak's daemon
+      is installed from; the baseline's bounded-archive requirement now carries
+      the share, the raised bound and the scenarios for both.
