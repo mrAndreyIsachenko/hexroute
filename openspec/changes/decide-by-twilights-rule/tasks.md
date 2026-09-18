@@ -297,6 +297,15 @@
       induced agreement with no disagreement — the same induction that
       disagreed under the old rule four hours earlier.
 
+      That soak is void from 2026-09-18 09:44Z, when the night's dark wakes
+      showed the rule deciding too late and naming losses nobody looked for —
+      see 2.6. Started again 2026-09-18 13:47:52Z, the daemon installed at
+      13:45:22Z with the configuration kept and the voided ledger moved to
+      `soak.late-rule-void-2026-09-18`; the reinstall left a silence of 54
+      seconds. First reading: three decisions, no causes, `process_observed`
+      true, tick gap 59,912 ms. The earliest judgement is 2026-09-25
+      13:47:52Z.
+
 ## 5. Close
 
 - [ ] 5.1 Sync the delta into the baseline, validate, archive.
