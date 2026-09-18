@@ -73,7 +73,7 @@
 
       On the branch stacked on `decide-by-twilights-rule`, so the daemon
       installed from it carries both the soaked rule and this.
-- [ ] 3.3 Install the root daemon from this branch with the reinstall shorter than three cycles, and read the archive a day later: overflow records written in that day, and the oldest operational record against its age at installation.
+- [x] 3.3 Install the root daemon from this branch with the reinstall shorter than three cycles, and read the archive a day later: overflow records written in that day, and the oldest operational record against its age at installation.
 
       Installed 2026-09-14 18:55:55Z, with the configuration in place kept.
       Before installing, the silence the previous reinstall left was read as 38
@@ -96,7 +96,9 @@
       all — by arithmetic, not measured. The 3 days 5 hours at installation
       reached back into sparser records from 2026-09-11. Retention is now
       limited by the bound itself, and seven days cannot be reached at this
-      rate. The change stays open to reach them.
+      rate. The change stays open to reach them — 3.4 is where they are
+      reached, and this task's second half was a prediction that could not hold
+      at this bound rather than a fix that did not work.
 
       The soak of `decide-by-twilights-rule` is running, so this reinstall has
       to leave a silence shorter than three cycles or it puts a hole in it. The
