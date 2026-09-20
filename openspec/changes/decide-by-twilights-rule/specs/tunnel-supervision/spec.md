@@ -203,8 +203,14 @@ between two, or inside one. Nothing decided there can disagree with anything. A
 collection that did not measure the silences inside it SHALL NOT count as having
 observed its window.
 
-A silence SHALL count as observed instead when this runtime decided a wake gap
-within three cycles of its end. A machine asleep writes nothing, and the soak
+A silence SHALL count as observed instead when this runtime accounted for it in a
+wake gap it decided: either the wake was decided within three cycles of the
+silence ending, or the gap it was decided on covers the silence. A machine on
+battery wakes for seconds and sleeps again, so the cycle that finishes and
+decides can be several sleeps after the silence it names — measured 2026-09-20, a
+silence of 46 minutes whose wake was decided 42 minutes after it ended, on a gap
+of 88 minutes that spanned both. A decision that says how long its own gap was
+has accounted for every silence inside it. A machine asleep writes nothing, and the soak
 needs wakes; the same process ran on both sides of that silence, and the decision
 it made about it is the one the comparison judges. A runtime stopped and started
 again has no previous cycle and decides no wake, so its silence stays a hole.
@@ -213,6 +219,11 @@ again has no previous cycle and decides no wake, so its silence stays a hole.
 
 - **WHEN** no record was written for longer than three cycles and this runtime decided a wake gap within three cycles of the silence ending
 - **THEN** the silence counts as observed, wherever it falls
+
+#### Scenario: A sleep whose wake was decided long after
+
+- **WHEN** no record was written for a stretch, and a wake gap decided later was decided on a gap that covers that stretch
+- **THEN** the silence counts as observed
 
 #### Scenario: A runtime restarted inside the soak
 

@@ -89,6 +89,13 @@ That gate is also what made every one of those nights' decisions name a lost
 process: the cycle returned before looking, and the rule read "not running" out
 of an observation nobody took. A cause now needs its observation.
 
+The judgement had to follow. A silence counted as observed only if a wake was
+decided within three cycles of its end, and on a night of dark wakes the cycle
+that finishes is several sleeps later: measured 2026-09-20, a silence of 46
+minutes whose wake was decided 42 minutes after it ended. A decision carries the
+gap it was decided on, so the ledger keeps it, and a silence inside that gap is
+one the runtime accounted for.
+
 The payload path waits on a network, so a suspended cycle does not probe it and
 carries the last answer as a ground. It decides nothing either way.
 

@@ -155,12 +155,14 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
 	}
-	// A silence this runtime ended by deciding a wake was a sleep it observed.
-	var wakes []time.Time
+	// A silence this runtime accounted for in a wake it decided was a sleep it
+	// observed, whether it decided right after the silence or on a later cycle
+	// whose gap covers it.
+	var wakes []soakledger.Wake
 	for _, entry := range entries {
 		for _, cause := range entry.Causes {
 			if cause == soakcompare.WakeGap {
-				wakes = append(wakes, entry.At)
+				wakes = append(wakes, soakledger.Wake{At: entry.At, TickGap: entry.TickGap})
 			}
 		}
 	}
@@ -236,9 +238,13 @@ func RebuildEntries(records []eventarchive.Record) ([]soakledger.Entry, error) {
 		if decision.Action != "rebuild_tunnel" {
 			continue
 		}
-		entries = append(entries, soakledger.Entry{
+		entry := soakledger.Entry{
 			Sequence: record.Sequence, At: record.Metadata.WallClock.UTC(), Causes: decision.Causes,
-		})
+		}
+		if decision.Grounds != nil && decision.Grounds.TickGapMS != nil {
+			entry.TickGap = time.Duration(*decision.Grounds.TickGapMS) * time.Millisecond
+		}
+		entries = append(entries, entry)
 	}
 	return entries, nil
 }

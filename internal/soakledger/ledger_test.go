@@ -168,16 +168,16 @@ func TestASilenceEndedByAWakeIsObserved(t *testing.T) {
 	asleep.LongestSilence = silence(end.Sub(start))
 	asleep.Silences = []Span{{From: start, To: end}}
 	windows := []Coverage{asleep}
-	if err := Continuous(windows, []time.Time{end.Add(time.Minute)}, t0, t0.Add(week)); err != nil {
+	if err := Continuous(windows, []Wake{{At: end.Add(time.Minute)}}, t0, t0.Add(week)); err != nil {
 		t.Fatalf("a night's sleep ended by a wake was refused: %v", err)
 	}
 	if err := Continuous(windows, nil, t0, t0.Add(week)); err == nil {
 		t.Fatal("eight hours with no record and no wake were accepted")
 	}
-	if err := Continuous(windows, []time.Time{end.Add(MaxLead + time.Second)}, t0, t0.Add(week)); err == nil {
+	if err := Continuous(windows, []Wake{{At: end.Add(MaxLead + time.Second)}}, t0, t0.Add(week)); err == nil {
 		t.Fatal("a wake decided more than three cycles after the silence excused it")
 	}
-	if err := Continuous(windows, []time.Time{end.Add(-time.Second)}, t0, t0.Add(week)); err == nil {
+	if err := Continuous(windows, []Wake{{At: end.Add(-time.Second)}}, t0, t0.Add(week)); err == nil {
 		t.Fatal("a wake decided before the silence ended excused it")
 	}
 }
@@ -190,7 +190,7 @@ func TestASleepBeforeACollectionsFirstRecordIsObserved(t *testing.T) {
 	second.LongestSilence = silence(8 * time.Hour)
 	second.Silences = []Span{{From: t0.Add(24 * time.Hour), To: t0.Add(32 * time.Hour)}}
 	windows := []Coverage{first, second}
-	if err := Continuous(windows, []time.Time{t0.Add(32*time.Hour + time.Minute)}, t0, t0.Add(week)); err != nil {
+	if err := Continuous(windows, []Wake{{At: t0.Add(32*time.Hour + time.Minute)}}, t0, t0.Add(week)); err != nil {
 		t.Fatalf("a sleep before a collection's first record, ended by a wake, was refused: %v", err)
 	}
 	if err := Continuous(windows, nil, t0, t0.Add(week)); err == nil {
@@ -203,9 +203,9 @@ func TestAnUnlocatedLongSilenceIsRefused(t *testing.T) {
 	week := 7 * 24 * time.Hour
 	quiet := window(0, time.Minute, week)
 	quiet.LongestSilence = silence(8 * time.Hour)
-	var everywhere []time.Time
+	var everywhere []Wake
 	for at := t0; at.Before(t0.Add(week)); at = at.Add(time.Minute) {
-		everywhere = append(everywhere, at)
+		everywhere = append(everywhere, Wake{At: at, TickGap: time.Minute})
 	}
 	if err := Continuous([]Coverage{quiet}, everywhere, t0, t0.Add(week)); err == nil {
 		t.Fatal("a silence nobody located was excused")
@@ -224,5 +224,32 @@ func TestSilencesAreLocatedFromTheStart(t *testing.T) {
 	}
 	if Silences(t0, []time.Time{t0.Add(MaxLead)}) != nil {
 		t.Fatal("a silence of exactly MaxLead was located")
+	}
+}
+
+// A wake decided later, on a gap that covers the silence, accounts for it.
+//
+// A machine on battery wakes for seconds and sleeps again, so the cycle that
+// finishes and decides can be several sleeps after the silence it names.
+// Measured 2026-09-20: a silence of 46 minutes, the wake decided 42 minutes
+// after it ended on a gap that spanned both.
+func TestAWakeDecidedOnAGapThatCoversTheSilenceAccountsForIt(t *testing.T) {
+	week := 7 * 24 * time.Hour
+	from, to := t0.Add(time.Hour), t0.Add(time.Hour+46*time.Minute)
+	asleep := window(0, time.Minute, week)
+	asleep.LongestSilence = silence(to.Sub(from))
+	asleep.Silences = []Span{{From: from, To: to}}
+	windows := []Coverage{asleep}
+	covering := Wake{At: to.Add(42 * time.Minute), TickGap: 88 * time.Minute}
+	if err := Continuous(windows, []Wake{covering}, t0, t0.Add(week)); err != nil {
+		t.Fatalf("a wake whose gap covers the silence was refused: %v", err)
+	}
+	short := Wake{At: to.Add(42 * time.Minute), TickGap: 10 * time.Minute}
+	if err := Continuous(windows, []Wake{short}, t0, t0.Add(week)); err == nil {
+		t.Fatal("a wake whose gap starts after the silence excused it")
+	}
+	before := Wake{At: from.Add(-time.Minute), TickGap: 4 * time.Hour}
+	if err := Continuous(windows, []Wake{before}, t0, t0.Add(week)); err == nil {
+		t.Fatal("a wake decided before the silence ended excused it")
 	}
 }
