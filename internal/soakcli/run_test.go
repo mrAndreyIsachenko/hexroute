@@ -29,7 +29,10 @@ func archived(t *testing.T, sequence uint64, at time.Time, decision event.Tunnel
 func TestOnlyRebuildDecisionsAreCollected(t *testing.T) {
 	entries, err := RebuildEntries([]eventarchive.Record{
 		archived(t, 1, t0, event.TunnelDecision{Action: "none"}),
-		archived(t, 2, t0.Add(time.Minute), event.TunnelDecision{Action: "rebuild_tunnel", Causes: []string{"wake_gap"}}),
+		archived(t, 2, t0.Add(time.Minute), event.TunnelDecision{
+			Action: "rebuild_tunnel", Causes: []string{"wake_gap"},
+			Grounds: &event.TunnelGrounds{ProcessObserved: true, ProcessRunning: true, TickGapMS: tickGap(660000)},
+		}),
 		archived(t, 3, t0.Add(2*time.Minute), event.TunnelDecision{Action: "reapply_routes", Causes: []string{"routes_drifted"}}),
 	})
 	if err != nil {
@@ -37,6 +40,11 @@ func TestOnlyRebuildDecisionsAreCollected(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Sequence != 2 || entries[0].Causes[0] != "wake_gap" {
 		t.Fatalf("entries = %+v", entries)
+	}
+	// The gap the decision was made on comes with it: a silence inside that gap
+	// is one the runtime accounted for, and the judgement needs to see it.
+	if entries[0].TickGap != 11*time.Minute {
+		t.Fatalf("the collected decision lost its tick gap: %+v", entries[0])
 	}
 }
 
@@ -186,7 +194,7 @@ func TestACollectionRecordsItsLongestSilence(t *testing.T) {
 	if len(coverage.Silences) != 1 || !coverage.Silences[0].From.Equal(t0.Add(2*time.Minute)) || !coverage.Silences[0].To.Equal(t0.Add(4*time.Hour)) {
 		t.Fatalf("Silences = %v, want one from 2m to 4h", coverage.Silences)
 	}
-	wake := []time.Time{t0.Add(4*time.Hour + 30*time.Second)}
+	wake := []soakledger.Wake{{At: t0.Add(4*time.Hour + 30*time.Second)}}
 	if err := soakledger.Continuous([]soakledger.Coverage{coverage}, wake, t0, t0.Add(4*time.Hour+2*time.Minute)); err != nil {
 		t.Fatalf("four hours ended by a wake were refused: %v", err)
 	}
@@ -302,3 +310,34 @@ func TestJudgeExplainsAProcessGoneByTheOwnersRestart(t *testing.T) {
 		t.Fatalf("a process loss beside the owner's restart was judged as: %q %q", stdout.String(), stderr.String())
 	}
 }
+
+// A wake decided on a gap that covers an earlier silence makes the soak
+// judgeable: the runtime accounted for the stretch, late but in one decision.
+func TestJudgeCountsASilenceCoveredByALaterWake(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := soakledger.Open(filepath.Join(dir, "soak"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	week := 7 * 24 * time.Hour
+	from, to := t0.Add(time.Hour), t0.Add(time.Hour+46*time.Minute)
+	decided := []soakledger.Entry{{Sequence: 9, At: to.Add(42 * time.Minute),
+		Causes: []string{soakcompare.WakeGap}, TickGap: 88 * time.Minute}}
+	night := to.Sub(from)
+	if err := ledger.Collect(decided, soakledger.Coverage{
+		Requested: t0, Oldest: t0.Add(time.Minute), Newest: t0.Add(week), Records: 5, CollectedAt: t0.Add(week),
+		LongestSilence: &night, Silences: []soakledger.Span{{From: from, To: to}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	twilight := writeTwilight(t, `{"timestamp":"2026-09-15T01:00:00Z","from":"HEALTHY","to":"STARTING","reason":"wake_gap_detected","pid":1}`)
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	Run([]string{"--ledger", filepath.Join(dir, "soak"), "--twilight", twilight,
+		"--from", t0.Format(time.RFC3339), "--until", t0.Add(week).Format(time.RFC3339), "judge"},
+		stdout, stderr, nil)
+	if strings.Contains(stdout.String(), "NOT JUDGEABLE") || stderr.Len() > 0 {
+		t.Fatalf("a silence covered by a later wake was judged as: %q %q", stdout.String(), stderr.String())
+	}
+}
+
+func tickGap(ms int64) *int64 { return &ms }

@@ -77,9 +77,24 @@ func Silences(from time.Time, moments []time.Time) []Span {
 }
 
 // woke says a wake gap was decided within MaxLead of a silence ending.
-func woke(wakes []time.Time, silence Span) bool {
+// woke says a wake gap the runtime decided accounts for a silence.
+//
+// Either the wake was decided within three cycles of the silence ending, or the
+// gap it was decided on covers the silence: a cycle saying eleven minutes passed
+// since the last one has accounted for every silence in those eleven minutes.
+// A machine on battery wakes for seconds at a time and sleeps again, so the
+// cycle that finishes and decides can be several sleeps later — measured
+// 2026-09-20, a silence of 46 minutes whose wake was decided 42 minutes after
+// it ended, on a gap that spanned both.
+func woke(wakes []Wake, silence Span) bool {
 	for _, wake := range wakes {
-		if !wake.Before(silence.To) && wake.Sub(silence.To) <= MaxLead {
+		if wake.At.Before(silence.To) {
+			continue
+		}
+		if wake.At.Sub(silence.To) <= MaxLead {
+			return true
+		}
+		if !wake.At.Add(-wake.TickGap).After(silence.From.Add(MaxLead)) {
 			return true
 		}
 	}
@@ -104,6 +119,16 @@ type Entry struct {
 	Sequence uint64    `json:"sequence"`
 	At       time.Time `json:"at"`
 	Causes   []string  `json:"causes"`
+	// TickGap is the wall time the deciding cycle was after the one before it.
+	// A decision says how long its own gap was, so a silence inside that gap is
+	// a stretch the runtime accounted for rather than one nobody observed.
+	TickGap time.Duration `json:"tick_gap,omitempty"`
+}
+
+// Wake is a wake gap this runtime decided, and the gap it decided it on.
+type Wake struct {
+	At      time.Time
+	TickGap time.Duration
 }
 
 type induction struct {
@@ -211,7 +236,7 @@ func (ledger *Ledger) Next() (time.Time, bool, error) {
 // Each collection must start within MaxLead of where it asked to, the first must
 // ask from no later than the soak's start, each must ask from no later than the
 // previous one's newest record, and the last must reach the soak's end.
-func Continuous(windows []Coverage, wakes []time.Time, from, until time.Time) error {
+func Continuous(windows []Coverage, wakes []Wake, from, until time.Time) error {
 	if len(windows) == 0 {
 		return fmt.Errorf("%w: nothing was collected", ErrNotContinuous)
 	}

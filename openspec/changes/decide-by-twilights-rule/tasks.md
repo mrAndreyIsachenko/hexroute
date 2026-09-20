@@ -184,6 +184,27 @@
       repeated by a harness that copies each file, compares it byte for byte
       after restoring, and stops if it differs.
 
+- [x] 3.7 A silence inside the gap a wake was decided on is one the runtime accounted for.
+
+      3.5 counted a silence as observed only if a wake was decided within three
+      cycles of its end. On a night of dark wakes the cycle that finishes is
+      several sleeps later: measured 2026-09-20, the machine was silent from
+      00:46:03Z to 01:32:30Z — Twilight rebuilt at 00:45:54Z and reached healthy
+      at 01:32:28Z — and this runtime's wake came 42 minutes after the silence
+      ended, on a gap of 88 minutes that spanned it. The judgement called that a
+      hole.
+
+      A collected decision now carries the gap it was decided on, and a silence
+      inside that gap counts as observed. The rule is untouched, so the seven
+      days continue; only the soak command changes, and the ledger is collected
+      again from the soak's start to carry the gaps.
+
+      Five mutations, five killed: no covering rule, a covering tolerance a
+      hundred times wider, a wake decided before the silence counting, the
+      collection dropping the gap, the judgement dropping it. The fourth
+      survived its first run — nothing asserted the collection kept it — and the
+      collection test now does.
+
 ## 4. Gates and evidence
 
 - [x] 4.1 Mutate each cause's definition, the window and the induced count; confirm the named tests fail.
