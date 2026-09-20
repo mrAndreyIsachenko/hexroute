@@ -171,16 +171,16 @@ func TestASilenceEndedByAWakeIsObserved(t *testing.T) {
 	asleep.LongestSilence = silence(end.Sub(start))
 	asleep.Silences = []Span{{From: start, To: end}}
 	windows := []Coverage{asleep}
-	if err := Continuous(windows, []Wake{{At: end.Add(time.Minute)}}, t0, t0.Add(week)); err != nil {
+	if err := Continuous(windows, []Cycle{{At: end.Add(time.Minute), Wake: true}}, t0, t0.Add(week)); err != nil {
 		t.Fatalf("a night's sleep ended by a wake was refused: %v", err)
 	}
 	if err := Continuous(windows, nil, t0, t0.Add(week)); err == nil {
 		t.Fatal("eight hours with no record and no wake were accepted")
 	}
-	if err := Continuous(windows, []Wake{{At: end.Add(MaxLead + time.Second)}}, t0, t0.Add(week)); err == nil {
+	if err := Continuous(windows, []Cycle{{At: end.Add(MaxLead + time.Second), Wake: true}}, t0, t0.Add(week)); err == nil {
 		t.Fatal("a wake decided more than three cycles after the silence excused it")
 	}
-	if err := Continuous(windows, []Wake{{At: end.Add(-time.Second)}}, t0, t0.Add(week)); err == nil {
+	if err := Continuous(windows, []Cycle{{At: end.Add(-time.Second), Wake: true}}, t0, t0.Add(week)); err == nil {
 		t.Fatal("a wake decided before the silence ended excused it")
 	}
 }
@@ -193,7 +193,7 @@ func TestASleepBeforeACollectionsFirstRecordIsObserved(t *testing.T) {
 	second.LongestSilence = silence(8 * time.Hour)
 	second.Silences = []Span{{From: t0.Add(24 * time.Hour), To: t0.Add(32 * time.Hour)}}
 	windows := []Coverage{first, second}
-	if err := Continuous(windows, []Wake{{At: t0.Add(32*time.Hour + time.Minute)}}, t0, t0.Add(week)); err != nil {
+	if err := Continuous(windows, []Cycle{{At: t0.Add(32*time.Hour + time.Minute), Wake: true}}, t0, t0.Add(week)); err != nil {
 		t.Fatalf("a sleep before a collection's first record, ended by a wake, was refused: %v", err)
 	}
 	if err := Continuous(windows, nil, t0, t0.Add(week)); err == nil {
@@ -206,9 +206,9 @@ func TestAnUnlocatedLongSilenceIsRefused(t *testing.T) {
 	week := 7 * 24 * time.Hour
 	quiet := window(0, time.Minute, week)
 	quiet.LongestSilence = silence(8 * time.Hour)
-	var everywhere []Wake
+	var everywhere []Cycle
 	for at := t0; at.Before(t0.Add(week)); at = at.Add(time.Minute) {
-		everywhere = append(everywhere, Wake{At: at, TickGap: time.Minute})
+		everywhere = append(everywhere, Cycle{At: at, TickGap: time.Minute, Wake: true})
 	}
 	if err := Continuous([]Coverage{quiet}, everywhere, t0, t0.Add(week)); err == nil {
 		t.Fatal("a silence nobody located was excused")
@@ -243,16 +243,16 @@ func TestAWakeDecidedOnAGapThatCoversTheSilenceAccountsForIt(t *testing.T) {
 	asleep.LongestSilence = silence(to.Sub(from))
 	asleep.Silences = []Span{{From: from, To: to}}
 	windows := []Coverage{asleep}
-	covering := Wake{At: to.Add(42 * time.Minute), TickGap: 88 * time.Minute}
-	if err := Continuous(windows, []Wake{covering}, t0, t0.Add(week)); err != nil {
+	covering := Cycle{At: to.Add(42 * time.Minute), TickGap: 88 * time.Minute, Wake: true}
+	if err := Continuous(windows, []Cycle{covering}, t0, t0.Add(week)); err != nil {
 		t.Fatalf("a wake whose gap covers the silence was refused: %v", err)
 	}
-	short := Wake{At: to.Add(42 * time.Minute), TickGap: 10 * time.Minute}
-	if err := Continuous(windows, []Wake{short}, t0, t0.Add(week)); err == nil {
+	short := Cycle{At: to.Add(42 * time.Minute), TickGap: 10 * time.Minute, Wake: true}
+	if err := Continuous(windows, []Cycle{short}, t0, t0.Add(week)); err == nil {
 		t.Fatal("a wake whose gap starts after the silence excused it")
 	}
-	before := Wake{At: from.Add(-time.Minute), TickGap: 4 * time.Hour}
-	if err := Continuous(windows, []Wake{before}, t0, t0.Add(week)); err == nil {
+	before := Cycle{At: from.Add(-time.Minute), TickGap: 4 * time.Hour, Wake: true}
+	if err := Continuous(windows, []Cycle{before}, t0, t0.Add(week)); err == nil {
 		t.Fatal("a wake decided before the silence ended excused it")
 	}
 }
@@ -335,5 +335,44 @@ func TestALaterLineWithoutTheGapDoesNotEraseIt(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].TickGap != 88*time.Minute {
 		t.Fatalf("decisions = %+v, want the gap kept", entries)
+	}
+}
+
+// A cycle the runtime ran inside a silence is a record it lost, not a stretch
+// nobody observed.
+//
+// Measured 2026-09-20: a cycle decided at 04:26:33Z inside a silence of
+// 04:16:26Z to 04:32:53Z and wrote nothing, because the machine slept again
+// inside the rest of that cycle. The next cycle's gap named it.
+func TestACycleInsideASilenceAccountsForIt(t *testing.T) {
+	week := 7 * 24 * time.Hour
+	from, to := t0.Add(time.Hour), t0.Add(time.Hour+16*time.Minute)
+	quiet := window(0, time.Minute, week)
+	quiet.LongestSilence = silence(to.Sub(from))
+	quiet.Silences = []Span{{From: from, To: to}}
+	windows := []Coverage{quiet}
+	// A later decision whose gap begins inside the silence: the cycle it names
+	// ran there, and nothing it wrote survived.
+	inside := Cycle{At: to.Add(44 * time.Minute), TickGap: 50 * time.Minute}
+	if err := Continuous(windows, []Cycle{inside}, t0, t0.Add(week)); err != nil {
+		t.Fatalf("a silence with a cycle inside it was refused: %v", err)
+	}
+	// The same decision with a gap that begins after the silence names no cycle
+	// inside it, and is not a wake either.
+	after := Cycle{At: to.Add(44 * time.Minute), TickGap: 10 * time.Minute}
+	if err := Continuous(windows, []Cycle{after}, t0, t0.Add(week)); err == nil {
+		t.Fatal("a silence nothing ran inside was excused")
+	}
+	// A cycle before the silence names nothing inside it either.
+	before := Cycle{At: from.Add(-time.Minute), TickGap: time.Minute}
+	if err := Continuous(windows, []Cycle{before}, t0, t0.Add(week)); err == nil {
+		t.Fatal("a cycle before the silence excused it")
+	}
+	// A decision soon after the silence that named no wake accounts for
+	// nothing: its own cycle and the one before it both ran after the silence,
+	// and nothing says what happened inside it.
+	quick := Cycle{At: to.Add(time.Minute), TickGap: 30 * time.Second}
+	if err := Continuous(windows, []Cycle{quick}, t0, t0.Add(week)); err == nil {
+		t.Fatal("a decision that named no wake excused a silence it ran after")
 	}
 }

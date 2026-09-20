@@ -104,6 +104,13 @@ observations are taken first now, before anything that waits on a network and
 whatever the lid is doing, and no cause is decided from an observation nobody
 took. The seven days start again.
 
+Two nights later the judgement still refused, twice for reasons that were its
+own rather than the rule's: a wake decided long after the silence it covered,
+and a silence a cycle ran inside whose record the sleeping machine swallowed.
+The decision is written first in its cycle now, and the judgement reads the
+chain of cycles a decision's gap names. The rule is untouched, so those seven
+days continue.
+
 `keep-overflow-from-crowding-the-archive` closed on 2026-09-18. The archive wrote
 an overflow record for about every append that evicted, and such a record is
 critical and never evicted for size: on 2026-09-14 they were 15,076 of its 65,536

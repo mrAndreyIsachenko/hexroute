@@ -542,21 +542,12 @@ func observeLoop(
 	for {
 		began := elapsed()
 		summary := cycler.Observe(ctx)
-		if err := emitSummary(logger, gate, summary); err != nil {
-			return err
-		}
-		at := nowTick()
-		// The read model runs after the cycle and changes nothing about it.
-		// Its failure is reported and dropped: a daemon that stops observing
-		// because a description of its observations failed would be worse than
-		// one with no read model at all.
-		if err := connectivityhost.Fold(
-			reader, summary.Observed, plannerIntents(summary.Plan), logger); err != nil {
-			return err
-		}
-		if err := publisher.Publish(at); err != nil {
-			return err
-		}
+		// The decision is written before anything else this cycle does. A
+		// machine that sleeps inside the rest of the cycle loses whatever has
+		// not been written, and a decision reached but unwritten is one the
+		// comparison cannot see: measured 2026-09-20, a cycle decided at
+		// 04:26:33Z and left no record, while the next cycle's gap said it had
+		// happened.
 		// Every cycle's decision, including the cycles that decided nothing: a
 		// decision that agreed and a decision never reached look the same in an
 		// empty record, and the comparison against the runtime that owns the
@@ -573,6 +564,21 @@ func observeLoop(
 			); emitErr != nil {
 				return emitErr
 			}
+		}
+		if err := emitSummary(logger, gate, summary); err != nil {
+			return err
+		}
+		at := nowTick()
+		// The read model runs after the cycle and changes nothing about it.
+		// Its failure is reported and dropped: a daemon that stops observing
+		// because a description of its observations failed would be worse than
+		// one with no read model at all.
+		if err := connectivityhost.Fold(
+			reader, summary.Observed, plannerIntents(summary.Plan), logger); err != nil {
+			return err
+		}
+		if err := publisher.Publish(at); err != nil {
+			return err
 		}
 		operatorSnapshot = nextRootOperatorSnapshot(operatorSnapshot, summary, at)
 		// What this runtime last saw of itself, for the one request it answers

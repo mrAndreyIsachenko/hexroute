@@ -155,18 +155,21 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
 	}
-	// A silence this runtime accounted for in a wake it decided was a sleep it
-	// observed, whether it decided right after the silence or on a later cycle
-	// whose gap covers it.
-	var wakes []soakledger.Wake
+	// Every decision, because each says when the cycle before it ran: a silence
+	// with a cycle inside it is one whose record was lost rather than one
+	// nobody observed. The wakes among them also account for the silences they
+	// were decided on.
+	cycles := make([]soakledger.Cycle, 0, len(entries))
 	for _, entry := range entries {
+		cycle := soakledger.Cycle{At: entry.At, TickGap: entry.TickGap}
 		for _, cause := range entry.Causes {
 			if cause == soakcompare.WakeGap {
-				wakes = append(wakes, soakledger.Wake{At: entry.At, TickGap: entry.TickGap})
+				cycle.Wake = true
 			}
 		}
+		cycles = append(cycles, cycle)
 	}
-	if err := soakledger.Continuous(windows, wakes, from, until); err != nil {
+	if err := soakledger.Continuous(windows, cycles, from, until); err != nil {
 		fmt.Fprintf(stdout, "NOT JUDGEABLE  %v\n", err)
 		return 1
 	}

@@ -4,6 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityhost"
+	"github.com/mrAndreyIsachenko/hexroute/internal/event"
+	"github.com/mrAndreyIsachenko/hexroute/internal/eventarchive"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelplan"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -307,4 +312,74 @@ func TestEachStartupRefusalNamesItsOwnSubsystem(t *testing.T) {
 	}); reason != string(logging.ReasonInvalidConfiguration) {
 		t.Fatalf("an unreadable config reported %q", reason)
 	}
+}
+
+// failingHeartbeat ends the cycle where the heartbeat is published.
+type failingHeartbeat struct{}
+
+func (failingHeartbeat) Publish(control.Tick) error { return errors.New("heartbeat refused") }
+
+// The decision is written before the rest of the cycle, not after it.
+//
+// A machine that sleeps inside the rest of a cycle loses whatever has not been
+// written. Measured 2026-09-20: a cycle decided at 04:26:33Z and left no
+// record at all, and only the next cycle's gap said it had happened. The
+// heartbeat standing in for that loss here: if it ends the cycle, the decision
+// must already be in the archive.
+func TestTheDecisionIsRecordedBeforeTheRestOfTheCycle(t *testing.T) {
+	root := t.TempDir()
+	archiveRoot := filepath.Join(root, "event-archive")
+	reader, err := connectivityhost.Open(filepath.Join(root, "host"), "boot", archiveRoot)
+	if err != nil {
+		t.Fatalf("connectivityhost.Open: %v", err)
+	}
+	var output bytes.Buffer
+	logger, err := logging.New(&output, logging.ComponentDaemon)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, err := operator.NewController(
+		ipc.RoleRoot, ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentTunnel},
+		control.NewSnapshot(control.StateHealthy), control.ReasonNone, nil,
+		func() control.Tick { return 7 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	cycler := fixedCycler{summary: Summary{
+		State: CycleDegraded,
+		Tunnel: tunnelplan.Plan{
+			Action: tunnelplan.ActionRebuildTunnel,
+			Causes: []tunnelplan.Cause{tunnelplan.CauseWakeGap},
+			Grounds: tunnelplan.Grounds{
+				ProcessObserved: true, ProcessRunning: true, TickGap: 11 * time.Minute,
+			},
+		},
+	}}
+	err = observeLoop(
+		context.Background(), time.Minute, true,
+		func() control.Tick { return 7 }, func() time.Duration { return 0 },
+		cycler, failingHeartbeat{}, controller, nil, nil, logger, reader, nil,
+		&rootObservations{}, nil)
+	if err == nil {
+		t.Fatal("the heartbeat refused and the loop carried on")
+	}
+	archive, err := eventarchive.OpenForReading(archiveRoot)
+	if err != nil {
+		t.Fatalf("OpenForReading: %v", err)
+	}
+	records, err := archive.Records()
+	if err != nil {
+		t.Fatalf("Records: %v", err)
+	}
+	for _, record := range records {
+		decoded, err := event.Decode(record.Event)
+		if err != nil {
+			continue
+		}
+		if decoded.Schema == event.SchemaTunnelDecision {
+			return
+		}
+	}
+	t.Fatalf("the cycle ended at the heartbeat and its decision was never written: %d records", len(records))
 }
