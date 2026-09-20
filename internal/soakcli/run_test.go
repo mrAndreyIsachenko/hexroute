@@ -412,3 +412,52 @@ func TestACollectionRecordsWhereTheRuntimeDozed(t *testing.T) {
 		t.Fatalf("Dozing = %+v, want one stretch from 10m", coverage.Dozing)
 	}
 }
+
+// A rebuild carries when the owning runtime last wrote anything before it.
+func TestTwilightRebuildsCarryTheirPreviousActivity(t *testing.T) {
+	path := writeTwilight(t,
+		`{"timestamp":"2026-09-15T00:05:00Z","event":"reserve_probe","target":"x","reason":"","pid":1,"verdict":"ok"}`,
+		`{"timestamp":"2026-09-15T00:20:00Z","from":"HEALTHY","to":"STARTING","reason":"wake_gap_detected","pid":1}`,
+	)
+	rebuilds, _, err := TwilightLog(path)
+	if err != nil {
+		t.Fatalf("TwilightLog: %v", err)
+	}
+	if len(rebuilds) != 1 {
+		t.Fatalf("rebuilds = %+v", rebuilds)
+	}
+	// The line before it is a probe, not a transition: it still says the
+	// runtime was there.
+	if !rebuilds[0].Previous.Equal(time.Date(2026, 9, 15, 0, 5, 0, 0, time.UTC)) {
+		t.Fatalf("previous activity = %s, want 00:05:00Z", rebuilds[0].Previous)
+	}
+}
+
+// A decision whose gap began while the machine dozed is not judged, so the
+// judgement has to carry that moment from the ledger into the comparison.
+func TestJudgeCarriesTheCycleADecisionNames(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := soakledger.Open(filepath.Join(dir, "soak"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	week := 7 * 24 * time.Hour
+	dozeFrom, dozeTo := t0.Add(time.Hour), t0.Add(3*time.Hour)
+	decided := []soakledger.Entry{{Sequence: 11, At: dozeTo.Add(time.Minute),
+		Causes: []string{soakcompare.WakeGap}, TickGap: 90 * time.Minute}}
+	quiet := time.Duration(0)
+	if err := ledger.Collect(decided, soakledger.Coverage{
+		Requested: t0, Oldest: t0.Add(time.Minute), Newest: t0.Add(week), Records: 5, CollectedAt: t0.Add(week),
+		LongestSilence: &quiet, Dozing: []soakledger.Span{{From: dozeFrom, To: dozeTo}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	twilight := writeTwilight(t, `{"timestamp":"2026-09-15T00:01:00Z","from":"HEALTHY","to":"DEGRADED","reason":"x","pid":1}`)
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	Run([]string{"--ledger", filepath.Join(dir, "soak"), "--twilight", twilight,
+		"--from", t0.Format(time.RFC3339), "--until", t0.Add(week).Format(time.RFC3339), "judge"},
+		stdout, stderr, nil)
+	if strings.Contains(stdout.String(), "decided, not made") || stderr.Len() > 0 {
+		t.Fatalf("a decision whose gap began while dozing was judged: %q %q", stdout.String(), stderr.String())
+	}
+}

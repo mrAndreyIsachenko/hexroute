@@ -127,6 +127,15 @@ probes records an incomplete decision, and every decision through that night is
 one. Nothing in such a stretch is compared, in either direction, and a silence
 inside it is not a hole.
 
+One disagreement survived that exclusion and showed where it was too narrow: the
+owning runtime named a wake at 10:21:47Z, after the machine was up, on a gap of
+1,625 seconds that began at 09:54:42Z — inside the doze. This runtime's cycles
+had resumed by then and its own gap was a minute. The event was reached while
+awake and is about a stretch nobody judges. So an event whose gap began inside a
+dozing stretch is not judged either: for this runtime the gap is the cycle its
+decision names, for the owning runtime the last time its log says it wrote
+anything.
+
 What this gives up is stated in the spec rather than hidden. The rule is not
 proved for a dozing machine, and with authority it would have rebuilt the tunnel
 fourteen times that night where Twilight rebuilt six. That is the executor's to

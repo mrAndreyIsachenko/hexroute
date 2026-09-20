@@ -262,6 +262,18 @@
       times that night against Twilight's six. That is owed by the executor in
       change three.
 
+      One disagreement survived and showed the exclusion too narrow: the owning
+      runtime named a wake at 10:21:47Z, awake, on a gap of 1,625 seconds that
+      began at 09:54:42Z inside the doze, while this runtime's cycles had
+      resumed and its own gap was a minute. An event whose gap began inside a
+      dozing stretch is not judged either — the cycle a decision names for this
+      runtime, the last line of its log for the owning one. Five more mutations,
+      four killed: rebuilds judged by their moment alone, decisions judged by
+      their moment alone, the previous activity taken from judged lines only,
+      the decision carrying no previous. The fifth, dropping the guard against a
+      moment nobody recorded, is equivalent: a zero moment falls in no stretch
+      that starts in 2026.
+
       Eight mutations, eight killed: decisions judged while dozing, the owner's
       rebuilds judged while dozing, a stretch that swallows everything after it,
       silences inside a stretch still holes, a silence reaching past one
