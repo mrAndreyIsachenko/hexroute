@@ -158,14 +158,30 @@ func (ledger *Ledger) Collect(entries []Entry, coverage Coverage) error {
 	if err != nil {
 		return err
 	}
+	// A decision already collected is not collected again — collections overlap
+	// by a cycle or two, and the same decision read twice is one decision. But a
+	// later collection can carry what an earlier one did not: a collection made
+	// before the gap was kept holds none, and dropping the richer line would
+	// leave the judgement unable to see which silences the runtime accounted
+	// for, with no way to repair it short of discarding the ledger.
+	gaps := make(map[uint64]time.Duration, len(held))
 	seen := make(map[uint64]bool, len(held))
 	for _, entry := range held {
 		seen[entry.Sequence] = true
+		if entry.TickGap > gaps[entry.Sequence] {
+			gaps[entry.Sequence] = entry.TickGap
+		}
 	}
 	fresh := make([]any, 0, len(entries))
 	for _, entry := range entries {
 		if !seen[entry.Sequence] {
 			seen[entry.Sequence] = true
+			gaps[entry.Sequence] = entry.TickGap
+			fresh = append(fresh, entry)
+			continue
+		}
+		if entry.TickGap > gaps[entry.Sequence] {
+			gaps[entry.Sequence] = entry.TickGap
 			fresh = append(fresh, entry)
 		}
 	}
@@ -186,15 +202,31 @@ func (ledger *Ledger) Note(at time.Time, cause string) error {
 }
 
 func (ledger *Ledger) Decisions() ([]Entry, error) {
-	var entries []Entry
-	return entries, readLines(ledger.path("decisions.jsonl"), func(line []byte) error {
+	var order []uint64
+	held := map[uint64]Entry{}
+	err := readLines(ledger.path("decisions.jsonl"), func(line []byte) error {
 		var entry Entry
 		if err := json.Unmarshal(line, &entry); err != nil {
 			return err
 		}
-		entries = append(entries, entry)
+		previous, repeated := held[entry.Sequence]
+		if !repeated {
+			order = append(order, entry.Sequence)
+			held[entry.Sequence] = entry
+			return nil
+		}
+		// One decision, written twice because a later collection carried the
+		// gap the first did not. The one that says more is the one kept.
+		if entry.TickGap > previous.TickGap {
+			held[entry.Sequence] = entry
+		}
 		return nil
 	})
+	entries := make([]Entry, 0, len(order))
+	for _, sequence := range order {
+		entries = append(entries, held[sequence])
+	}
+	return entries, err
 }
 
 func (ledger *Ledger) Coverage() ([]Coverage, error) {

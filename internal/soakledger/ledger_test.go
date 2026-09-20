@@ -1,7 +1,10 @@
 package soakledger
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -251,5 +254,86 @@ func TestAWakeDecidedOnAGapThatCoversTheSilenceAccountsForIt(t *testing.T) {
 	before := Wake{At: from.Add(-time.Minute), TickGap: 4 * time.Hour}
 	if err := Continuous(windows, []Wake{before}, t0, t0.Add(week)); err == nil {
 		t.Fatal("a wake decided before the silence ended excused it")
+	}
+}
+
+// A collection made before the gap was kept is repaired by collecting again.
+//
+// Collections dedupe by sequence, so the decisions a soak collected before its
+// command carried the tick gap would have stayed gapless for the rest of the
+// soak, and every silence they accounted for would have read as a hole.
+func TestCollectingAgainCarriesAGapTheFirstCollectionLacked(t *testing.T) {
+	ledger, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gapless := Entry{Sequence: 4, At: t0.Add(time.Hour), Causes: []string{"wake_gap"}}
+	coverage := window(0, time.Minute, 2*time.Hour)
+	if err := ledger.Collect([]Entry{gapless}, coverage); err != nil {
+		t.Fatal(err)
+	}
+	withGap := gapless
+	withGap.TickGap = 88 * time.Minute
+	if err := ledger.Collect([]Entry{withGap}, coverage); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := ledger.Decisions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].TickGap != 88*time.Minute {
+		t.Fatalf("decisions = %+v, want one carrying the gap", entries)
+	}
+	// And collecting the same thing again writes nothing: a ledger that grew on
+	// every collection would be one decision written a hundred times.
+	before := ledgerLines(t, ledger)
+	if err := ledger.Collect([]Entry{withGap}, coverage); err != nil {
+		t.Fatal(err)
+	}
+	if after := ledgerLines(t, ledger); after != before {
+		t.Fatalf("collecting the same decision again wrote %d lines, was %d", after, before)
+	}
+}
+
+func ledgerLines(t *testing.T, ledger *Ledger) int {
+	t.Helper()
+	raw, err := os.ReadFile(ledger.path("decisions.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(raw), "\n")
+}
+
+// A decision written again without its gap does not erase the gap.
+//
+// An older command collecting after a newer one writes the same decision with
+// no gap, and the judgement would stop seeing the silences it accounted for.
+func TestALaterLineWithoutTheGapDoesNotEraseIt(t *testing.T) {
+	ledger, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rich := Entry{Sequence: 4, At: t0.Add(time.Hour), Causes: []string{"wake_gap"}, TickGap: 88 * time.Minute}
+	if err := ledger.Collect([]Entry{rich}, window(0, time.Minute, 2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	gapless, err := json.Marshal(Entry{Sequence: 4, At: rich.At, Causes: rich.Causes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(ledger.path("decisions.jsonl"), os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(append(gapless, '\n')); err != nil {
+		t.Fatal(err)
+	}
+	file.Close()
+	entries, err := ledger.Decisions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].TickGap != 88*time.Minute {
+		t.Fatalf("decisions = %+v, want the gap kept", entries)
 	}
 }
