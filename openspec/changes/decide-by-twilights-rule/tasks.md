@@ -205,6 +205,16 @@
       survived its first run — nothing asserted the collection kept it — and the
       collection test now does.
 
+      Installed, and the judgement still refused: collections dedupe by
+      sequence, so the decisions collected before the command carried gaps kept
+      none, and collecting again added nothing for them. A collection now
+      writes a decision again when it carries a gap the ledger lacks, and
+      reading the ledger keeps the line that says more. Four more mutations,
+      four killed: no enrichment, every repeat written, the read keeping the
+      first, the read keeping the last — the last two needed a ledger with a
+      gapless line written after a rich one, which is what an older command
+      collecting after a newer one leaves.
+
 ## 4. Gates and evidence
 
 - [x] 4.1 Mutate each cause's definition, the window and the induced count; confirm the named tests fail.
