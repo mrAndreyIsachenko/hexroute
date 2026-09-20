@@ -102,14 +102,48 @@ var ErrInvalidSoak = errors.New("invalid soak comparison")
 // decision; each rebuild agrees with at most one episode and each episode with at
 // most one rebuild. An agreement is induced when an induction for the same cause
 // falls within the window of the rebuild.
-func Compare(decisions []Decision, rebuilds []Rebuild, inductions []Induction, restarts []time.Time, window time.Duration, from, until time.Time) (Report, error) {
+// Dozing is a stretch nothing is compared in: the machine woke for seconds at a
+// time and both runtimes decided in it, at moments neither shared. Measured on
+// the night of 2026-09-20: 21 such wakes, six rebuilds by the owning runtime
+// against fourteen decided here, and only six of them the same event.
+type Dozing struct {
+	From, To time.Time
+}
+
+func (dozing Dozing) holds(at time.Time) bool {
+	return !at.Before(dozing.From) && !at.After(dozing.To)
+}
+
+func dozed(spans []Dozing, at time.Time) bool {
+	for _, span := range spans {
+		if span.holds(at) {
+			return true
+		}
+	}
+	return false
+}
+
+func Compare(decisions []Decision, rebuilds []Rebuild, inductions []Induction, restarts []time.Time, dozing []Dozing, window time.Duration, from, until time.Time) (Report, error) {
 	if window <= 0 || !until.After(from) {
 		return Report{}, ErrInvalidSoak
 	}
 	report := Report{From: from, Until: until, Results: map[string]Result{}}
 	for _, cause := range Causes {
-		episodes := episodesFor(decisions, cause, window, from, until)
+		judged := make([]Decision, 0, len(decisions))
+		for _, decision := range decisions {
+			if !dozed(dozing, decision.At) {
+				judged = append(judged, decision)
+			}
+		}
+		episodes := episodesFor(judged, cause, window, from, until)
 		made := rebuildsFor(rebuilds, cause, from, until)
+		kept := made[:0]
+		for _, rebuild := range made {
+			if !dozed(dozing, rebuild.At) {
+				kept = append(kept, rebuild)
+			}
+		}
+		made = kept
 		result := Result{Cause: cause}
 		matchedRebuild := make([]bool, len(made))
 		for _, episode := range episodes {

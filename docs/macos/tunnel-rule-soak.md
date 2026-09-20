@@ -35,7 +35,14 @@ cycles of the silence ending, or the gap it was decided on covers the silence,
 which is what a night of dark wakes looks like. A silence a cycle ran inside
 counts too: a decision names the cycle before it, so a cycle whose own record
 the sleeping machine swallowed is still visible. Any other is a hole, and the
-judgement refuses it. Collections made
+judgement refuses it.
+
+A stretch the machine dozed through — waking for seconds every quarter of an
+hour, as it does on battery with the lid closed — is not judged at all. Both
+runtimes decide in such a stretch, in wakes the other slept through, and pairing
+those is meaningless. Wake gaps for the soak therefore come from deliberate
+sleeps: close the lid on battery, then open it, and both runtimes name the same
+wake within seconds. Collections made
 before silences were recorded are not evidence either way; collecting once with
 `--from` the soak's start covers them again:
 

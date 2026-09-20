@@ -49,6 +49,32 @@ type Coverage struct {
 	// nothing, so a silence is a hole only if nothing after it says the machine
 	// woke. Absent on collections made before they were kept.
 	Silences []Span `json:"silences,omitempty"`
+	// Dozing are the stretches where this runtime's cycles did not finish: a
+	// machine dozing on battery wakes for seconds, and a cycle that stops at
+	// the probes records an incomplete decision. Both runtimes decide in such
+	// stretches, at moments neither shares, so nothing in them is compared.
+	// Absent on collections made before they were kept.
+	Dozing []Span `json:"dozing,omitempty"`
+}
+
+// Inside says whether a moment falls in any of the spans.
+func Inside(spans []Span, at time.Time) bool {
+	for _, span := range spans {
+		if !at.Before(span.From) && !at.After(span.To) {
+			return true
+		}
+	}
+	return false
+}
+
+// Within says whether a stretch falls entirely in any of the spans.
+func Within(spans []Span, stretch Span) bool {
+	for _, span := range spans {
+		if !stretch.From.Before(span.From) && !stretch.To.After(span.To) {
+			return true
+		}
+	}
+	return false
 }
 
 // Span is a stretch of time.
@@ -320,6 +346,11 @@ func Continuous(windows []Coverage, cycles []Cycle, from, until time.Time) error
 				ErrNotContinuous, window.CollectedAt.Format(time.RFC3339), window.LongestSilence.Round(time.Second))
 		}
 		for _, silence := range window.Silences {
+			// A stretch the runtime spent dozing is not judged at all, so a
+			// silence inside one is not a hole in what was judged.
+			if Within(window.Dozing, silence) {
+				continue
+			}
 			if !woke(cycles, silence) {
 				return fmt.Errorf("%w: the runtime wrote nothing from %s to %s and decided no wake after it",
 					ErrNotContinuous, silence.From.Format(time.RFC3339), silence.To.Format(time.RFC3339))

@@ -14,7 +14,7 @@ func at(minutes int) time.Time { return start.Add(time.Duration(minutes) * time.
 
 func compare(t *testing.T, decisions []Decision, rebuilds []Rebuild, inductions []Induction, days int) Report {
 	t.Helper()
-	report, err := Compare(decisions, rebuilds, inductions, nil, window, start, start.Add(time.Duration(days)*24*time.Hour))
+	report, err := Compare(decisions, rebuilds, inductions, nil, nil, window, start, start.Add(time.Duration(days)*24*time.Hour))
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -176,10 +176,10 @@ func TestEachConditionIsRequired(t *testing.T) {
 }
 
 func TestAnInvalidComparisonIsRefused(t *testing.T) {
-	if _, err := Compare(nil, nil, nil, nil, 0, start, start.Add(time.Hour)); err == nil {
+	if _, err := Compare(nil, nil, nil, nil, nil, 0, start, start.Add(time.Hour)); err == nil {
 		t.Fatal("a zero window was accepted")
 	}
-	if _, err := Compare(nil, nil, nil, nil, window, start, start); err == nil {
+	if _, err := Compare(nil, nil, nil, nil, nil, window, start, start); err == nil {
 		t.Fatal("an empty soak was accepted")
 	}
 }
@@ -190,7 +190,7 @@ func TestAProcessGoneTheOwnersRestartExplainsIsNotADisagreement(t *testing.T) {
 	restart := at(10).Add(-30 * time.Second)
 	report, err := Compare(
 		[]Decision{{At: at(10), Causes: []string{ProcessGone, CarrierChanged}}},
-		[]Rebuild{{At: restart, Cause: CarrierChanged}}, nil, []time.Time{restart},
+		[]Rebuild{{At: restart, Cause: CarrierChanged}}, nil, []time.Time{restart}, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -208,7 +208,7 @@ func TestAProcessGoneTheOwnersRestartExplainsIsNotADisagreement(t *testing.T) {
 func TestAProcessGoneNoRestartExplainsIsADisagreement(t *testing.T) {
 	report, err := Compare(
 		[]Decision{{At: at(10), Causes: []string{ProcessGone}}},
-		nil, nil, []time.Time{at(10).Add(window + time.Second)},
+		nil, nil, []time.Time{at(10).Add(window + time.Second)}, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +223,7 @@ func TestAProcessGoneNoRestartExplainsIsADisagreement(t *testing.T) {
 func TestARestartExplainsOnlyAProcessGone(t *testing.T) {
 	report, err := Compare(
 		[]Decision{{At: at(10), Causes: []string{CarrierChanged}}},
-		nil, nil, []time.Time{at(10)},
+		nil, nil, []time.Time{at(10)}, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -237,12 +237,43 @@ func TestARestartExplainsOnlyAProcessGone(t *testing.T) {
 func TestAnAgreementComesBeforeAnExplanation(t *testing.T) {
 	report, err := Compare(
 		[]Decision{{At: at(10), Causes: []string{ProcessGone}}},
-		[]Rebuild{{At: at(10), Cause: ProcessGone}}, nil, []time.Time{at(10)},
+		[]Rebuild{{At: at(10), Cause: ProcessGone}}, nil, []time.Time{at(10)}, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gone := report.Results[ProcessGone]; gone.Agreements != 1 || len(gone.Explained) != 0 {
 		t.Fatalf("process_gone = %+v", gone)
+	}
+}
+
+// Nothing inside a dozing stretch is compared, in either direction.
+//
+// A machine dozing on battery wakes for seconds at a time and each runtime
+// decides in different wakes: measured on the night of 2026-09-20, six rebuilds
+// by the owning runtime against fourteen decided here, only six the same event.
+func TestNothingInsideADozingStretchIsCompared(t *testing.T) {
+	doze := []Dozing{{From: at(5), To: at(60)}}
+	report, err := Compare(
+		[]Decision{{At: at(10), Causes: []string{WakeGap}}},
+		[]Rebuild{{At: at(30), Cause: WakeGap}}, nil, nil, doze,
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := report.Results[WakeGap]
+	if result.Agreements != 0 || report.Disagreements() != 0 {
+		t.Fatalf("a dozing stretch was judged: %+v, disagreements %d", result, report.Disagreements())
+	}
+	// The same pair outside the stretch is a disagreement in both directions.
+	report, err = Compare(
+		[]Decision{{At: at(100), Causes: []string{WakeGap}}},
+		[]Rebuild{{At: at(130), Cause: WakeGap}}, nil, nil, doze,
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Disagreements() != 2 {
+		t.Fatalf("outside the stretch: %+v", report.Results[WakeGap])
 	}
 }

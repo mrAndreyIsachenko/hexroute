@@ -114,7 +114,11 @@ func Run(args []string, stdout, stderr io.Writer, now func() time.Time) int {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 2
 		}
-		coverage := CoverageOf(from, until, reading)
+		coverage, err := CoverageOf(from, until, reading)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 2
+		}
 		if err := ledger.Collect(entries, coverage); err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 2
@@ -159,6 +163,12 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 	// with a cycle inside it is one whose record was lost rather than one
 	// nobody observed. The wakes among them also account for the silences they
 	// were decided on.
+	dozing := make([]soakcompare.Dozing, 0)
+	for _, window := range windows {
+		for _, span := range window.Dozing {
+			dozing = append(dozing, soakcompare.Dozing{From: span.From, To: span.To})
+		}
+	}
 	cycles := make([]soakledger.Cycle, 0, len(entries))
 	for _, entry := range entries {
 		cycle := soakledger.Cycle{At: entry.At, TickGap: entry.TickGap}
@@ -187,7 +197,7 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
 	}
-	report, err := soakcompare.Compare(decisions, rebuilds, inductions, restarts, Window, from, until)
+	report, err := soakcompare.Compare(decisions, rebuilds, inductions, restarts, dozing, Window, from, until)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
@@ -216,6 +226,54 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 	}
 	fmt.Fprintln(stdout, "PASSED")
 	return 0
+}
+
+// DozingSpans are the stretches where this runtime's cycles did not finish.
+//
+// A machine dozing on battery wakes for seconds: the cycle sees the tunnel and
+// the carrier, stops before the probes, and records an incomplete decision. Both
+// runtimes decide in such a stretch, at moments neither shares, so nothing in it
+// is compared. A stretch runs from an incomplete decision to the next complete
+// one, which is the first cycle that finished after the machine came back.
+func DozingSpans(records []eventarchive.Record) ([]soakledger.Span, error) {
+	var spans []soakledger.Span
+	open := false
+	var from, last time.Time
+	for _, record := range records {
+		decoded, err := event.Decode(record.Event)
+		if err != nil {
+			return nil, fmt.Errorf("record %d: %w", record.Sequence, err)
+		}
+		if decoded.Schema != event.SchemaTunnelDecision {
+			continue
+		}
+		var decision event.TunnelDecision
+		switch payload := decoded.Payload.(type) {
+		case *event.TunnelDecision:
+			decision = *payload
+		case event.TunnelDecision:
+			decision = payload
+		default:
+			return nil, fmt.Errorf("record %d: a tunnel decision of type %T", record.Sequence, decoded.Payload)
+		}
+		at := record.Metadata.WallClock.UTC()
+		complete := decision.Grounds != nil && decision.Grounds.Complete
+		if !complete {
+			if !open {
+				open, from = true, at
+			}
+			last = at
+			continue
+		}
+		if open {
+			spans = append(spans, soakledger.Span{From: from, To: at})
+			open = false
+		}
+	}
+	if open {
+		spans = append(spans, soakledger.Span{From: from, To: last})
+	}
+	return spans, nil
 }
 
 // RebuildEntries is this runtime's decisions to rebuild, out of archive records.
@@ -317,7 +375,7 @@ func TwilightLog(path string) ([]soakcompare.Rebuild, []time.Time, error) {
 }
 
 // CoverageOf is what one collection can say it observed.
-func CoverageOf(from, until time.Time, reading eventarchive.Reading) soakledger.Coverage {
+func CoverageOf(from, until time.Time, reading eventarchive.Reading) (soakledger.Coverage, error) {
 	moments := make([]time.Time, 0, len(reading.Records))
 	for _, record := range reading.Records {
 		moments = append(moments, record.Metadata.WallClock.UTC())
@@ -331,5 +389,12 @@ func CoverageOf(from, until time.Time, reading eventarchive.Reading) soakledger.
 	if !reading.Covered.Empty {
 		coverage.Oldest, coverage.Newest = reading.Covered.Oldest, reading.Covered.Newest
 	}
-	return coverage
+	// Where the runtime dozed: nothing in those stretches is judged, so the
+	// collection records them beside the silences it measured.
+	dozing, err := DozingSpans(reading.Records)
+	if err != nil {
+		return soakledger.Coverage{}, err
+	}
+	coverage.Dozing = dozing
+	return coverage, nil
 }

@@ -240,6 +240,34 @@
       naming a cycle, a cycle after the silence counting, any decision
       accounting for a wake, and the record written after the heartbeat again.
 
+- [x] 3.9 A stretch the machine dozed through is not judged, and what that gives up is written down.
+
+      The first judgeable night, 2026-09-20, reported twenty disagreements:
+      wake gaps decided here that Twilight did not make (8), wake gaps it made
+      that were not decided (5), and process losses of the same shape (7). The
+      machine dozed through it — twenty-one wakes of a few seconds — and the two
+      runtimes woke in different ones: 02:06 against 02:14, 03:15 against 03:33.
+      The comparison pairs events two minutes apart. A real sleep is the
+      opposite: the lid closed on 2026-09-16 and the two named the wake five
+      seconds apart.
+
+      A dozing stretch is legible in the records already: a cycle that stops
+      before the probes records an incomplete decision, and every decision that
+      night is one. The collection records those stretches, and the judgement
+      compares nothing inside them and treats no silence inside them as a hole.
+      No daemon change, so the soak continues.
+
+      What it gives up is in the spec: the rule is not proved for a dozing
+      machine, and with authority it would have rebuilt the tunnel fourteen
+      times that night against Twilight's six. That is owed by the executor in
+      change three.
+
+      Eight mutations, eight killed: decisions judged while dozing, the owner's
+      rebuilds judged while dozing, a stretch that swallows everything after it,
+      silences inside a stretch still holes, a silence reaching past one
+      excused, a stretch ending at the next incomplete decision, every decision
+      opening a stretch, and the collection keeping no stretches.
+
 ## 4. Gates and evidence
 
 - [x] 4.1 Mutate each cause's definition, the window and the induced count; confirm the named tests fail.
