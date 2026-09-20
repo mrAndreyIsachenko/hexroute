@@ -86,15 +86,26 @@ func Silences(from time.Time, moments []time.Time) []Span {
 // cycle that finishes and decides can be several sleeps later — measured
 // 2026-09-20, a silence of 46 minutes whose wake was decided 42 minutes after
 // it ended, on a gap that spanned both.
-func woke(wakes []Wake, silence Span) bool {
-	for _, wake := range wakes {
-		if wake.At.Before(silence.To) {
+func woke(cycles []Cycle, silence Span) bool {
+	for _, cycle := range cycles {
+		// A cycle the runtime ran inside the silence: its record was lost, not
+		// its observation. Measured 2026-09-20, a cycle decided at 04:26:33Z
+		// inside a silence and wrote nothing, because the machine slept again
+		// before the rest of that cycle; the next cycle's gap named it.
+		// A decision with no gap recorded names no cycle before it, and says
+		// nothing about a silence it did not measure.
+		if cycle.TickGap > 0 {
+			if previous := cycle.Previous(); previous.After(silence.From) && previous.Before(silence.To) {
+				return true
+			}
+		}
+		if !cycle.Wake || cycle.At.Before(silence.To) {
 			continue
 		}
-		if wake.At.Sub(silence.To) <= MaxLead {
+		if cycle.At.Sub(silence.To) <= MaxLead {
 			return true
 		}
-		if !wake.At.Add(-wake.TickGap).After(silence.From.Add(MaxLead)) {
+		if !cycle.Previous().After(silence.From.Add(MaxLead)) {
 			return true
 		}
 	}
@@ -125,11 +136,20 @@ type Entry struct {
 	TickGap time.Duration `json:"tick_gap,omitempty"`
 }
 
-// Wake is a wake gap this runtime decided, and the gap it decided it on.
-type Wake struct {
+// Cycle is one decision this runtime recorded: when it was reached, the gap
+// since the cycle before it, and whether it named a wake.
+//
+// The gap is what makes a decision say more than its own moment: it names the
+// cycle before it, whose record may be missing. A machine that sleeps inside
+// the rest of a cycle loses what that cycle had not yet written.
+type Cycle struct {
 	At      time.Time
 	TickGap time.Duration
+	Wake    bool
 }
+
+// Previous is when the cycle before this one ran, as this one measured it.
+func (cycle Cycle) Previous() time.Time { return cycle.At.Add(-cycle.TickGap) }
 
 type induction struct {
 	At    time.Time `json:"at"`
@@ -268,7 +288,7 @@ func (ledger *Ledger) Next() (time.Time, bool, error) {
 // Each collection must start within MaxLead of where it asked to, the first must
 // ask from no later than the soak's start, each must ask from no later than the
 // previous one's newest record, and the last must reach the soak's end.
-func Continuous(windows []Coverage, wakes []Wake, from, until time.Time) error {
+func Continuous(windows []Coverage, cycles []Cycle, from, until time.Time) error {
 	if len(windows) == 0 {
 		return fmt.Errorf("%w: nothing was collected", ErrNotContinuous)
 	}
@@ -300,13 +320,13 @@ func Continuous(windows []Coverage, wakes []Wake, from, until time.Time) error {
 				ErrNotContinuous, window.CollectedAt.Format(time.RFC3339), window.LongestSilence.Round(time.Second))
 		}
 		for _, silence := range window.Silences {
-			if !woke(wakes, silence) {
+			if !woke(cycles, silence) {
 				return fmt.Errorf("%w: the runtime wrote nothing from %s to %s and decided no wake after it",
 					ErrNotContinuous, silence.From.Format(time.RFC3339), silence.To.Format(time.RFC3339))
 			}
 		}
 		if lead := window.Oldest.Sub(window.Requested); lead > MaxLead &&
-			!woke(wakes, Span{From: window.Requested, To: window.Oldest}) {
+			!woke(cycles, Span{From: window.Requested, To: window.Oldest}) {
 			return fmt.Errorf("%w: from %s the archive held nothing for %s",
 				ErrNotContinuous, window.Requested.Format(time.RFC3339), lead.Round(time.Second))
 		}

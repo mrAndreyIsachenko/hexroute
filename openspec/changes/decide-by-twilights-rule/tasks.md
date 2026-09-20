@@ -215,6 +215,31 @@
       gapless line written after a rich one, which is what an older command
       collecting after a newer one leaves.
 
+- [x] 3.8 The decision is written before the rest of its cycle, and a silence a cycle ran inside is a lost record rather than an unobserved stretch.
+
+      The night of 2026-09-20 again: a silence from 04:16:26Z to 04:32:53Z that
+      no wake covered. The decision at 05:16:52Z named its previous cycle as
+      04:26:33Z — inside that silence — and that cycle left no record at all.
+      The daemon wrote the decision last, after the read model and the
+      heartbeat, and the machine slept inside that tail: at 04:32:53Z two
+      baselines were written and nothing else.
+
+      The decision is written first now, so a cycle that reaches it leaves the
+      record the comparison needs. Tested by a heartbeat that refuses: the loop
+      ends there, and the decision is in the archive, which it was not before.
+
+      The judgement reads the chain of cycles: a decision names the cycle before
+      it by its gap, and a silence with a cycle inside it counts as observed. A
+      decision that recorded no gap names no cycle. This is the one place where
+      the soak accepts less than it would like: a decision whose record was lost
+      cannot be compared against Twilight, and a disagreement inside such a
+      stretch would go unseen. Recorded here because it is a weakening, not a
+      fix.
+
+      Five mutations, five killed: no cycle-inside rule, a gapless decision
+      naming a cycle, a cycle after the silence counting, any decision
+      accounting for a wake, and the record written after the heartbeat again.
+
 ## 4. Gates and evidence
 
 - [x] 4.1 Mutate each cause's definition, the window and the induced count; confirm the named tests fail.

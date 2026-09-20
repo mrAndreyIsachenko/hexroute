@@ -194,7 +194,7 @@ func TestACollectionRecordsItsLongestSilence(t *testing.T) {
 	if len(coverage.Silences) != 1 || !coverage.Silences[0].From.Equal(t0.Add(2*time.Minute)) || !coverage.Silences[0].To.Equal(t0.Add(4*time.Hour)) {
 		t.Fatalf("Silences = %v, want one from 2m to 4h", coverage.Silences)
 	}
-	wake := []soakledger.Wake{{At: t0.Add(4*time.Hour + 30*time.Second)}}
+	wake := []soakledger.Cycle{{At: t0.Add(4*time.Hour + 30*time.Second), Wake: true}}
 	if err := soakledger.Continuous([]soakledger.Coverage{coverage}, wake, t0, t0.Add(4*time.Hour+2*time.Minute)); err != nil {
 		t.Fatalf("four hours ended by a wake were refused: %v", err)
 	}

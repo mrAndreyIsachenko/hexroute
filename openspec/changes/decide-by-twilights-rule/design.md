@@ -96,6 +96,15 @@ minutes whose wake was decided 42 minutes after it ended. A decision carries the
 gap it was decided on, so the ledger keeps it, and a silence inside that gap is
 one the runtime accounted for.
 
+Then a silence appeared that no wake covered, because the cycle inside it wrote
+nothing at all: it decided at 04:26:33Z and the machine slept again before the
+rest of that cycle — the read model, the heartbeat, the record. Two answers, both
+taken. The decision is written first now, so a cycle that reaches it leaves the
+one record the comparison needs even if it never reaches the rest. And the
+judgement reads the chain: a decision names the cycle before it by its gap, so a
+cycle whose record was lost is still visible, and a silence it ran inside is a
+lost record rather than an unobserved stretch.
+
 The payload path waits on a network, so a suspended cycle does not probe it and
 carries the last answer as a ground. It decides nothing either way.
 
