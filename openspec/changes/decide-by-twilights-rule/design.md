@@ -108,6 +108,30 @@ lost record rather than an unobserved stretch.
 The payload path waits on a network, so a suspended cycle does not probe it and
 carries the last answer as a ground. It decides nothing either way.
 
+## A dozing machine is not judged
+
+With the judgement finally able to read the nights, it reported twenty
+disagreements in one: eight wakes decided here that Twilight did not make, five
+it made that were not decided, and seven process losses of the same shape. None
+of them is a fault in the rule. A machine dozing on battery wakes for seconds
+every quarter of an hour, and the two runtimes wake in different ones: 02:06
+against 02:14, 03:15 against 03:33. The comparison pairs events two minutes
+apart, and these are twenty apart.
+
+A real sleep is the opposite: the lid closed on 2026-09-16, and the two runtimes
+named the wake five seconds apart.
+
+So a stretch where this runtime's cycles did not finish is not judged at all.
+That stretch is already legible in the records: a cycle that stops before the
+probes records an incomplete decision, and every decision through that night is
+one. Nothing in such a stretch is compared, in either direction, and a silence
+inside it is not a hole.
+
+What this gives up is stated in the spec rather than hidden. The rule is not
+proved for a dozing machine, and with authority it would have rebuilt the tunnel
+fourteen times that night where Twilight rebuilt six. That is the executor's to
+answer, in change three, and it is written down as owed rather than solved here.
+
 ## The carrier is three paths
 
 The signature is which interface carries the upstream probe address and each

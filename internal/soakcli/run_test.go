@@ -177,14 +177,21 @@ func TestALongSilenceIsRecordedAsAHole(t *testing.T) {
 
 // The longest silence inside a collection is what it records, wherever it falls.
 func TestACollectionRecordsItsLongestSilence(t *testing.T) {
+	entries := 3
+	routes := uint16(2)
 	at := func(sequence uint64, offset time.Duration) eventarchive.Record {
-		return eventarchive.Record{Sequence: sequence, Metadata: metadata.Metadata{WallClock: t0.Add(offset)}}
+		return archived(t, sequence, t0.Add(offset), event.TunnelDecision{Action: "none",
+			Grounds: &event.TunnelGrounds{Complete: true, ProcessObserved: true, ProcessRunning: true,
+				CarrierEntries: &entries, RoutesPlanned: &routes}})
 	}
 	reading := eventarchive.Reading{Records: []eventarchive.Record{
 		at(1, time.Minute), at(2, 2*time.Minute), at(3, 4*time.Hour), at(4, 4*time.Hour+time.Minute),
 	}}
 	reading.Covered = eventarchive.Window{Records: 4, Oldest: t0.Add(time.Minute), Newest: t0.Add(4*time.Hour + time.Minute)}
-	coverage := CoverageOf(t0, t0.Add(4*time.Hour+2*time.Minute), reading)
+	coverage, err := CoverageOf(t0, t0.Add(4*time.Hour+2*time.Minute), reading)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if coverage.LongestSilence == nil || *coverage.LongestSilence != 4*time.Hour-2*time.Minute {
 		t.Fatalf("LongestSilence = %v, want 3h58m", coverage.LongestSilence)
 	}
@@ -341,3 +348,67 @@ func TestJudgeCountsASilenceCoveredByALaterWake(t *testing.T) {
 }
 
 func tickGap(ms int64) *int64 { return &ms }
+
+// A dozing stretch runs from an incomplete decision to the next complete one.
+func TestDozingSpansRunFromIncompleteToComplete(t *testing.T) {
+	complete := func(at time.Time, sequence uint64) eventarchive.Record {
+		entries := 3
+		routes := uint16(2)
+		return archived(t, sequence, at, event.TunnelDecision{Action: "none",
+			Grounds: &event.TunnelGrounds{Complete: true, ProcessObserved: true, ProcessRunning: true,
+				CarrierEntries: &entries, RoutesPlanned: &routes}})
+	}
+	incomplete := func(at time.Time, sequence uint64) eventarchive.Record {
+		return archived(t, sequence, at, event.TunnelDecision{Action: "rebuild_tunnel", Causes: []string{"wake_gap"},
+			Grounds: &event.TunnelGrounds{ProcessObserved: true, ProcessRunning: true, TickGapMS: tickGap(600000)}})
+	}
+	spans, err := DozingSpans([]eventarchive.Record{
+		complete(t0, 1),
+		incomplete(t0.Add(10*time.Minute), 2),
+		incomplete(t0.Add(25*time.Minute), 3),
+		complete(t0.Add(40*time.Minute), 4),
+		complete(t0.Add(41*time.Minute), 5),
+	})
+	if err != nil {
+		t.Fatalf("DozingSpans: %v", err)
+	}
+	if len(spans) != 1 || !spans[0].From.Equal(t0.Add(10*time.Minute)) || !spans[0].To.Equal(t0.Add(40*time.Minute)) {
+		t.Fatalf("spans = %+v, want one from 10m to 40m", spans)
+	}
+	// A stretch still open at the end of the reading ends at its last incomplete
+	// decision: nothing yet says the machine came back.
+	spans, err = DozingSpans([]eventarchive.Record{
+		complete(t0, 1),
+		incomplete(t0.Add(10*time.Minute), 2),
+	})
+	if err != nil {
+		t.Fatalf("DozingSpans: %v", err)
+	}
+	if len(spans) != 1 || !spans[0].To.Equal(t0.Add(10*time.Minute)) {
+		t.Fatalf("an open stretch gave %+v", spans)
+	}
+}
+
+// A collection records where the runtime dozed, beside the silences it measured.
+func TestACollectionRecordsWhereTheRuntimeDozed(t *testing.T) {
+	entries := 3
+	routes := uint16(2)
+	complete := archived(t, 1, t0, event.TunnelDecision{Action: "none",
+		Grounds: &event.TunnelGrounds{Complete: true, ProcessObserved: true, ProcessRunning: true,
+			CarrierEntries: &entries, RoutesPlanned: &routes}})
+	dozing := archived(t, 2, t0.Add(10*time.Minute), event.TunnelDecision{
+		Action: "rebuild_tunnel", Causes: []string{"wake_gap"},
+		Grounds: &event.TunnelGrounds{ProcessObserved: true, ProcessRunning: true, TickGapMS: tickGap(600000)}})
+	back := archived(t, 3, t0.Add(40*time.Minute), event.TunnelDecision{Action: "none",
+		Grounds: &event.TunnelGrounds{Complete: true, ProcessObserved: true, ProcessRunning: true,
+			CarrierEntries: &entries, RoutesPlanned: &routes}})
+	reading := eventarchive.Reading{Records: []eventarchive.Record{complete, dozing, back}}
+	reading.Covered = eventarchive.Window{Records: 3, Oldest: t0, Newest: t0.Add(40 * time.Minute)}
+	coverage, err := CoverageOf(t0, t0.Add(41*time.Minute), reading)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(coverage.Dozing) != 1 || !coverage.Dozing[0].From.Equal(t0.Add(10*time.Minute)) {
+		t.Fatalf("Dozing = %+v, want one stretch from 10m", coverage.Dozing)
+	}
+}

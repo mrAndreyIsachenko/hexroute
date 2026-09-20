@@ -277,6 +277,18 @@ A decision record SHALL carry the tick gap its wake cause was compared on, so
 that a disagreement about a wake can be read from the record that made it.
 Records written before it carried one SHALL remain readable.
 
+A stretch in which this runtime's cycles did not finish SHALL NOT be judged. A
+machine dozing on battery wakes for seconds at a time, and each runtime decides
+in wakes the other slept through: measured on the night of 2026-09-20, twenty-one
+such wakes, six rebuilds by the owning runtime against fourteen decided here, and
+only six of them the same event. Nothing in such a stretch is compared, in either
+direction, and a silence inside one is not a hole.
+
+What that gives up SHALL be stated rather than hidden: the rule is not proved for
+a dozing machine, and with authority it would rebuild the tunnel more often than
+the runtime it reproduces. The executor that acts on this rule has to answer for
+that separately.
+
 The soak SHALL pass only after at least seven days with no disagreement, at
 least three natural wake-gap agreements, two carrier agreements and one induced
 process loss. A change to the rule SHALL restart the seven days.
@@ -309,6 +321,11 @@ again has no previous cycle and decides no wake, so its silence stays a hole.
 
 - **WHEN** no record was written for longer than three cycles and this runtime decided a wake gap within three cycles of the silence ending
 - **THEN** the silence counts as observed, wherever it falls
+
+#### Scenario: The machine dozed
+
+- **WHEN** this runtime's cycles did not finish for a stretch, and both runtimes decided inside it
+- **THEN** nothing in that stretch is compared, and a silence inside it is not a hole
 
 #### Scenario: A cycle ran inside the silence
 

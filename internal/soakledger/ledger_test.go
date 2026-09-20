@@ -376,3 +376,22 @@ func TestACycleInsideASilenceAccountsForIt(t *testing.T) {
 		t.Fatal("a decision that named no wake excused a silence it ran after")
 	}
 }
+
+// A silence inside a dozing stretch is not a hole in what was judged.
+func TestASilenceInsideADozingStretchIsNotAHole(t *testing.T) {
+	week := 7 * 24 * time.Hour
+	from, to := t0.Add(time.Hour), t0.Add(time.Hour+30*time.Minute)
+	dozing := window(0, time.Minute, week)
+	dozing.LongestSilence = silence(to.Sub(from))
+	dozing.Silences = []Span{{From: from, To: to}}
+	dozing.Dozing = []Span{{From: t0.Add(30 * time.Minute), To: t0.Add(3 * time.Hour)}}
+	if err := Continuous([]Coverage{dozing}, nil, t0, t0.Add(week)); err != nil {
+		t.Fatalf("a silence inside a dozing stretch was refused: %v", err)
+	}
+	// A silence reaching past the stretch is still a hole.
+	reaching := dozing
+	reaching.Silences = []Span{{From: from, To: t0.Add(4 * time.Hour)}}
+	if err := Continuous([]Coverage{reaching}, nil, t0, t0.Add(week)); err == nil {
+		t.Fatal("a silence reaching past the dozing stretch was accepted")
+	}
+}

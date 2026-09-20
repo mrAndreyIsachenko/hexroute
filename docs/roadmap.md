@@ -111,6 +111,13 @@ The decision is written first in its cycle now, and the judgement reads the
 chain of cycles a decision's gap names. The rule is untouched, so those seven
 days continue.
 
+The first night it could read reported twenty disagreements, and none was the
+rule's: a machine dozing on battery wakes for seconds every quarter of an hour,
+and the two runtimes wake in different ones. A stretch this runtime's cycles did
+not finish is not judged now, which leaves the rule unproved for a dozing
+machine — with authority it would have rebuilt fourteen times that night against
+Twilight's six. That is owed by the executor in item 9's third change.
+
 `keep-overflow-from-crowding-the-archive` closed on 2026-09-18. The archive wrote
 an overflow record for about every append that evicted, and such a record is
 critical and never evicted for size: on 2026-09-14 they were 15,076 of its 65,536
