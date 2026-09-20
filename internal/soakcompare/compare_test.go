@@ -277,3 +277,42 @@ func TestNothingInsideADozingStretchIsCompared(t *testing.T) {
 		t.Fatalf("outside the stretch: %+v", report.Results[WakeGap])
 	}
 }
+
+// An event whose gap began while the machine dozed is about that doze.
+//
+// Measured 2026-09-20: the owning runtime named a wake at 10:21:47Z on a gap of
+// 1,625 seconds that began at 09:54:42Z, inside a stretch this runtime's cycles
+// never finished. This runtime, whose own cycles had resumed by then, named no
+// wake, and the pair read as a disagreement about a machine that was awake.
+func TestAnEventWhoseGapBeganWhileDozingIsNotJudged(t *testing.T) {
+	doze := []Dozing{{From: at(5), To: at(60)}}
+	report, err := Compare(nil,
+		[]Rebuild{{At: at(70), Cause: WakeGap, Previous: at(40)}}, nil, nil, doze,
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Disagreements() != 0 {
+		t.Fatalf("a rebuild whose gap began while dozing was judged: %+v", report.Results[WakeGap])
+	}
+	// The same rebuild with its previous activity after the doze is judged.
+	report, err = Compare(nil,
+		[]Rebuild{{At: at(70), Cause: WakeGap, Previous: at(65)}}, nil, nil, doze,
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Disagreements() != 1 {
+		t.Fatalf("a rebuild after the doze was not judged: %+v", report.Results[WakeGap])
+	}
+	// And the same for a decision of this runtime's own.
+	report, err = Compare(
+		[]Decision{{At: at(70), Causes: []string{WakeGap}, Previous: at(40)}},
+		nil, nil, nil, doze, window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Disagreements() != 0 {
+		t.Fatalf("a decision whose gap began while dozing was judged: %+v", report.Results[WakeGap])
+	}
+}

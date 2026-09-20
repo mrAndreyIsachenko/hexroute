@@ -185,7 +185,11 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 	}
 	decisions := make([]soakcompare.Decision, 0, len(entries))
 	for _, entry := range entries {
-		decisions = append(decisions, soakcompare.Decision{At: entry.At, Causes: entry.Causes})
+		decision := soakcompare.Decision{At: entry.At, Causes: entry.Causes}
+		if entry.TickGap > 0 {
+			decision.Previous = entry.At.Add(-entry.TickGap)
+		}
+		decisions = append(decisions, decision)
 	}
 	rebuilds, restarts, err := TwilightLog(twilightPath)
 	if err != nil {
@@ -329,6 +333,9 @@ func TwilightLog(path string) ([]soakcompare.Rebuild, []time.Time, error) {
 	defer file.Close()
 	var rebuilds []soakcompare.Rebuild
 	var restarts []time.Time
+	// When that runtime last wrote anything, which is the closest its log comes
+	// to saying when it last ran.
+	var wrote time.Time
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	lines := 0
@@ -344,23 +351,26 @@ func TwilightLog(path string) ([]soakcompare.Rebuild, []time.Time, error) {
 		if err := json.Unmarshal(scanner.Bytes(), &transition); err != nil {
 			return nil, nil, fmt.Errorf("%s line %d: %w", path, lines, err)
 		}
+		// Every line says the runtime was there, whatever it says besides, so
+		// the time is taken from all of them: what is wanted is when it last
+		// ran, not when it last did something judged.
+		at, err := time.Parse(time.RFC3339, transition.Timestamp)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s line %d: %w", path, lines, err)
+		}
+		previous := wrote
+		wrote = at.UTC()
 		if transition.Event != "" || transition.From == "" {
 			continue
 		}
 		cause, judged := twilightReasons[transition.Reason]
 		restart := transition.To == "STARTING" || transition.To == "SINGBOX_EXITED"
-		if !judged && !restart {
-			continue
-		}
-		at, err := time.Parse(time.RFC3339, transition.Timestamp)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%s line %d: %w", path, lines, err)
-		}
 		if restart {
 			restarts = append(restarts, at.UTC())
 		}
 		if judged {
-			rebuilds = append(rebuilds, soakcompare.Rebuild{At: at.UTC(), Cause: cause})
+			rebuilds = append(rebuilds, soakcompare.Rebuild{
+				At: at.UTC(), Cause: cause, Previous: previous})
 		}
 	}
 	if err := scanner.Err(); err != nil {

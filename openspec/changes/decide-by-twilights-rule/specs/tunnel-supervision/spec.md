@@ -284,6 +284,14 @@ such wakes, six rebuilds by the owning runtime against fourteen decided here, an
 only six of them the same event. Nothing in such a stretch is compared, in either
 direction, and a silence inside one is not a hole.
 
+An event whose gap began in such a stretch SHALL NOT be judged either, wherever
+it was finally reached. The runtimes come back at different moments, and the one
+that comes back later names a gap that accrued while both were dozing: measured
+2026-09-20, the owning runtime named a wake at 10:21:47Z on a gap of 1,625
+seconds beginning at 09:54:42Z, while this runtime, whose cycles had resumed,
+named none. For this runtime the gap is the cycle its decision names; for the
+owning runtime it is the last time it wrote anything.
+
 What that gives up SHALL be stated rather than hidden: the rule is not proved for
 a dozing machine, and with authority it would rebuild the tunnel more often than
 the runtime it reproduces. The executor that acts on this rule has to answer for
@@ -321,6 +329,11 @@ again has no previous cycle and decides no wake, so its silence stays a hole.
 
 - **WHEN** no record was written for longer than three cycles and this runtime decided a wake gap within three cycles of the silence ending
 - **THEN** the silence counts as observed, wherever it falls
+
+#### Scenario: A gap that began while dozing
+
+- **WHEN** either runtime names a gap that began inside a stretch the machine dozed through, and reaches its decision after that stretch
+- **THEN** that event is not judged
 
 #### Scenario: The machine dozed
 

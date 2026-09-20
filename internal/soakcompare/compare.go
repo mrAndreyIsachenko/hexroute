@@ -28,12 +28,22 @@ var Causes = []string{ProcessGone, WakeGap, CarrierChanged}
 type Decision struct {
 	At     time.Time
 	Causes []string
+	// Previous is when the cycle before this one ran. A decision whose gap
+	// began while the machine dozed is a decision about that doze, wherever it
+	// was finally reached.
+	Previous time.Time
 }
 
 // Rebuild is one rebuild the owning runtime made, for one cause.
 type Rebuild struct {
 	At    time.Time
 	Cause string
+	// Previous is when that runtime last wrote anything before this rebuild —
+	// the closest thing its log holds to when it last ran. A rebuild whose gap
+	// began while the machine dozed is about that doze: measured 2026-09-20, a
+	// wake it named at 10:21:47Z on a gap of 1,625 seconds that began at
+	// 09:54:42Z, inside a stretch this runtime's cycles never finished.
+	Previous time.Time
 }
 
 // Induction is the operator's own record that they caused an event.
@@ -115,6 +125,9 @@ func (dozing Dozing) holds(at time.Time) bool {
 }
 
 func dozed(spans []Dozing, at time.Time) bool {
+	if at.IsZero() {
+		return false
+	}
 	for _, span := range spans {
 		if span.holds(at) {
 			return true
@@ -131,7 +144,7 @@ func Compare(decisions []Decision, rebuilds []Rebuild, inductions []Induction, r
 	for _, cause := range Causes {
 		judged := make([]Decision, 0, len(decisions))
 		for _, decision := range decisions {
-			if !dozed(dozing, decision.At) {
+			if !dozed(dozing, decision.At) && !dozed(dozing, decision.Previous) {
 				judged = append(judged, decision)
 			}
 		}
@@ -139,7 +152,7 @@ func Compare(decisions []Decision, rebuilds []Rebuild, inductions []Induction, r
 		made := rebuildsFor(rebuilds, cause, from, until)
 		kept := made[:0]
 		for _, rebuild := range made {
-			if !dozed(dozing, rebuild.At) {
+			if !dozed(dozing, rebuild.At) && !dozed(dozing, rebuild.Previous) {
 				kept = append(kept, rebuild)
 			}
 		}
