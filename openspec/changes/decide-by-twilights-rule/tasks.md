@@ -393,6 +393,13 @@
       induced agreement with no disagreement — the same induction that
       disagreed under the old rule four hours earlier.
 
+      Judged clean at 67 hours, 2026-09-21 09:01Z: no disagreement in any
+      cause, after three defects of the judgement itself were found and fixed
+      against these same records — a wake decided long after the silence it
+      covered, a decision whose record the sleeping machine swallowed, and the
+      dozing stretches neither runtime shares. What remains to earn is three
+      natural wake gaps, two carrier agreements and one induced process loss.
+
       That soak is void from 2026-09-18 09:44Z, when the night's dark wakes
       showed the rule deciding too late and naming losses nobody looked for —
       see 2.6. Started again 2026-09-18 13:47:52Z, the daemon installed at
