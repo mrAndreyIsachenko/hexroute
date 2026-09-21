@@ -37,7 +37,7 @@ func TestARecordedDecisionCarriesGroundsAndNoDestinations(t *testing.T) {
 			RoutesDrifted:  true,
 		},
 	}
-	record := tunnelDecisionRecord(plan, 4, nil, 7)
+	record := tunnelDecisionRecord(plan, 4, false, nil, 7)
 
 	if record.Grounds == nil {
 		t.Fatal("the decision was recorded without its grounds")
@@ -84,7 +84,7 @@ func TestAnIncompleteCycleRecordsNoCarrierOrRoutes(t *testing.T) {
 		Action:  "rebuild_tunnel",
 		Causes:  []tunnelplan.Cause{"process_gone"},
 		Grounds: tunnelplan.Grounds{Complete: false, ProcessRunning: false},
-	}, 0, nil, 7)
+	}, 0, false, nil, 7)
 	if record.Grounds.CarrierEntries != nil {
 		t.Fatalf("an incomplete cycle reported %d carrier entries",
 			*record.Grounds.CarrierEntries)

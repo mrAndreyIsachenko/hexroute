@@ -461,3 +461,53 @@ func TestJudgeCarriesTheCycleADecisionNames(t *testing.T) {
 		t.Fatalf("a decision whose gap began while dozing was judged: %q %q", stdout.String(), stderr.String())
 	}
 }
+
+// A cycle that did not finish is not a dozing machine.
+//
+// A tunnel that went down leaves a cycle unfinished as surely as a doze does:
+// on 2026-09-21 an induced process loss left one, and the judgement excluded
+// the very event it was there to compare. The machine says which it was.
+func TestAnUnfinishedCycleIsNotDozingWhenTheMachineSaysSo(t *testing.T) {
+	entries := 3
+	routes := uint16(2)
+	awake := false
+	dozing := true
+	complete := func(at time.Time, sequence uint64) eventarchive.Record {
+		return archived(t, sequence, at, event.TunnelDecision{Action: "none",
+			Grounds: &event.TunnelGrounds{Complete: true, ProcessObserved: true, ProcessRunning: true,
+				CarrierEntries: &entries, RoutesPlanned: &routes, Suspended: &awake}})
+	}
+	// The tunnel went down: the cycle did not finish, and the machine was awake.
+	lost := archived(t, 2, t0.Add(10*time.Minute), event.TunnelDecision{
+		Action: "rebuild_tunnel", Causes: []string{"process_gone"},
+		Grounds: &event.TunnelGrounds{ProcessObserved: true, Suspended: &awake, TickGapMS: tickGap(60000)}})
+	spans, err := DozingSpans([]eventarchive.Record{complete(t0, 1), lost, complete(t0.Add(11*time.Minute), 3)})
+	if err != nil {
+		t.Fatalf("DozingSpans: %v", err)
+	}
+	if len(spans) != 0 {
+		t.Fatalf("a lost tunnel was read as a dozing machine: %+v", spans)
+	}
+	// The same shape with the machine dozing is a stretch.
+	dozed := archived(t, 2, t0.Add(10*time.Minute), event.TunnelDecision{
+		Action: "rebuild_tunnel", Causes: []string{"wake_gap"},
+		Grounds: &event.TunnelGrounds{ProcessObserved: true, Suspended: &dozing, TickGapMS: tickGap(900000)}})
+	spans, err = DozingSpans([]eventarchive.Record{complete(t0, 1), dozed, complete(t0.Add(11*time.Minute), 3)})
+	if err != nil {
+		t.Fatalf("DozingSpans: %v", err)
+	}
+	if len(spans) != 1 {
+		t.Fatalf("a dozing machine gave %+v", spans)
+	}
+	// A record written before the machine said either way is read as before.
+	older := archived(t, 2, t0.Add(10*time.Minute), event.TunnelDecision{
+		Action: "rebuild_tunnel", Causes: []string{"wake_gap"},
+		Grounds: &event.TunnelGrounds{ProcessObserved: true, TickGapMS: tickGap(900000)}})
+	spans, err = DozingSpans([]eventarchive.Record{complete(t0, 1), older, complete(t0.Add(11*time.Minute), 3)})
+	if err != nil {
+		t.Fatalf("DozingSpans: %v", err)
+	}
+	if len(spans) != 1 {
+		t.Fatalf("an older record gave %+v", spans)
+	}
+}

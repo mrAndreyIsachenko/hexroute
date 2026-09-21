@@ -277,6 +277,14 @@ A decision record SHALL carry the tick gap its wake cause was compared on, so
 that a disagreement about a wake can be read from the record that made it.
 Records written before it carried one SHALL remain readable.
 
+A stretch in which the machine was dozing SHALL NOT be judged, and the record
+SHALL say whether it was: a dark wake or a closed lid is what the cycle saw, and
+the record carries it. An unfinished cycle SHALL NOT be read as that answer,
+because a tunnel that goes down leaves one too — measured 2026-09-21, an induced
+process loss left the cycle unfinished and the judgement dropped the very event
+it was there to compare. Records written before the machine said either way SHALL
+be read by the older reading and nothing else.
+
 A stretch in which this runtime's cycles did not finish SHALL NOT be judged. A
 machine dozing on battery wakes for seconds at a time, and each runtime decides
 in wakes the other slept through: measured on the night of 2026-09-20, twenty-one
@@ -334,6 +342,11 @@ again has no previous cycle and decides no wake, so its silence stays a hole.
 
 - **WHEN** either runtime names a gap that began inside a stretch the machine dozed through, and reaches its decision after that stretch
 - **THEN** that event is not judged
+
+#### Scenario: A cycle that did not finish while the machine was awake
+
+- **WHEN** the tunnel goes down and the cycle stops before it finishes, with the machine awake
+- **THEN** the stretch is judged, and the decision is compared like any other
 
 #### Scenario: The machine dozed
 

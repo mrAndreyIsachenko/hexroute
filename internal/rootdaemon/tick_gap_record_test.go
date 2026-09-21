@@ -21,7 +21,7 @@ func TestTheRecordCarriesTheTickGap(t *testing.T) {
 			Slept: 130 * time.Second, TickGap: 190 * time.Second,
 		},
 	}
-	record := tunnelDecisionRecord(plan, 0, nil, 7)
+	record := tunnelDecisionRecord(plan, 0, false, nil, 7)
 	if record.Grounds == nil || record.Grounds.TickGapMS == nil {
 		t.Fatal("the record carries no tick gap")
 	}
@@ -40,7 +40,7 @@ func TestTheRecordCarriesAReplacedProcess(t *testing.T) {
 			ProcessReplaced: true, TickGap: time.Minute,
 		},
 	}
-	record := tunnelDecisionRecord(plan, 0, nil, 7)
+	record := tunnelDecisionRecord(plan, 0, false, nil, 7)
 	if record.Grounds == nil || !record.Grounds.ProcessReplaced {
 		t.Fatalf("the record does not say the process was replaced: %+v", record.Grounds)
 	}
@@ -48,5 +48,28 @@ func TestTheRecordCarriesAReplacedProcess(t *testing.T) {
 	// that saw no tunnel from one that never looked.
 	if !record.Grounds.ProcessObserved {
 		t.Fatalf("the record does not say the process was observed: %+v", record.Grounds)
+	}
+}
+
+// The record says whether the machine was dozing when the cycle ran.
+//
+// An unfinished cycle is not the same claim: a tunnel that went down leaves one
+// too, and on 2026-09-21 an induced process loss was excluded from the
+// comparison as if the machine had been asleep.
+func TestTheRecordSaysWhetherTheMachineWasDozing(t *testing.T) {
+	plan := tunnelplan.Plan{
+		Action: tunnelplan.ActionRebuildTunnel,
+		Causes: []tunnelplan.Cause{tunnelplan.CauseProcessGone},
+		Grounds: tunnelplan.Grounds{
+			ProcessObserved: true, TickGap: time.Minute,
+		},
+	}
+	awake := tunnelDecisionRecord(plan, 0, false, nil, 7)
+	if awake.Grounds == nil || awake.Grounds.Suspended == nil || *awake.Grounds.Suspended {
+		t.Fatalf("an awake cycle recorded %+v", awake.Grounds)
+	}
+	dozing := tunnelDecisionRecord(plan, 0, true, nil, 7)
+	if dozing.Grounds == nil || dozing.Grounds.Suspended == nil || !*dozing.Grounds.Suspended {
+		t.Fatalf("a dozing cycle recorded %+v", dozing.Grounds)
 	}
 }

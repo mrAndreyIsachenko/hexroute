@@ -293,7 +293,13 @@ type TunnelGrounds struct {
 	// records written before it was carried, where a cycle that could not look
 	// reads the same as one that saw no tunnel.
 	ProcessObserved bool `json:"process_observed,omitempty"`
-	ProcessRunning  bool `json:"process_running"`
+	// Suspended says the machine was in a dark wake or had its lid closed when
+	// the cycle ran. It is a pointer because absent and false are different
+	// claims: records written before it was carried say nothing, and a reader
+	// then has only "the cycle did not finish" to go on — which a tunnel that
+	// went down makes true as surely as a dozing machine does.
+	Suspended      *bool `json:"suspended,omitempty"`
+	ProcessRunning bool  `json:"process_running"`
 	// ProcessReplaced says the tunnel process the previous cycle saw had been
 	// replaced by another: a loss its owner repaired inside one cycle. Records
 	// written before it was carried have none, and are read as not replaced.

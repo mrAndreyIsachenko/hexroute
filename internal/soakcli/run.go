@@ -261,8 +261,15 @@ func DozingSpans(records []eventarchive.Record) ([]soakledger.Span, error) {
 			return nil, fmt.Errorf("record %d: a tunnel decision of type %T", record.Sequence, decoded.Payload)
 		}
 		at := record.Metadata.WallClock.UTC()
-		complete := decision.Grounds != nil && decision.Grounds.Complete
-		if !complete {
+		// The machine says whether it was dozing. Records written before it
+		// said so have only an unfinished cycle to go on, which is what a
+		// tunnel going down leaves as well — so the older reading is kept for
+		// them and nothing else.
+		dozing := decision.Grounds != nil && !decision.Grounds.Complete
+		if decision.Grounds != nil && decision.Grounds.Suspended != nil {
+			dozing = *decision.Grounds.Suspended
+		}
+		if dozing {
 			if !open {
 				open, from = true, at
 			}
