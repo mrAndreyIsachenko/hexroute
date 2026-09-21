@@ -84,7 +84,7 @@ func TestADecisionToDoNothingAsksNoPermission(t *testing.T) {
 // "invalid request" back — which reads in the record as policy refusing rather
 // than as policy being absent.
 func TestNoPolicyControlRecordsNoAnswer(t *testing.T) {
-	record := tunnelDecisionRecord(planFor(tunnelplan.ActionRebuildTunnel), 1, nil, 7)
+	record := tunnelDecisionRecord(planFor(tunnelplan.ActionRebuildTunnel), 1, false, nil, 7)
 	if record.Authorization != nil {
 		t.Fatal("a record carried an authorization nobody answered")
 	}
@@ -111,7 +111,7 @@ func recordFor(
 	authority *answeringAuthority,
 ) (event.TunnelDecision, int) {
 	t.Helper()
-	return tunnelDecisionRecord(planFor(action), 1, authority, 7), authority.asked
+	return tunnelDecisionRecord(planFor(action), 1, false, authority, 7), authority.asked
 }
 
 // The question is one the evaluator will actually consider.
@@ -124,7 +124,7 @@ func TestTheQuestionCarriesAGenerationAndADigest(t *testing.T) {
 	authority := &answeringAuthority{decision: policy.ActionAuthorizationDecision{
 		Reason: policy.ActionSelectorMismatch,
 	}}
-	tunnelDecisionRecord(planFor(tunnelplan.ActionRebuildTunnel), 1, authority, 7)
+	tunnelDecisionRecord(planFor(tunnelplan.ActionRebuildTunnel), 1, false, authority, 7)
 	if authority.generation != 7 {
 		t.Fatalf("asked under control generation %d, want 7", authority.generation)
 	}
@@ -142,7 +142,7 @@ func TestNoControlStateAsksNothing(t *testing.T) {
 	authority := &answeringAuthority{decision: policy.ActionAuthorizationDecision{
 		Reason: policy.ActionSelectorMismatch,
 	}}
-	record := tunnelDecisionRecord(planFor(tunnelplan.ActionRebuildTunnel), 1, authority, 0)
+	record := tunnelDecisionRecord(planFor(tunnelplan.ActionRebuildTunnel), 1, false, authority, 0)
 	if authority.asked != 0 {
 		t.Fatalf("asked policy %d times with no control state", authority.asked)
 	}

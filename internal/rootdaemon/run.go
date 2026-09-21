@@ -554,6 +554,7 @@ func observeLoop(
 		// tunnel is the whole reason for deciding without acting.
 		if err := recordTunnelDecision(
 			reader, summary.Tunnel, uint16(len(summary.Plan.Operations)),
+			summary.State == CycleSuspended,
 			authority, operatorSnapshot.Generation,
 		); err != nil {
 			if emitErr := logger.Emit(
@@ -771,6 +772,7 @@ func recordTunnelDecision(
 	reader *connectivityhost.Reader,
 	plan tunnelplan.Plan,
 	routesPlanned uint16,
+	suspended bool,
 	authority tunnelAuthorizer,
 	controlGeneration uint64,
 ) error {
@@ -778,7 +780,7 @@ func recordTunnelDecision(
 		return nil
 	}
 	return reader.RecordTunnelDecision(
-		tunnelDecisionRecord(plan, routesPlanned, authority, controlGeneration))
+		tunnelDecisionRecord(plan, routesPlanned, suspended, authority, controlGeneration))
 }
 
 // tunnelAuthorizer is the one question this runtime asks of policy about the
@@ -804,6 +806,7 @@ const tunnelAuthorityTarget = "tunnel"
 func tunnelDecisionRecord(
 	plan tunnelplan.Plan,
 	routesPlanned uint16,
+	suspended bool,
 	authority tunnelAuthorizer,
 	controlGeneration uint64,
 ) event.TunnelDecision {
@@ -824,6 +827,12 @@ func tunnelDecisionRecord(
 		PayloadOK:       grounds.PayloadOK,
 		PayloadFailures: grounds.PayloadFailures,
 	}
+	// Whether the machine was dozing — a dark wake, or a closed lid — when the
+	// cycle ran. A comparison against another runtime cannot pair events from
+	// such a stretch: each runtime wakes in wakes the other slept through. It
+	// is recorded rather than inferred from an unfinished cycle, because a
+	// tunnel that went down leaves a cycle unfinished too.
+	recorded.Suspended = &suspended
 	// What the wake cause was compared on, so a disagreement about a wake can
 	// be read from the record that made it.
 	tickGap := grounds.TickGap.Milliseconds()

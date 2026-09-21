@@ -274,6 +274,17 @@
       moment nobody recorded, is equivalent: a zero moment falls in no stretch
       that starts in 2026.
 
+      The marker was wrong at first. An induced process loss on 2026-09-21 was
+      dropped by the judgement: the tunnel went down, the route to an ingress
+      target could not be read, the cycle stopped before finishing, and
+      "unfinished" was what dozing had been read from. Twilight recorded the
+      loss at 09:50:39Z and this runtime decided it at 09:50:01Z, and neither
+      was compared. The record carries the cycle's own power observation now —
+      a dark wake or a closed lid — and only records written before it said so
+      fall back to the older reading. Five mutations, five killed: the record
+      saying nothing, the record always saying awake, the cycle's state not
+      passed, the machine never believed, an older record never dozing.
+
       Eight mutations, eight killed: decisions judged while dozing, the owner's
       rebuilds judged while dozing, a stretch that swallows everything after it,
       silences inside a stretch still holes, a silence reaching past one

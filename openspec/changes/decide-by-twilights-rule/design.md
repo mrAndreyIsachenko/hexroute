@@ -136,6 +136,14 @@ dozing stretch is not judged either: for this runtime the gap is the cycle its
 decision names, for the owning runtime the last time its log says it wrote
 anything.
 
+The first induced process loss after that showed the marker was the wrong one. A
+cycle that does not finish is not the same thing as a dozing machine: the tunnel
+went down, the route to an ingress target could not be read, the cycle stopped
+early — and the judgement read that as a doze and dropped the event it existed to
+compare. The record says which it was now, from the cycle's own power
+observation, and only records written before it said so fall back to the older
+reading.
+
 What this gives up is stated in the spec rather than hidden. The rule is not
 proved for a dozing machine, and with authority it would have rebuilt the tunnel
 fourteen times that night where Twilight rebuilt six. That is the executor's to

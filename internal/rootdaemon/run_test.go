@@ -383,3 +383,66 @@ func TestTheDecisionIsRecordedBeforeTheRestOfTheCycle(t *testing.T) {
 	}
 	t.Fatalf("the cycle ended at the heartbeat and its decision was never written: %d records", len(records))
 }
+
+// The record carries the cycle's own state, not a guess about it.
+func TestASuspendedCycleRecordsThatTheMachineWasDozing(t *testing.T) {
+	root := t.TempDir()
+	archiveRoot := filepath.Join(root, "event-archive")
+	reader, err := connectivityhost.Open(filepath.Join(root, "host"), "boot", archiveRoot)
+	if err != nil {
+		t.Fatalf("connectivityhost.Open: %v", err)
+	}
+	var output bytes.Buffer
+	logger, err := logging.New(&output, logging.ComponentDaemon)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, err := operator.NewController(
+		ipc.RoleRoot, ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentTunnel},
+		control.NewSnapshot(control.StateHealthy), control.ReasonNone, nil,
+		func() control.Tick { return 7 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	cycler := fixedCycler{summary: Summary{
+		State: CycleSuspended,
+		Tunnel: tunnelplan.Plan{
+			Action: tunnelplan.ActionRebuildTunnel,
+			Causes: []tunnelplan.Cause{tunnelplan.CauseWakeGap},
+			Grounds: tunnelplan.Grounds{
+				ProcessObserved: true, ProcessRunning: true, TickGap: 20 * time.Minute,
+			},
+		},
+	}}
+	if err := observeLoop(
+		context.Background(), time.Minute, true,
+		func() control.Tick { return 7 }, func() time.Duration { return 0 },
+		cycler, &fixedHeartbeat{}, controller, nil, nil, logger, reader, nil,
+		&rootObservations{}, nil); err != nil {
+		t.Fatalf("observeLoop: %v", err)
+	}
+	archive, err := eventarchive.OpenForReading(archiveRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := archive.Records()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, record := range records {
+		decoded, err := event.Decode(record.Event)
+		if err != nil || decoded.Schema != event.SchemaTunnelDecision {
+			continue
+		}
+		decision, ok := decoded.Payload.(*event.TunnelDecision)
+		if !ok {
+			t.Fatalf("a decision of type %T", decoded.Payload)
+		}
+		if decision.Grounds == nil || decision.Grounds.Suspended == nil || !*decision.Grounds.Suspended {
+			t.Fatalf("a suspended cycle recorded %+v", decision.Grounds)
+		}
+		return
+	}
+	t.Fatal("the suspended cycle recorded no decision")
+}
