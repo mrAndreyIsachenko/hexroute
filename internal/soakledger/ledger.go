@@ -85,7 +85,16 @@ func Superseded(windows []Coverage) []Coverage {
 				later = append(later, read(other))
 			}
 		}
-		window.Silences = outside(later, window.Silences)
+		silences := outside(later, window.Silences)
+		// The longest silence is a summary of the same stretch, and a window
+		// that loses every silence it located keeps a number that says one is
+		// there and was never found. A later reading located it instead.
+		if window.LongestSilence != nil && len(silences) == 0 &&
+			(len(window.Silences) > 0 || Within(later, read(window))) {
+			quiet := time.Duration(0)
+			window.LongestSilence = &quiet
+		}
+		window.Silences = silences
 		window.Dozing = outside(later, window.Dozing)
 		fresh = append(fresh, window)
 	}

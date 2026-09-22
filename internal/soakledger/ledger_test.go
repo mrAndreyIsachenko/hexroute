@@ -405,9 +405,10 @@ func TestALaterReadingSupersedesAnOlderOne(t *testing.T) {
 	base := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
 	stale := Span{From: base.Add(50 * time.Hour), To: base.Add(51 * time.Hour)}
 	older := Span{From: base.Add(time.Hour), To: base.Add(2 * time.Hour)}
+	longest := time.Hour
 	first := Coverage{
 		Requested: base, Oldest: base.Add(40 * time.Hour), Newest: base.Add(52 * time.Hour),
-		CollectedAt: base.Add(52 * time.Hour), Records: 9,
+		CollectedAt: base.Add(52 * time.Hour), Records: 9, LongestSilence: &longest,
 		Silences: []Span{stale, older}, Dozing: []Span{stale, older},
 	}
 	second := Coverage{
@@ -427,6 +428,44 @@ func TestALaterReadingSupersedesAnOlderOne(t *testing.T) {
 	}
 	if len(fresh[1].Silences) != 1 {
 		t.Fatalf("the later window lost its own reading: %+v", fresh[1].Silences)
+	}
+	// The first window keeps a silence outside the second's reading, so its
+	// summary still stands.
+	if fresh[0].LongestSilence == nil || *fresh[0].LongestSilence == 0 {
+		t.Fatalf("a window with a silence of its own lost its summary")
+	}
+	// A window read again in full keeps none, and the summary that says a
+	// silence is there goes with them: otherwise it reads as one never located.
+	whole := Coverage{
+		Requested: base, Oldest: base.Add(46 * time.Hour), Newest: base.Add(52 * time.Hour),
+		CollectedAt: base.Add(52 * time.Hour), Records: 9,
+		Silences: []Span{stale}, LongestSilence: &longest,
+	}
+	fresh = Superseded([]Coverage{whole, second})
+	if len(fresh[0].Silences) != 0 {
+		t.Fatalf("a window read again in full kept %+v", fresh[0].Silences)
+	}
+	if fresh[0].LongestSilence == nil || *fresh[0].LongestSilence != 0 {
+		t.Fatalf("a window read again in full kept its summary: %v", fresh[0].LongestSilence)
+	}
+	// A window whose located silences were all read again loses its summary even
+	// where the later reading did not reach everything it read: the silence the
+	// summary is about is one of those, and a later reading located it.
+	partly := second
+	partly.Oldest = base.Add(49 * time.Hour)
+	fresh = Superseded([]Coverage{whole, partly})
+	if len(fresh[0].Silences) != 0 || fresh[0].LongestSilence == nil || *fresh[0].LongestSilence != 0 {
+		t.Fatalf("a window read partly again kept %+v and %v", fresh[0].Silences, fresh[0].LongestSilence)
+	}
+	// A collection that never located its silences keeps its summary while any
+	// of what it read is still its own to answer for.
+	narrow := second
+	narrow.Oldest = base.Add(50 * time.Hour)
+	unlocated := whole
+	unlocated.Silences = nil
+	fresh = Superseded([]Coverage{unlocated, narrow})
+	if fresh[0].LongestSilence == nil || *fresh[0].LongestSilence != longest {
+		t.Fatalf("a collection answering for a stretch nobody re-read lost its summary")
 	}
 	// Order of collection decides, not order in the file.
 	fresh = Superseded([]Coverage{second, first})

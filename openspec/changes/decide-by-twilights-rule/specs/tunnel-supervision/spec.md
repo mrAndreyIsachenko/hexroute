@@ -330,7 +330,10 @@ and an older description outlives the rule it was made under: the stretch of
 2026-09-22 was collected as dozing, and collecting again from the soak's start
 after that rule was narrowed left the old description in place and the wake still
 excluded. What an older collection saw outside a later one's reading SHALL be
-kept, because the archive may no longer hold those records.
+kept, because the archive may no longer hold those records. A window's longest
+silence SHALL be superseded with the silences it summarizes: a collection that
+keeps the number while losing every silence it located reads as one holding a
+silence it never found, and refuses the soak.
 
 A silence SHALL count as observed when a cycle of this runtime ran inside it. A
 decision names the cycle before it by the gap it was decided on, so a cycle
@@ -369,6 +372,11 @@ again has no previous cycle and decides no wake, so its silence stays a hole.
 
 - **WHEN** a collection describes a stretch and a later collection reads the same stretch again
 - **THEN** the judgement takes the later description, and keeps what the earlier one saw outside it
+
+#### Scenario: A collection whose silences were all read again
+
+- **WHEN** every silence a collection located lies inside what a later collection read
+- **THEN** that collection holds no silence of its own, and the soak is not refused on it
 
 #### Scenario: A sleep the operator took
 
