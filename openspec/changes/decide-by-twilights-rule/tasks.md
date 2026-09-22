@@ -411,6 +411,11 @@
       dozing stretches neither runtime shares. What remains to earn is three
       natural wake gaps, two carrier agreements and one induced process loss.
 
+      The induced process loss agreed once the machine said whether it was
+      dozing: noted 2026-09-22 18:01:54Z, `process_gone agreed 1 (induced 1)`
+      with no disagreement, at 100 hours of soak. Two carrier agreements and
+      three natural wake gaps remain.
+
       That soak is void from 2026-09-18 09:44Z, when the night's dark wakes
       showed the rule deciding too late and naming losses nobody looked for —
       see 2.6. Started again 2026-09-18 13:47:52Z, the daemon installed at
