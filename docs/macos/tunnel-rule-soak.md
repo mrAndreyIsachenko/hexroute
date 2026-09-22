@@ -42,7 +42,9 @@ hour, as it does on battery with the lid closed — is not judged at all. Both
 runtimes decide in such a stretch, in wakes the other slept through, and pairing
 those is meaningless. Wake gaps for the soak therefore come from deliberate
 sleeps: close the lid on battery, then open it, and both runtimes name the same
-wake within seconds. Collections made
+wake within seconds. A deliberate sleep is not a doze, and the two are told apart
+by how often the machine suspended: a night leaves about a dozen suspended cycles
+over hours, a lid closed for five minutes leaves one, and three is the line. Collections made
 before silences were recorded are not evidence either way; collecting once with
 `--from` the soak's start covers them again:
 

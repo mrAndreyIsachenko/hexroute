@@ -292,6 +292,15 @@ such wakes, six rebuilds by the owning runtime against fourteen decided here, an
 only six of them the same event. Nothing in such a stretch is compared, in either
 direction, and a silence inside one is not a hole.
 
+A stretch SHALL be read as dozing only when it holds at least three suspended
+cycles. A sleep the operator takes leaves one and is judged like any other
+event: measured 2026-09-22, a lid closed for five minutes left a single
+suspended cycle, and both runtimes named the wake — this one at 18:28:17Z on a
+gap of 367 seconds, the owning one at 18:27:39Z. Reading that as a doze excluded
+both, so the deliberate sleep the soak asks for proved nothing. A night on
+battery leaves about a dozen such cycles over hours, which is the pattern the
+exclusion is for.
+
 An event whose gap began in such a stretch SHALL NOT be judged either, wherever
 it was finally reached. The runtimes come back at different moments, and the one
 that comes back later names a gap that accrued while both were dozing: measured
@@ -348,9 +357,14 @@ again has no previous cycle and decides no wake, so its silence stays a hole.
 - **WHEN** the tunnel goes down and the cycle stops before it finishes, with the machine awake
 - **THEN** the stretch is judged, and the decision is compared like any other
 
+#### Scenario: A sleep the operator took
+
+- **WHEN** the lid is closed on battery for minutes and this runtime's cycles show fewer than three suspended cycles before it comes back
+- **THEN** the stretch is not dozing, and the wake gap both runtimes name is judged
+
 #### Scenario: The machine dozed
 
-- **WHEN** this runtime's cycles did not finish for a stretch, and both runtimes decided inside it
+- **WHEN** this runtime's cycles did not finish for a stretch of at least three suspended cycles, and both runtimes decided inside it
 - **THEN** nothing in that stretch is compared, and a silence inside it is not a hole
 
 #### Scenario: A cycle ran inside the silence
