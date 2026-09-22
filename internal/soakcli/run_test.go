@@ -621,3 +621,40 @@ func TestJudgeTakesTheLaterReadingOfAStretch(t *testing.T) {
 		t.Fatalf("a stretch read again as awake was judged as: %q %q", stdout.String(), stderr.String())
 	}
 }
+
+// A collection whose silences a later one re-read carries no hole of its own.
+// Measured 2026-09-22: superseding the spans alone left the summary behind, and
+// the window read as one holding a silence of an hour it never located.
+func TestJudgeDoesNotHoldASupersededCollectionToItsOwnSilence(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := soakledger.Open(filepath.Join(dir, "soak"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	week := 7 * 24 * time.Hour
+	hour := time.Hour
+	quiet := time.Duration(0)
+	silence := soakledger.Span{From: t0.Add(time.Hour), To: t0.Add(2 * time.Hour)}
+	if err := ledger.Collect(nil, soakledger.Coverage{
+		Requested: t0, Oldest: t0.Add(time.Minute), Newest: t0.Add(3 * time.Hour), Records: 5,
+		CollectedAt: t0.Add(3 * time.Hour), LongestSilence: &hour,
+		Silences: []soakledger.Span{silence},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The same stretch read again, with nothing silent in it.
+	if err := ledger.Collect(nil, soakledger.Coverage{
+		Requested: t0, Oldest: t0.Add(time.Minute), Newest: t0.Add(week), Records: 5,
+		CollectedAt: t0.Add(week), LongestSilence: &quiet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	twilight := writeTwilight(t, `{"timestamp":"2026-09-15T01:00:00Z","from":"HEALTHY","to":"STARTING","reason":"wake_gap_detected","pid":1}`)
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	Run([]string{"--ledger", filepath.Join(dir, "soak"), "--twilight", twilight,
+		"--from", t0.Format(time.RFC3339), "--until", t0.Add(week).Format(time.RFC3339), "judge"},
+		stdout, stderr, nil)
+	if strings.Contains(stdout.String(), "NOT JUDGEABLE") || stderr.Len() > 0 {
+		t.Fatalf("a superseded collection was judged as: %q %q", stdout.String(), stderr.String())
+	}
+}

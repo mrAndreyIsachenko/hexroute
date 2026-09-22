@@ -308,6 +308,14 @@
       superseded, none superseded, silences and dozing each left whole, and a
       reading counted from what it asked for rather than what it held.
 
+      Superseding the located silences alone then refused the soak: the window
+      of 18:42:32Z kept the summary saying its longest silence was an hour and
+      lost the silence it summarized, which reads as one never located. The
+      summary is superseded with them — four more mutations, four killed: the
+      summary always kept, always dropped, dropped for a collection that located
+      nothing while part of what it read is still its own to answer for, and
+      kept for one whose located silences were all read again.
+
       Eight mutations, eight killed: decisions judged while dozing, the owner's
       rebuilds judged while dozing, a stretch that swallows everything after it,
       silences inside a stretch still holes, a silence reaching past one
