@@ -232,6 +232,16 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 	return 0
 }
 
+// DozingCycles is how many suspended cycles make a stretch a doze rather than a
+// sleep the operator took.
+//
+// Measured: the night of 2026-09-20 on battery held about a dozen suspended
+// cycles in one stretch of hours, each in a wake of a few seconds the other
+// runtime slept through. A lid closed deliberately on 2026-09-22 held exactly
+// one, and both runtimes named the wake within a minute of each other — which
+// is the event the soak is there to count, and excluding it counted nothing.
+const DozingCycles = 3
+
 // DozingSpans are the stretches where this runtime's cycles did not finish.
 //
 // A machine dozing on battery wakes for seconds: the cycle sees the tunnel and
@@ -242,6 +252,7 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 func DozingSpans(records []eventarchive.Record) ([]soakledger.Span, error) {
 	var spans []soakledger.Span
 	open := false
+	suspended := 0
 	var from, last time.Time
 	for _, record := range records {
 		decoded, err := event.Decode(record.Event)
@@ -271,17 +282,20 @@ func DozingSpans(records []eventarchive.Record) ([]soakledger.Span, error) {
 		}
 		if dozing {
 			if !open {
-				open, from = true, at
+				open, from, suspended = true, at, 0
 			}
+			suspended++
 			last = at
 			continue
 		}
 		if open {
-			spans = append(spans, soakledger.Span{From: from, To: at})
+			if suspended >= DozingCycles {
+				spans = append(spans, soakledger.Span{From: from, To: at})
+			}
 			open = false
 		}
 	}
-	if open {
+	if open && suspended >= DozingCycles {
 		spans = append(spans, soakledger.Span{From: from, To: last})
 	}
 	return spans, nil

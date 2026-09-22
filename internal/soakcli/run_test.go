@@ -366,8 +366,9 @@ func TestDozingSpansRunFromIncompleteToComplete(t *testing.T) {
 		complete(t0, 1),
 		incomplete(t0.Add(10*time.Minute), 2),
 		incomplete(t0.Add(25*time.Minute), 3),
-		complete(t0.Add(40*time.Minute), 4),
-		complete(t0.Add(41*time.Minute), 5),
+		incomplete(t0.Add(30*time.Minute), 4),
+		complete(t0.Add(40*time.Minute), 5),
+		complete(t0.Add(41*time.Minute), 6),
 	})
 	if err != nil {
 		t.Fatalf("DozingSpans: %v", err)
@@ -380,12 +381,75 @@ func TestDozingSpansRunFromIncompleteToComplete(t *testing.T) {
 	spans, err = DozingSpans([]eventarchive.Record{
 		complete(t0, 1),
 		incomplete(t0.Add(10*time.Minute), 2),
+		incomplete(t0.Add(25*time.Minute), 3),
+		incomplete(t0.Add(30*time.Minute), 4),
 	})
 	if err != nil {
 		t.Fatalf("DozingSpans: %v", err)
 	}
-	if len(spans) != 1 || !spans[0].To.Equal(t0.Add(10*time.Minute)) {
+	if len(spans) != 1 || !spans[0].To.Equal(t0.Add(30*time.Minute)) {
 		t.Fatalf("an open stretch gave %+v", spans)
+	}
+}
+
+// A sleep the operator took is not a doze: the lid closed on 2026-09-22 left one
+// suspended cycle and five minutes, where a night on battery leaves a dozen
+// suspended cycles over hours. Excluding the short one excluded the wake gap the
+// soak needs, in both runtimes at once.
+func TestAShortSuspensionIsASleepAndIsJudged(t *testing.T) {
+	entries := 3
+	routes := uint16(2)
+	suspended := func(at time.Time, sequence uint64, is bool) eventarchive.Record {
+		return archived(t, sequence, at, event.TunnelDecision{Action: "none",
+			Grounds: &event.TunnelGrounds{Complete: true, ProcessObserved: true, ProcessRunning: true,
+				Suspended: &is, CarrierEntries: &entries, RoutesPlanned: &routes}})
+	}
+	spans, err := DozingSpans([]eventarchive.Record{
+		suspended(t0, 1, false),
+		suspended(t0.Add(2*time.Minute), 2, true),
+		suspended(t0.Add(8*time.Minute), 3, false),
+	})
+	if err != nil {
+		t.Fatalf("DozingSpans: %v", err)
+	}
+	if len(spans) != 0 {
+		t.Fatalf("a lid closed for six minutes gave %+v, want no dozing stretch", spans)
+	}
+	// Several such sleeps over a week are still sleeps: each stretch is counted
+	// on its own.
+	var week []eventarchive.Record
+	for i := uint64(0); i < 3; i++ {
+		at := t0.Add(time.Duration(i) * 24 * time.Hour)
+		week = append(week, suspended(at, 3*i+1, false), suspended(at.Add(2*time.Minute), 3*i+2, true),
+			suspended(at.Add(8*time.Minute), 3*i+3, false))
+	}
+	spans, err = DozingSpans(week)
+	if err != nil {
+		t.Fatalf("DozingSpans: %v", err)
+	}
+	if len(spans) != 0 {
+		t.Fatalf("three sleeps in a week gave %+v, want none", spans)
+	}
+	// A reading that ends inside such a sleep is a sleep too.
+	spans, err = DozingSpans([]eventarchive.Record{suspended(t0, 1, false), suspended(t0.Add(2*time.Minute), 2, true)})
+	if err != nil {
+		t.Fatalf("DozingSpans: %v", err)
+	}
+	if len(spans) != 0 {
+		t.Fatalf("a reading ending in a sleep gave %+v, want none", spans)
+	}
+	// The same stretch with a night's worth of suspended cycles in it is one.
+	records := []eventarchive.Record{suspended(t0, 1, false)}
+	for i := uint64(1); i <= DozingCycles; i++ {
+		records = append(records, suspended(t0.Add(time.Duration(i)*15*time.Minute), i+1, true))
+	}
+	records = append(records, suspended(t0.Add(time.Duration(DozingCycles+1)*15*time.Minute), uint64(DozingCycles)+2, false))
+	spans, err = DozingSpans(records)
+	if err != nil {
+		t.Fatalf("DozingSpans: %v", err)
+	}
+	if len(spans) != 1 || !spans[0].From.Equal(t0.Add(15*time.Minute)) {
+		t.Fatalf("a night gave %+v, want one dozing stretch", spans)
 	}
 }
 
@@ -396,14 +460,17 @@ func TestACollectionRecordsWhereTheRuntimeDozed(t *testing.T) {
 	complete := archived(t, 1, t0, event.TunnelDecision{Action: "none",
 		Grounds: &event.TunnelGrounds{Complete: true, ProcessObserved: true, ProcessRunning: true,
 			CarrierEntries: &entries, RoutesPlanned: &routes}})
-	dozing := archived(t, 2, t0.Add(10*time.Minute), event.TunnelDecision{
-		Action: "rebuild_tunnel", Causes: []string{"wake_gap"},
-		Grounds: &event.TunnelGrounds{ProcessObserved: true, ProcessRunning: true, TickGapMS: tickGap(600000)}})
-	back := archived(t, 3, t0.Add(40*time.Minute), event.TunnelDecision{Action: "none",
+	dozing := func(sequence uint64, at time.Time) eventarchive.Record {
+		return archived(t, sequence, at, event.TunnelDecision{
+			Action: "rebuild_tunnel", Causes: []string{"wake_gap"},
+			Grounds: &event.TunnelGrounds{ProcessObserved: true, ProcessRunning: true, TickGapMS: tickGap(600000)}})
+	}
+	back := archived(t, 5, t0.Add(40*time.Minute), event.TunnelDecision{Action: "none",
 		Grounds: &event.TunnelGrounds{Complete: true, ProcessObserved: true, ProcessRunning: true,
 			CarrierEntries: &entries, RoutesPlanned: &routes}})
-	reading := eventarchive.Reading{Records: []eventarchive.Record{complete, dozing, back}}
-	reading.Covered = eventarchive.Window{Records: 3, Oldest: t0, Newest: t0.Add(40 * time.Minute)}
+	reading := eventarchive.Reading{Records: []eventarchive.Record{complete,
+		dozing(2, t0.Add(10*time.Minute)), dozing(3, t0.Add(20*time.Minute)), dozing(4, t0.Add(30*time.Minute)), back}}
+	reading.Covered = eventarchive.Window{Records: 5, Oldest: t0, Newest: t0.Add(40 * time.Minute)}
 	coverage, err := CoverageOf(t0, t0.Add(41*time.Minute), reading)
 	if err != nil {
 		t.Fatal(err)
@@ -488,11 +555,18 @@ func TestAnUnfinishedCycleIsNotDozingWhenTheMachineSaysSo(t *testing.T) {
 	if len(spans) != 0 {
 		t.Fatalf("a lost tunnel was read as a dozing machine: %+v", spans)
 	}
-	// The same shape with the machine dozing is a stretch.
-	dozed := archived(t, 2, t0.Add(10*time.Minute), event.TunnelDecision{
-		Action: "rebuild_tunnel", Causes: []string{"wake_gap"},
-		Grounds: &event.TunnelGrounds{ProcessObserved: true, Suspended: &dozing, TickGapMS: tickGap(900000)}})
-	spans, err = DozingSpans([]eventarchive.Record{complete(t0, 1), dozed, complete(t0.Add(11*time.Minute), 3)})
+	// The same shape with the machine dozing is a stretch, once it has dozed
+	// often enough to be one.
+	night := func(ground *bool) []eventarchive.Record {
+		records := []eventarchive.Record{complete(t0, 1)}
+		for i := uint64(1); i <= DozingCycles; i++ {
+			records = append(records, archived(t, i+1, t0.Add(time.Duration(i)*15*time.Minute),
+				event.TunnelDecision{Action: "rebuild_tunnel", Causes: []string{"wake_gap"},
+					Grounds: &event.TunnelGrounds{ProcessObserved: true, Suspended: ground, TickGapMS: tickGap(900000)}}))
+		}
+		return append(records, complete(t0.Add(time.Duration(DozingCycles+1)*15*time.Minute), uint64(DozingCycles)+2))
+	}
+	spans, err = DozingSpans(night(&dozing))
 	if err != nil {
 		t.Fatalf("DozingSpans: %v", err)
 	}
@@ -500,10 +574,7 @@ func TestAnUnfinishedCycleIsNotDozingWhenTheMachineSaysSo(t *testing.T) {
 		t.Fatalf("a dozing machine gave %+v", spans)
 	}
 	// A record written before the machine said either way is read as before.
-	older := archived(t, 2, t0.Add(10*time.Minute), event.TunnelDecision{
-		Action: "rebuild_tunnel", Causes: []string{"wake_gap"},
-		Grounds: &event.TunnelGrounds{ProcessObserved: true, TickGapMS: tickGap(900000)}})
-	spans, err = DozingSpans([]eventarchive.Record{complete(t0, 1), older, complete(t0.Add(11*time.Minute), 3)})
+	spans, err = DozingSpans(night(nil))
 	if err != nil {
 		t.Fatalf("DozingSpans: %v", err)
 	}

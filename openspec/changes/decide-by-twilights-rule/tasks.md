@@ -285,6 +285,18 @@
       saying nothing, the record always saying awake, the cycle's state not
       passed, the machine never believed, an older record never dozing.
 
+      The marker was also too wide. A lid closed deliberately on 2026-09-22 —
+      the second of the three sleeps the soak asks for — left one suspended
+      cycle at 18:22:10Z, and the stretch it opened ran to 18:28:17Z. Both
+      runtimes named that wake, this one at 18:28:17Z on a gap of 367 seconds
+      and Twilight at 18:27:39Z, and both were dropped: the deliberate sleep
+      the soak needs proved nothing, and the judgement still read one natural
+      wake gap. A stretch is dozing now only when it holds at least three
+      suspended cycles; the nights it exists for hold about a dozen over hours,
+      a sleep holds one. Five mutations, five killed: every stretch dozing, the
+      count not checked where a reading ends inside a stretch, one cycle enough,
+      the count carried between stretches, and the count never raised.
+
       Eight mutations, eight killed: decisions judged while dozing, the owner's
       rebuilds judged while dozing, a stretch that swallows everything after it,
       silences inside a stretch still holes, a silence reaching past one
