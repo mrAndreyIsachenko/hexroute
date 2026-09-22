@@ -456,6 +456,13 @@
       rule had been dropping, and both inductions are in the ledger. Two carrier
       agreements and one natural wake gap remain.
 
+      The third came the same evening: at 101 hours and 43 minutes the judgement
+      reads `wake_gap agreed 3 (natural 3)` with no disagreement in any cause.
+      Each of the three deliberate sleeps left the owning runtime restarting the
+      process after the wake, listed as explained by its own restart and not as
+      a disagreement. Only the two carrier agreements and the remaining days are
+      left.
+
       That soak is void from 2026-09-18 09:44Z, when the night's dark wakes
       showed the rule deciding too late and naming losses nobody looked for —
       see 2.6. Started again 2026-09-18 13:47:52Z, the daemon installed at
