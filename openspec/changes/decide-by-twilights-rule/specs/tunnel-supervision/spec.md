@@ -324,6 +324,14 @@ between two, or inside one. Nothing decided there can disagree with anything. A
 collection that did not measure the silences inside it SHALL NOT count as having
 observed its window.
 
+Where two collections describe the same stretch, the judgement SHALL take the
+later one. Collections are appended, so a stretch read twice is described twice,
+and an older description outlives the rule it was made under: the stretch of
+2026-09-22 was collected as dozing, and collecting again from the soak's start
+after that rule was narrowed left the old description in place and the wake still
+excluded. What an older collection saw outside a later one's reading SHALL be
+kept, because the archive may no longer hold those records.
+
 A silence SHALL count as observed when a cycle of this runtime ran inside it. A
 decision names the cycle before it by the gap it was decided on, so a cycle
 whose own record was lost is still visible in the next decision's gap: what was
@@ -356,6 +364,11 @@ again has no previous cycle and decides no wake, so its silence stays a hole.
 
 - **WHEN** the tunnel goes down and the cycle stops before it finishes, with the machine awake
 - **THEN** the stretch is judged, and the decision is compared like any other
+
+#### Scenario: A stretch described twice
+
+- **WHEN** a collection describes a stretch and a later collection reads the same stretch again
+- **THEN** the judgement takes the later description, and keeps what the earlier one saw outside it
 
 #### Scenario: A sleep the operator took
 

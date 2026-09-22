@@ -159,6 +159,9 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
 	}
+	// A stretch read again is described twice in an appended ledger, and only
+	// the later reading counts.
+	windows = soakledger.Superseded(windows)
 	// Every decision, because each says when the cycle before it ran: a silence
 	// with a cycle inside it is one whose record was lost rather than one
 	// nobody observed. The wakes among them also account for the silences they
