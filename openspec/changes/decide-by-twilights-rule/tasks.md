@@ -297,6 +297,17 @@
       count not checked where a reading ends inside a stretch, one cycle enough,
       the count carried between stretches, and the count never raised.
 
+      Narrowing the rule was not enough to reach the event: the ledger appends
+      its coverage, so the stretch collected as dozing under the wider rule
+      survived a collection made again from the soak's start, and the judgement
+      of 2026-09-22 18:42Z still read one natural wake gap. The judgement takes
+      the later description of a stretch now, and keeps what an older collection
+      saw outside what a later one read, because the archive may no longer hold
+      those records. Seven mutations, seven killed: the judgement taking the raw
+      windows, an earlier reading superseding a later one, every stretch
+      superseded, none superseded, silences and dozing each left whole, and a
+      reading counted from what it asked for rather than what it held.
+
       Eight mutations, eight killed: decisions judged while dozing, the owner's
       rebuilds judged while dozing, a stretch that swallows everything after it,
       silences inside a stretch still holes, a silence reaching past one

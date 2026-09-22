@@ -68,6 +68,47 @@ func Inside(spans []Span, at time.Time) bool {
 }
 
 // Within says whether a stretch falls entirely in any of the spans.
+// Superseded drops what an older collection recorded about a stretch a later one
+// read again. Collections are appended, so a stretch read twice is described
+// twice, and the older description outlives the judgement it was made under: a
+// stretch read as dozing on 2026-09-22 stayed dozing after the rule that read it
+// was narrowed and the ledger collected again from the soak's start. A later
+// reading of the same stretch is the one that counts; what an older collection
+// saw outside it is kept, because the archive may no longer hold those records.
+func Superseded(windows []Coverage) []Coverage {
+	read := func(window Coverage) Span { return Span{From: window.Oldest, To: window.Newest} }
+	fresh := make([]Coverage, 0, len(windows))
+	for _, window := range windows {
+		later := make([]Span, 0, len(windows))
+		for _, other := range windows {
+			if other.CollectedAt.After(window.CollectedAt) {
+				later = append(later, read(other))
+			}
+		}
+		window.Silences = outside(later, window.Silences)
+		window.Dozing = outside(later, window.Dozing)
+		fresh = append(fresh, window)
+	}
+	return fresh
+}
+
+// outside are the spans no later reading covers.
+func outside(later []Span, spans []Span) []Span {
+	if len(later) == 0 || len(spans) == 0 {
+		return spans
+	}
+	kept := make([]Span, 0, len(spans))
+	for _, span := range spans {
+		if !Within(later, span) {
+			kept = append(kept, span)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
+}
+
 func Within(spans []Span, stretch Span) bool {
 	for _, span := range spans {
 		if !stretch.From.Before(span.From) && !stretch.To.After(span.To) {

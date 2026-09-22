@@ -395,3 +395,45 @@ func TestASilenceInsideADozingStretchIsNotAHole(t *testing.T) {
 		t.Fatal("a silence reaching past the dozing stretch was accepted")
 	}
 }
+
+// A stretch read again is read afresh: what an older collection recorded inside
+// it is dropped, and what it recorded outside it is kept. Measured 2026-09-22:
+// the lid closed for five minutes was collected as a dozing stretch, and after
+// the rule that read it was narrowed and the ledger collected again from the
+// soak's start, the stale stretch still excluded the wake both runtimes named.
+func TestALaterReadingSupersedesAnOlderOne(t *testing.T) {
+	base := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
+	stale := Span{From: base.Add(50 * time.Hour), To: base.Add(51 * time.Hour)}
+	older := Span{From: base.Add(time.Hour), To: base.Add(2 * time.Hour)}
+	first := Coverage{
+		Requested: base, Oldest: base.Add(40 * time.Hour), Newest: base.Add(52 * time.Hour),
+		CollectedAt: base.Add(52 * time.Hour), Records: 9,
+		Silences: []Span{stale, older}, Dozing: []Span{stale, older},
+	}
+	second := Coverage{
+		Requested: base, Oldest: base.Add(45 * time.Hour), Newest: base.Add(53 * time.Hour),
+		CollectedAt: base.Add(53 * time.Hour), Records: 9,
+		Silences: []Span{stale}, Dozing: nil,
+	}
+	fresh := Superseded([]Coverage{first, second})
+	if len(fresh) != 2 {
+		t.Fatalf("Superseded dropped a window: %+v", fresh)
+	}
+	if len(fresh[0].Dozing) != 1 || !fresh[0].Dozing[0].From.Equal(older.From) {
+		t.Fatalf("the first window kept %+v, want only the stretch the second did not read", fresh[0].Dozing)
+	}
+	if len(fresh[0].Silences) != 1 || !fresh[0].Silences[0].From.Equal(older.From) {
+		t.Fatalf("the first window's silences = %+v", fresh[0].Silences)
+	}
+	if len(fresh[1].Silences) != 1 {
+		t.Fatalf("the later window lost its own reading: %+v", fresh[1].Silences)
+	}
+	// Order of collection decides, not order in the file.
+	fresh = Superseded([]Coverage{second, first})
+	if len(fresh[1].Dozing) != 1 {
+		t.Fatalf("the older window read out of order kept %+v", fresh[1].Dozing)
+	}
+	if len(fresh[0].Silences) != 1 {
+		t.Fatalf("the later window read out of order lost %+v", fresh[0].Silences)
+	}
+}

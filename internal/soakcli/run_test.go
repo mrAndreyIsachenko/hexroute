@@ -582,3 +582,42 @@ func TestAnUnfinishedCycleIsNotDozingWhenTheMachineSaysSo(t *testing.T) {
 		t.Fatalf("an older record gave %+v", spans)
 	}
 }
+
+// The judgement reads the ledger's latest description of a stretch. A collection
+// made under a wider dozing rule described the lid closed on 2026-09-22 as a
+// doze; collecting again from the soak's start did not remove that description,
+// and the wake both runtimes named stayed excluded.
+func TestJudgeTakesTheLaterReadingOfAStretch(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := soakledger.Open(filepath.Join(dir, "soak"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	week := 7 * 24 * time.Hour
+	quiet := time.Duration(0)
+	wake := t0.Add(time.Hour)
+	decided := []soakledger.Entry{{Sequence: 3, At: wake, Causes: []string{soakcompare.WakeGap}, TickGap: 6 * time.Minute}}
+	stale := soakledger.Coverage{
+		Requested: t0, Oldest: t0.Add(time.Minute), Newest: t0.Add(2 * time.Hour), Records: 5,
+		CollectedAt: t0.Add(2 * time.Hour), LongestSilence: &quiet,
+		Dozing: []soakledger.Span{{From: wake.Add(-10 * time.Minute), To: wake.Add(time.Minute)}},
+	}
+	if err := ledger.Collect(decided, stale); err != nil {
+		t.Fatal(err)
+	}
+	// The same stretch read again, by a rule that does not call it a doze.
+	if err := ledger.Collect(nil, soakledger.Coverage{
+		Requested: t0, Oldest: t0.Add(time.Minute), Newest: t0.Add(week), Records: 5,
+		CollectedAt: t0.Add(week), LongestSilence: &quiet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	twilight := writeTwilight(t, `{"timestamp":"2026-09-15T01:00:30Z","from":"HEALTHY","to":"STARTING","reason":"wake_gap_detected","pid":1}`)
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	Run([]string{"--ledger", filepath.Join(dir, "soak"), "--twilight", twilight,
+		"--from", t0.Format(time.RFC3339), "--until", t0.Add(week).Format(time.RFC3339), "judge"},
+		stdout, stderr, nil)
+	if !strings.Contains(stdout.String(), "wake_gap         agreed 1") {
+		t.Fatalf("a stretch read again as awake was judged as: %q %q", stdout.String(), stderr.String())
+	}
+}

@@ -52,7 +52,9 @@ before silences were recorded are not evidence either way; collecting once with
 sudo '/Library/Application Support/Hexroute/observe-root/bin/hexroute-soak-compare' --from '<soak start, RFC 3339>' collect
 ```
 
-`--from` always wins over where the ledger reached.
+`--from` always wins over where the ledger reached. A stretch collected twice is
+judged by the later collection, so collecting again from the soak's start is how
+a stretch read under an older rule is read afresh.
 
 A collection can fail with a record that is not found. The daemon evicts records
 while the collection reads, and one removed between the listing and the read is
