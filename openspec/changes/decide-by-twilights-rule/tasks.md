@@ -463,6 +463,16 @@
       a disagreement. Only the two carrier agreements and the remaining days are
       left.
 
+      The carrier agreed twice the same evening, with the operator's permission
+      for that occasion: noted 19:36:13Z and AdGuard VPN switched off, which
+      left the default route on `en0` and no route for the probe address at all,
+      then noted again and switched back on, `1.1.1.1` carried by `utun4` as
+      before. At 101 hours and 55 minutes the judgement reads `carrier_changed
+      agreed 2 (induced 2)`, `wake_gap agreed 3 (natural 3)` and `process_gone
+      agreed 2 (induced 2)`, with no disagreement in any cause. Every criterion
+      but the seven days is met; the earliest judgement stands at 2026-09-25
+      13:47:52Z, and any change to the rule before then starts it again.
+
       That soak is void from 2026-09-18 09:44Z, when the night's dark wakes
       showed the rule deciding too late and naming losses nobody looked for —
       see 2.6. Started again 2026-09-18 13:47:52Z, the daemon installed at
