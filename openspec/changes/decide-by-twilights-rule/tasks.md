@@ -447,6 +447,15 @@
       with no disagreement, at 100 hours of soak. Two carrier agreements and
       three natural wake gaps remain.
 
+      The deliberate sleep agreed once a sleep was told from a doze: the lid
+      closed 2026-09-22 18:22:12Z and opened 18:27:20Z, this runtime naming the
+      wake at 18:28:17Z on a gap of 367 seconds and Twilight at 18:27:39Z. At
+      101 hours the judgement reads `wake_gap agreed 2 (natural 2)` and
+      `process_gone agreed 2 (induced 2)` with no disagreement: the second
+      induced loss is the one of 2026-09-21 09:49:57Z, which the wider dozing
+      rule had been dropping, and both inductions are in the ledger. Two carrier
+      agreements and one natural wake gap remain.
+
       That soak is void from 2026-09-18 09:44Z, when the night's dark wakes
       showed the rule deciding too late and naming losses nobody looked for —
       see 2.6. Started again 2026-09-18 13:47:52Z, the daemon installed at
