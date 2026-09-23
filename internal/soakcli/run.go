@@ -204,7 +204,20 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
 	}
-	report, err := soakcompare.Compare(decisions, rebuilds, inductions, restarts, dozing, Window, from, until)
+	carrier := make([]soakcompare.Carrier, 0)
+	seen := make(map[string]bool)
+	for _, window := range windows {
+		for _, mark := range window.Carrier {
+			key := mark.At.Format(time.RFC3339Nano) + mark.Digest
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			carrier = append(carrier, soakcompare.Carrier{At: mark.At, Digest: mark.Digest})
+		}
+	}
+	sort.Slice(carrier, func(i, j int) bool { return carrier[i].At.Before(carrier[j].At) })
+	report, err := soakcompare.Compare(decisions, rebuilds, inductions, restarts, dozing, carrier, Window, from, until)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
@@ -221,6 +234,10 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 		for _, rebuild := range result.MadeNotDecided {
 			fmt.Fprintf(stdout, "      made, not decided: %s\n", rebuild.At.Format(time.RFC3339))
 		}
+		for _, rebuild := range result.Unobservable {
+			fmt.Fprintf(stdout, "      the carrier changed and changed back inside one cycle: %s\n",
+				rebuild.At.Format(time.RFC3339))
+		}
 		for _, episode := range result.Explained {
 			fmt.Fprintf(stdout, "      explained by the owner's own restart: %s .. %s (%d decisions)\n",
 				episode.First.Format(time.RFC3339), episode.Last.Format(time.RFC3339), episode.Decisions)
@@ -233,6 +250,38 @@ func judge(stdout, stderr io.Writer, ledger *soakledger.Ledger, twilightPath str
 	}
 	fmt.Fprintln(stdout, "PASSED")
 	return 0
+}
+
+// CarrierMarks are the moments this runtime's reading of the carrier changed.
+// Only the changes are kept: a signature holds for hours at a time, and what the
+// judgement asks is whether one changed around a moment.
+func CarrierMarks(records []eventarchive.Record) ([]soakledger.Mark, error) {
+	var marks []soakledger.Mark
+	last := ""
+	for _, record := range records {
+		decoded, err := event.Decode(record.Event)
+		if err != nil {
+			return nil, fmt.Errorf("record %d: %w", record.Sequence, err)
+		}
+		if decoded.Schema != event.SchemaTunnelDecision {
+			continue
+		}
+		var decision event.TunnelDecision
+		switch payload := decoded.Payload.(type) {
+		case *event.TunnelDecision:
+			decision = *payload
+		case event.TunnelDecision:
+			decision = payload
+		default:
+			return nil, fmt.Errorf("record %d: a tunnel decision of type %T", record.Sequence, decoded.Payload)
+		}
+		if decision.Grounds == nil || decision.Grounds.CarrierDigest == "" || decision.Grounds.CarrierDigest == last {
+			continue
+		}
+		last = decision.Grounds.CarrierDigest
+		marks = append(marks, soakledger.Mark{At: record.Metadata.WallClock.UTC(), Digest: last})
+	}
+	return marks, nil
 }
 
 // DozingCycles is how many suspended cycles make a stretch a doze rather than a
@@ -430,5 +479,13 @@ func CoverageOf(from, until time.Time, reading eventarchive.Reading) (soakledger
 		return soakledger.Coverage{}, err
 	}
 	coverage.Dozing = dozing
+	// What the runtime read as the carrier, at every moment that reading
+	// changed: a change the owning runtime made between two of them lasted less
+	// than a cycle and was never this runtime's to see.
+	carrier, err := CarrierMarks(reading.Records)
+	if err != nil {
+		return soakledger.Coverage{}, err
+	}
+	coverage.Carrier = carrier
 	return coverage, nil
 }

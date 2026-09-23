@@ -658,3 +658,78 @@ func TestJudgeDoesNotHoldASupersededCollectionToItsOwnSilence(t *testing.T) {
 		t.Fatalf("a superseded collection was judged as: %q %q", stdout.String(), stderr.String())
 	}
 }
+
+// A collection keeps the moments its reading of the carrier changed, and only
+// those: the signature holds for hours, and the judgement asks whether one
+// changed around a moment.
+func TestACollectionKeepsWhereTheCarrierChanged(t *testing.T) {
+	entries := 3
+	routes := uint16(2)
+	reading := func(sequence uint64, at time.Time, digest string) eventarchive.Record {
+		return archived(t, sequence, at, event.TunnelDecision{Action: "none",
+			Grounds: &event.TunnelGrounds{Complete: true, ProcessObserved: true, ProcessRunning: true,
+				CarrierDigest: digest, CarrierEntries: &entries, RoutesPlanned: &routes}})
+	}
+	marks, err := CarrierMarks([]eventarchive.Record{
+		reading(1, t0, "7b60440cfa7b"),
+		reading(2, t0.Add(time.Minute), "7b60440cfa7b"),
+		reading(3, t0.Add(2*time.Minute), "0f0f0f0f0f0f"),
+		reading(4, t0.Add(3*time.Minute), "0f0f0f0f0f0f"),
+		reading(5, t0.Add(4*time.Minute), "7b60440cfa7b"),
+	})
+	if err != nil {
+		t.Fatalf("CarrierMarks: %v", err)
+	}
+	if len(marks) != 3 || !marks[1].At.Equal(t0.Add(2*time.Minute)) || marks[2].Digest != "7b60440cfa7b" {
+		t.Fatalf("marks = %+v, want the first reading and each change", marks)
+	}
+	// A cycle that read no carrier at all marks nothing.
+	marks, err = CarrierMarks([]eventarchive.Record{archived(t, 1, t0, event.TunnelDecision{
+		Action: "rebuild_tunnel", Causes: []string{"process_gone"},
+		Grounds: &event.TunnelGrounds{ProcessObserved: true}})})
+	if err != nil {
+		t.Fatalf("CarrierMarks: %v", err)
+	}
+	if len(marks) != 0 {
+		t.Fatalf("a cycle that read no carrier marked %+v", marks)
+	}
+	// A collection carries them.
+	records := []eventarchive.Record{reading(1, t0, "7b60440cfa7b"), reading(2, t0.Add(time.Minute), "0f0f0f0f0f0f")}
+	read := eventarchive.Reading{Records: records}
+	read.Covered = eventarchive.Window{Records: 2, Oldest: t0, Newest: t0.Add(time.Minute)}
+	coverage, err := CoverageOf(t0, t0.Add(2*time.Minute), read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(coverage.Carrier) != 2 {
+		t.Fatalf("a collection carried %+v", coverage.Carrier)
+	}
+}
+
+// The judgement reads those marks: a carrier rebuild the owner made between two
+// cycles that read one signature is listed, not counted as a disagreement.
+func TestJudgeDoesNotBlameACarrierChangeShorterThanACycle(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := soakledger.Open(filepath.Join(dir, "soak"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	week := 7 * 24 * time.Hour
+	quiet := time.Duration(0)
+	if err := ledger.Collect(nil, soakledger.Coverage{
+		Requested: t0, Oldest: t0.Add(time.Minute), Newest: t0.Add(week), Records: 5,
+		CollectedAt: t0.Add(week), LongestSilence: &quiet,
+		Carrier: []soakledger.Mark{{At: t0.Add(time.Minute), Digest: "7b60440cfa7b"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	twilight := writeTwilight(t, `{"timestamp":"2026-09-15T02:00:00Z","from":"HEALTHY","to":"STARTING","reason":"carrier_changed","pid":1}`)
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	Run([]string{"--ledger", filepath.Join(dir, "soak"), "--twilight", twilight,
+		"--from", t0.Format(time.RFC3339), "--until", t0.Add(week).Format(time.RFC3339), "judge"},
+		stdout, stderr, nil)
+	if !strings.Contains(stdout.String(), "changed back inside one cycle") ||
+		strings.Contains(stdout.String(), "made, not decided") {
+		t.Fatalf("a carrier change shorter than a cycle was judged as: %q %q", stdout.String(), stderr.String())
+	}
+}

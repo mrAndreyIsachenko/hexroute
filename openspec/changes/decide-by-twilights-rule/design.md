@@ -159,6 +159,29 @@ the ingress targets alone. That the configured addresses are the ones Twilight
 logs is measured on the machine, not assumed: a signature over the wrong three
 addresses would agree with nothing.
 
+## A change shorter than a cycle
+
+The first natural carrier change of the soak was one neither runtime could have
+compared. On 2026-09-23 at 11:00:52Z an ingress target left the upstream tunnel
+for the physical interface, and the owning runtime — which looks once a tick —
+saw it and rebuilt; its own rebuild put the route back by 11:01:09Z. This
+runtime's cycles at 11:00:26Z and 11:01:26Z read one and the same signature, and
+the seventeen seconds between them were never its to see.
+
+Both runtimes sample at sixty seconds in different phases, so this is not a
+difference of rule: whichever of them looks inside the flap names it, and the
+other cannot. The judgement therefore asks what this runtime read. A collection
+keeps the moments its reading of the carrier changed — a handful of marks, since
+a signature holds for hours — and a carrier rebuild the owner made with no mark
+of ours around it, in a stretch where we had read a carrier, is listed as one we
+could not have seen rather than counted against the rule. A change we did read
+around that moment stays a disagreement.
+
+What this gives up is stated in the spec: the rule is not proved for a carrier
+change shorter than a cycle. Change three's executor, which will hold the tunnel
+rather than watch it, can read the routing socket instead of sampling, and that
+is where the answer belongs.
+
 ## The comparison is a program, not a reading
 
 The previous soak compared by hand, and this one decides whether a runtime is
