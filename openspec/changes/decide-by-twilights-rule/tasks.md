@@ -493,7 +493,11 @@
       keeping no marks, and the judgement reading none. What it gives up is in
       the spec: the rule is not proved for a carrier change shorter than a
       cycle, and change three's executor can read the routing socket rather than
-      sample.
+      sample. Judged again at 118 hours: `process_gone agreed 2 (induced
+      2)`, `wake_gap agreed 3 (natural 3)`, `carrier_changed agreed 2 (induced
+      2)`, no disagreement in any cause, with the flap of 11:00:52Z listed as
+      one this runtime could not have seen. Every criterion but the seven days
+      is met.
 
       That soak is void from 2026-09-18 09:44Z, when the night's dark wakes
       showed the rule deciding too late and naming losses nobody looked for —
