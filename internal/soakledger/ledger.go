@@ -55,6 +55,11 @@ type Coverage struct {
 	// stretches, at moments neither shares, so nothing in them is compared.
 	// Absent on collections made before they were kept.
 	Dozing []Span `json:"dozing,omitempty"`
+	// Carrier are the moments the runtime's reading of the carrier changed
+	// inside this window. Between two of them it read one signature, so a
+	// change the owning runtime made between them lasted less than a cycle and
+	// was never this runtime's to see.
+	Carrier []Mark `json:"carrier,omitempty"`
 }
 
 // Inside says whether a moment falls in any of the spans.
@@ -125,6 +130,12 @@ func Within(spans []Span, stretch Span) bool {
 		}
 	}
 	return false
+}
+
+// Mark is a moment a reading changed, and what it changed to.
+type Mark struct {
+	At     time.Time `json:"at"`
+	Digest string    `json:"digest"`
 }
 
 // Span is a stretch of time.

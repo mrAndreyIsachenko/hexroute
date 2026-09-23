@@ -473,6 +473,28 @@
       but the seven days is met; the earliest judgement stands at 2026-09-25
       13:47:52Z, and any change to the rule before then starts it again.
 
+      The first natural carrier change disagreed, and the records said why. On
+      2026-09-23 at 11:00:52Z the owning runtime saw `164.92.229.221` leave
+      `utun4` for `en0` and rebuilt; its own rebuild put the route back by
+      11:01:09Z. This runtime's decisions from 10:57:26Z to 11:03:26Z all carry
+      the same carrier digest `7b60440cfa7b`, and its cycles either side of the
+      flap ran at 11:00:26Z and 11:01:26Z: the seventeen seconds were never its
+      to see. Both runtimes sample at sixty seconds in different phases, so the
+      rule is not what differs.
+
+      The judgement asks what this runtime read now. A collection keeps the
+      moments its reading of the carrier changed, and a carrier rebuild the
+      owner made with no mark of ours around it — where we had read a carrier at
+      all — is listed as one we could not have seen. A change we did read around
+      that moment stays a disagreement. Nine mutations, nine killed: every
+      unmatched rebuild excused, none excused, a change around the moment
+      excusing too, a runtime that read nothing excusing, only changes before
+      the moment counting, every reading marked, none marked, the collection
+      keeping no marks, and the judgement reading none. What it gives up is in
+      the spec: the rule is not proved for a carrier change shorter than a
+      cycle, and change three's executor can read the routing socket rather than
+      sample.
+
       That soak is void from 2026-09-18 09:44Z, when the night's dark wakes
       showed the rule deciding too late and naming losses nobody looked for —
       see 2.6. Started again 2026-09-18 13:47:52Z, the daemon installed at

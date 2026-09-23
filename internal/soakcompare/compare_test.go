@@ -14,7 +14,7 @@ func at(minutes int) time.Time { return start.Add(time.Duration(minutes) * time.
 
 func compare(t *testing.T, decisions []Decision, rebuilds []Rebuild, inductions []Induction, days int) Report {
 	t.Helper()
-	report, err := Compare(decisions, rebuilds, inductions, nil, nil, window, start, start.Add(time.Duration(days)*24*time.Hour))
+	report, err := Compare(decisions, rebuilds, inductions, nil, nil, nil, window, start, start.Add(time.Duration(days)*24*time.Hour))
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -176,10 +176,10 @@ func TestEachConditionIsRequired(t *testing.T) {
 }
 
 func TestAnInvalidComparisonIsRefused(t *testing.T) {
-	if _, err := Compare(nil, nil, nil, nil, nil, 0, start, start.Add(time.Hour)); err == nil {
+	if _, err := Compare(nil, nil, nil, nil, nil, nil, 0, start, start.Add(time.Hour)); err == nil {
 		t.Fatal("a zero window was accepted")
 	}
-	if _, err := Compare(nil, nil, nil, nil, nil, window, start, start); err == nil {
+	if _, err := Compare(nil, nil, nil, nil, nil, nil, window, start, start); err == nil {
 		t.Fatal("an empty soak was accepted")
 	}
 }
@@ -190,7 +190,7 @@ func TestAProcessGoneTheOwnersRestartExplainsIsNotADisagreement(t *testing.T) {
 	restart := at(10).Add(-30 * time.Second)
 	report, err := Compare(
 		[]Decision{{At: at(10), Causes: []string{ProcessGone, CarrierChanged}}},
-		[]Rebuild{{At: restart, Cause: CarrierChanged}}, nil, []time.Time{restart}, nil,
+		[]Rebuild{{At: restart, Cause: CarrierChanged}}, nil, []time.Time{restart}, nil, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -208,7 +208,7 @@ func TestAProcessGoneTheOwnersRestartExplainsIsNotADisagreement(t *testing.T) {
 func TestAProcessGoneNoRestartExplainsIsADisagreement(t *testing.T) {
 	report, err := Compare(
 		[]Decision{{At: at(10), Causes: []string{ProcessGone}}},
-		nil, nil, []time.Time{at(10).Add(window + time.Second)}, nil,
+		nil, nil, []time.Time{at(10).Add(window + time.Second)}, nil, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +223,7 @@ func TestAProcessGoneNoRestartExplainsIsADisagreement(t *testing.T) {
 func TestARestartExplainsOnlyAProcessGone(t *testing.T) {
 	report, err := Compare(
 		[]Decision{{At: at(10), Causes: []string{CarrierChanged}}},
-		nil, nil, []time.Time{at(10)}, nil,
+		nil, nil, []time.Time{at(10)}, nil, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +237,7 @@ func TestARestartExplainsOnlyAProcessGone(t *testing.T) {
 func TestAnAgreementComesBeforeAnExplanation(t *testing.T) {
 	report, err := Compare(
 		[]Decision{{At: at(10), Causes: []string{ProcessGone}}},
-		[]Rebuild{{At: at(10), Cause: ProcessGone}}, nil, []time.Time{at(10)}, nil,
+		[]Rebuild{{At: at(10), Cause: ProcessGone}}, nil, []time.Time{at(10)}, nil, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -256,7 +256,7 @@ func TestNothingInsideADozingStretchIsCompared(t *testing.T) {
 	doze := []Dozing{{From: at(5), To: at(60)}}
 	report, err := Compare(
 		[]Decision{{At: at(10), Causes: []string{WakeGap}}},
-		[]Rebuild{{At: at(30), Cause: WakeGap}}, nil, nil, doze,
+		[]Rebuild{{At: at(30), Cause: WakeGap}}, nil, nil, doze, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -268,7 +268,7 @@ func TestNothingInsideADozingStretchIsCompared(t *testing.T) {
 	// The same pair outside the stretch is a disagreement in both directions.
 	report, err = Compare(
 		[]Decision{{At: at(100), Causes: []string{WakeGap}}},
-		[]Rebuild{{At: at(130), Cause: WakeGap}}, nil, nil, doze,
+		[]Rebuild{{At: at(130), Cause: WakeGap}}, nil, nil, doze, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -287,7 +287,7 @@ func TestNothingInsideADozingStretchIsCompared(t *testing.T) {
 func TestAnEventWhoseGapBeganWhileDozingIsNotJudged(t *testing.T) {
 	doze := []Dozing{{From: at(5), To: at(60)}}
 	report, err := Compare(nil,
-		[]Rebuild{{At: at(70), Cause: WakeGap, Previous: at(40)}}, nil, nil, doze,
+		[]Rebuild{{At: at(70), Cause: WakeGap, Previous: at(40)}}, nil, nil, doze, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -297,7 +297,7 @@ func TestAnEventWhoseGapBeganWhileDozingIsNotJudged(t *testing.T) {
 	}
 	// The same rebuild with its previous activity after the doze is judged.
 	report, err = Compare(nil,
-		[]Rebuild{{At: at(70), Cause: WakeGap, Previous: at(65)}}, nil, nil, doze,
+		[]Rebuild{{At: at(70), Cause: WakeGap, Previous: at(65)}}, nil, nil, doze, nil,
 		window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -308,11 +308,63 @@ func TestAnEventWhoseGapBeganWhileDozingIsNotJudged(t *testing.T) {
 	// And the same for a decision of this runtime's own.
 	report, err = Compare(
 		[]Decision{{At: at(70), Causes: []string{WakeGap}, Previous: at(40)}},
-		nil, nil, nil, doze, window, start, start.Add(24*time.Hour))
+		nil, nil, nil, doze, nil, window, start, start.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if report.Disagreements() != 0 {
 		t.Fatalf("a decision whose gap began while dozing was judged: %+v", report.Results[WakeGap])
+	}
+}
+
+// A carrier change the owner made and this runtime could not have seen is not a
+// disagreement. Measured 2026-09-23: an ingress target moved to the physical
+// interface at 11:00:52Z and was back by 11:01:09Z, between two cycles of this
+// runtime that read one and the same signature.
+func TestACarrierChangeShorterThanACycleIsNotADisagreement(t *testing.T) {
+	marks := []Carrier{{At: at(0), Digest: "7b60440cfa7b"}}
+	report, err := Compare(nil,
+		[]Rebuild{{At: at(60), Cause: CarrierChanged}}, nil, nil, nil, marks,
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := report.Results[CarrierChanged]
+	if len(result.Unobservable) != 1 || report.Disagreements() != 0 {
+		t.Fatalf("carrier = %+v, disagreements = %d", result, report.Disagreements())
+	}
+	// A change this runtime did read around that moment is a disagreement: it
+	// saw the carrier move and decided nothing.
+	report, err = Compare(nil,
+		[]Rebuild{{At: at(60), Cause: CarrierChanged}}, nil, nil, nil,
+		append(marks, Carrier{At: at(60).Add(30 * time.Second), Digest: "0f0f0f0f0f0f"}),
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Results[CarrierChanged].MadeNotDecided) != 1 || len(report.Results[CarrierChanged].Unobservable) != 0 {
+		t.Fatalf("a carrier this runtime saw move was excused: %+v", report.Results[CarrierChanged])
+	}
+	// A runtime that had read no carrier at all excuses nothing.
+	report, err = Compare(nil,
+		[]Rebuild{{At: at(60), Cause: CarrierChanged}}, nil, nil, nil,
+		[]Carrier{{At: at(600), Digest: "7b60440cfa7b"}},
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Results[CarrierChanged].MadeNotDecided) != 1 {
+		t.Fatalf("a rebuild before this runtime read any carrier was excused: %+v", report.Results[CarrierChanged])
+	}
+	// The excuse is the carrier's alone: a wake or a process loss the owner made
+	// stays a disagreement.
+	report, err = Compare(nil,
+		[]Rebuild{{At: at(60), Cause: WakeGap}}, nil, nil, nil, marks,
+		window, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Results[WakeGap].MadeNotDecided) != 1 {
+		t.Fatalf("a wake was excused by the carrier: %+v", report.Results[WakeGap])
 	}
 }

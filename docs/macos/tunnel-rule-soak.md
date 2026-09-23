@@ -110,4 +110,7 @@ a rebuild this runtime decided that the owner did not make, and one the owner ma
 that this runtime did not decide. A process loss this runtime decided beside a
 restart the owner made for another reason is listed as explained by the owner's
 own restart, and is not a disagreement: watching from outside, both replace the
-process.
+process. A carrier rebuild the owner made while this runtime read one and the
+same carrier on both sides of it is listed as one it could not have seen: both
+look once a minute, in different phases, and a change that reverts inside a
+minute is visible only to the one whose look fell in it.

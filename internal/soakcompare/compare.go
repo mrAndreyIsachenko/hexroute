@@ -46,6 +46,14 @@ type Rebuild struct {
 	Previous time.Time
 }
 
+// Carrier is a moment this runtime's reading of the carrier changed. Between two
+// marks the signature it saw held, so a change the owner made between them is one
+// that began and ended inside a single cycle of this runtime.
+type Carrier struct {
+	At     time.Time
+	Digest string
+}
+
 // Induction is the operator's own record that they caused an event.
 type Induction struct {
 	At    time.Time
@@ -85,6 +93,15 @@ type Result struct {
 	DecidedNotMade []Episode
 	// MadeNotDecided are rebuilds no episode was decided for.
 	MadeNotDecided []Rebuild
+	// Unobservable are carrier rebuilds the owner made at a moment this runtime
+	// read the same carrier before and after. Both runtimes look once a minute,
+	// in different phases, and a signature that changes and changes back inside
+	// one of those minutes is visible only to the one whose look fell in it:
+	// measured 2026-09-23, an ingress target moved to the physical interface at
+	// 11:00:52Z and was back by 11:01:09Z, between cycles at 11:00:26Z and
+	// 11:01:26Z that carried one and the same signature. They are listed rather
+	// than dropped.
+	Unobservable []Rebuild
 	// Explained are process-gone episodes the owner made no process rebuild for
 	// but restarted the tunnel inside the window for another reason of its own.
 	// Watching from outside, a runtime sees the process replaced either way and
@@ -136,7 +153,7 @@ func dozed(spans []Dozing, at time.Time) bool {
 	return false
 }
 
-func Compare(decisions []Decision, rebuilds []Rebuild, inductions []Induction, restarts []time.Time, dozing []Dozing, window time.Duration, from, until time.Time) (Report, error) {
+func Compare(decisions []Decision, rebuilds []Rebuild, inductions []Induction, restarts []time.Time, dozing []Dozing, carrier []Carrier, window time.Duration, from, until time.Time) (Report, error) {
 	if window <= 0 || !until.After(from) {
 		return Report{}, ErrInvalidSoak
 	}
@@ -184,9 +201,14 @@ func Compare(decisions []Decision, rebuilds []Rebuild, inductions []Induction, r
 			}
 		}
 		for index, rebuild := range made {
-			if !matchedRebuild[index] {
-				result.MadeNotDecided = append(result.MadeNotDecided, rebuild)
+			if matchedRebuild[index] {
+				continue
 			}
+			if cause == CarrierChanged && unobservable(carrier, rebuild.At, window) {
+				result.Unobservable = append(result.Unobservable, rebuild)
+				continue
+			}
+			result.MadeNotDecided = append(result.MadeNotDecided, rebuild)
 		}
 		report.Results[cause] = result
 	}
@@ -222,6 +244,29 @@ func (report Report) Passes(criterion Criterion) (bool, []string) {
 		missing = append(missing, "no induced process loss agreed")
 	}
 	return len(missing) == 0, missing
+}
+
+// unobservable answers whether this runtime read one carrier across the moment:
+// it had read one before, and read no change within the window of it. A runtime
+// that had read no carrier at all says nothing, and its silence excuses nothing.
+func unobservable(carrier []Carrier, at time.Time, window time.Duration) bool {
+	read := false
+	for _, mark := range carrier {
+		if mark.At.Before(at) {
+			read = true
+		}
+		if distanceTo(mark.At, at) <= window {
+			return false
+		}
+	}
+	return read
+}
+
+func distanceTo(a, b time.Time) time.Duration {
+	if a.Before(b) {
+		return b.Sub(a)
+	}
+	return a.Sub(b)
 }
 
 func episodesFor(decisions []Decision, cause string, window time.Duration, from, until time.Time) []Episode {

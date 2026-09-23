@@ -309,7 +309,21 @@ seconds beginning at 09:54:42Z, while this runtime, whose cycles had resumed,
 named none. For this runtime the gap is the cycle its decision names; for the
 owning runtime it is the last time it wrote anything.
 
+A carrier rebuild the owning runtime made at a moment this runtime read one and
+the same carrier before and after SHALL NOT be judged a disagreement, and SHALL
+be listed. Both runtimes look once a minute, in different phases, and a
+signature that changes and changes back inside one of those minutes is visible
+only to the one whose look fell in it: measured 2026-09-23, an ingress target
+moved to the physical interface at 11:00:52Z and was back by 11:01:09Z, between
+cycles at 11:00:26Z and 11:01:26Z that carried one and the same signature. A
+collection SHALL therefore keep the moments this runtime's reading of the
+carrier changed. A runtime that had read no carrier before that moment SHALL
+excuse nothing, and a change it did read around that moment SHALL stay a
+disagreement: it saw the carrier move and decided nothing.
+
 What that gives up SHALL be stated rather than hidden: the rule is not proved for
+a carrier change shorter than a cycle, and with authority it would not rebuild
+where the runtime it reproduces does. It is not proved for
 a dozing machine, and with authority it would rebuild the tunnel more often than
 the runtime it reproduces. The executor that acts on this rule has to answer for
 that separately.
@@ -367,6 +381,16 @@ again has no previous cycle and decides no wake, so its silence stays a hole.
 
 - **WHEN** the tunnel goes down and the cycle stops before it finishes, with the machine awake
 - **THEN** the stretch is judged, and the decision is compared like any other
+
+#### Scenario: A carrier change shorter than a cycle
+
+- **WHEN** the owning runtime rebuilds for a carrier change and this runtime's readings on both sides of that moment carry the same carrier
+- **THEN** the rebuild is listed as one it could not have seen, and is not a disagreement
+
+#### Scenario: A carrier change this runtime read
+
+- **WHEN** the owning runtime rebuilds for a carrier change and this runtime's reading of the carrier changed around that moment
+- **THEN** the rebuild is a disagreement
 
 #### Scenario: A stretch described twice
 
