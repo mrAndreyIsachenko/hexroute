@@ -177,8 +177,15 @@ of ours around it, in a stretch where we had read a carrier, is listed as one we
 could not have seen rather than counted against the rule. A change we did read
 around that moment stays a disagreement.
 
+It recurs. By 2026-09-24 09:00Z four such flaps had been judged — 11:00:52Z,
+15:43:05Z, 23:24:16Z and 08:54:02Z — every one of them the same ingress target
+leaving the upstream tunnel for the physical interface, every one preceded in the
+owner's log by about a minute of connection resets to that address, and every one
+over before this runtime's next cycle.
+
 What this gives up is stated in the spec: the rule is not proved for a carrier
-change shorter than a cycle. Change three's executor, which will hold the tunnel
+change shorter than a cycle, and with authority this runtime would not rebuild
+where the owner does, about four times a day. Change three's executor, which will hold the tunnel
 rather than watch it, can read the routing socket instead of sampling, and that
 is where the answer belongs.
 

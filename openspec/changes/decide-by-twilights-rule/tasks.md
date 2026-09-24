@@ -499,6 +499,14 @@
       one this runtime could not have seen. Every criterion but the seven days
       is met.
 
+      The flap recurs: four by 2026-09-24 09:00Z, at 11:00:52Z, 15:43:05Z,
+      23:24:16Z and 08:54:02Z, every one the same ingress target leaving the
+      upstream tunnel for the physical interface after about a minute of
+      connection resets to it, and every one over before this runtime's next
+      cycle. At 139 hours the judgement still reads no disagreement in any
+      cause. What the executor owes is in the roadmap: about four rebuilds a day
+      this rule would not make.
+
       That soak is void from 2026-09-18 09:44Z, when the night's dark wakes
       showed the rule deciding too late and naming losses nobody looked for —
       see 2.6. Started again 2026-09-18 13:47:52Z, the daemon installed at

@@ -118,6 +118,18 @@ not finish is not judged now, which leaves the rule unproved for a dozing
 machine — with authority it would have rebuilt fourteen times that night against
 Twilight's six. That is owed by the executor in item 9's third change.
 
+The carrier is unproved for the same kind of reason, and that one recurs. On
+2026-09-23 and 2026-09-24 an ingress target left the upstream tunnel for the
+physical interface four times, each time after a minute of connection resets to
+it, and each time Twilight's own rebuild had the route back within a minute.
+This runtime read one signature on both sides of every one of them: both sample
+at sixty seconds, in different phases, and a change that reverts inside a minute
+belongs to whichever look falls in it. The judgement lists those rather than
+counting them, so the rule is unproved for a carrier change shorter than a
+cycle — with authority it would not rebuild where Twilight does, about four
+times a day. The executor can read the routing socket rather than sample; that
+too is owed by item 9's third change.
+
 `keep-overflow-from-crowding-the-archive` closed on 2026-09-18. The archive wrote
 an overflow record for about every append that evicted, and such a record is
 critical and never evicted for size: on 2026-09-14 they were 15,076 of its 65,536
