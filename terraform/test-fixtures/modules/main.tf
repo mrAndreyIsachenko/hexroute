@@ -8,7 +8,7 @@ terraform {
     }
     uptimerobot = {
       source  = "uptimerobot/uptimerobot"
-      version = "1.9.3"
+      version = "1.11.0"
     }
     aws = {
       source  = "hashicorp/aws"
