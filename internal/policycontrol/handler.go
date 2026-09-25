@@ -139,6 +139,20 @@ func newHandlerWithClock(
 		if handler.resolveExpiredActiveLocked(err, currentTime) {
 			return handler, nil
 		}
+		// The static authority installed for this runtime moved ahead of the
+		// generation its store holds active. That is a state to report, not a
+		// reason to refuse to run: resolving it means installing the successor
+		// and activating it, and activation goes through this runtime's own
+		// socket. Measured 2026-09-25, refusing stopped both daemons on this
+		// machine — observation, operator socket and remedy together — until the
+		// configuration was rolled back.
+		if errors.Is(err, policy.ErrRestartRequired) {
+			if status, named := handler.staticMismatchStatusLocked(currentTime); named {
+				handler.status = status
+				return handler, nil
+			}
+			return nil, err
+		}
 		if reason, ok := classifyActiveFailure(err); ok {
 			handler.suspendAuthorizationLocked(reason, currentTime)
 			return handler, nil
@@ -1134,6 +1148,41 @@ func classifyPrepareFailure(cause error) (policy.PolicyState, policy.PolicyReaso
 	default:
 		return "", "", false
 	}
+}
+
+// staticMismatchStatusLocked names the generation this runtime cannot run.
+//
+// It reads the lineage rather than the active record. The active record is the
+// operational question — may this generation govern now — and it is what just
+// failed; the lineage is the historical one, and it deliberately does not
+// compare a predecessor's static digest. A runtime that cannot run what the
+// store holds must still say what the store holds, and taking the number from
+// anywhere else would be reporting something nobody verified.
+//
+// A lineage that cannot be read names nothing, and the caller keeps the answer
+// it had.
+func (handler *Handler) staticMismatchStatusLocked(now time.Time) (policy.Status, bool) {
+	if handler.store == nil {
+		return policy.Status{}, false
+	}
+	lineage, err := handler.store.RecoverLineage(
+		handler.config.Installed, handler.config.PinnedPublicKey, now)
+	if err != nil || !lineage.StaticSuperseded {
+		return policy.Status{}, false
+	}
+	status := policy.Status{
+		Schema: policy.PolicyStatusSchema, Domain: handler.domain,
+		State:            policy.PolicyRestartRequired,
+		BundleGeneration: lineage.Generation.Bundle,
+		PolicyGeneration: lineage.Generation.Policy,
+		ManifestSHA256:   lineage.ManifestSHA256,
+		ExpiresAt:        lineage.ExpiresAt,
+		Reason:           policy.ReasonStaticMismatch,
+	}
+	if status.Validate() != nil {
+		return policy.Status{}, false
+	}
+	return status, true
 }
 
 func noPolicyStatus(domain policy.Domain) policy.Status {

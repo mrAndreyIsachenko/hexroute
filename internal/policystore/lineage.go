@@ -21,8 +21,13 @@ import (
 // it rather than as conditions on it. Whether they match the present is a
 // question for the candidate being installed, not for its parent.
 type Lineage struct {
-	Domain           policy.Domain
-	Generation       Generation
+	Domain     policy.Domain
+	Generation Generation
+	// ManifestSHA256 is the manifest this lineage verified against the active
+	// pointer. It is reported because a runtime that cannot run what the store
+	// holds still has to say which generation that is, and a status names one by
+	// its manifest.
+	ManifestSHA256   string
 	PayloadSHA256    string
 	PolicySchema     uint16
 	StaticSHA256     string
@@ -137,6 +142,7 @@ func (store *Store) RecoverLineage(
 	return Lineage{
 		Domain:           store.domain,
 		Generation:       generation,
+		ManifestSHA256:   manifestDigest,
 		PayloadSHA256:    payloadDigest,
 		PolicySchema:     manifest.PolicySchema,
 		StaticSHA256:     manifest.StaticSHA256,

@@ -79,6 +79,20 @@ func TestLineageSurvivesASupersededSafetyEnvelope(t *testing.T) {
 	if lineage.StaticSHA256 != fixture.manifest.StaticSHA256 {
 		t.Fatal("RecoverLineage() reported the installed static digest instead of the predecessor's")
 	}
+	// It names the manifest as well as the generation. A runtime that cannot run
+	// what the store holds still has to say which generation that is, and a
+	// status names one by its manifest.
+	if len(lineage.ManifestSHA256) != 64 {
+		t.Fatalf("RecoverLineage() named no manifest: %q", lineage.ManifestSHA256)
+	}
+	pointer, err := store.ReadActivePointer()
+	if err != nil {
+		t.Fatalf("ReadActivePointer: %v", err)
+	}
+	if lineage.ManifestSHA256 != pointer.ManifestSHA256 {
+		t.Fatalf("RecoverLineage() named manifest %q, the pointer names %q",
+			lineage.ManifestSHA256, pointer.ManifestSHA256)
+	}
 }
 
 func TestLineageRefusesDamagedEvidence(t *testing.T) {

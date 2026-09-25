@@ -178,7 +178,10 @@ func (store *recordingCandidateStore) RecoverLineage(
 ) (policystore.Lineage, error) {
 	store.lineageCalls++
 	if store.lineageErr != nil {
-		return policystore.Lineage{}, store.lineageErr
+		// With whatever it had read, not with nothing: a caller that trusted the
+		// value because the error looked empty would be reading a generation
+		// nobody stood behind.
+		return store.lineage, store.lineageErr
 	}
 	if store.lineage.Generation.Bundle == 0 {
 		return policystore.Lineage{}, policystore.ErrRecordNotFound
