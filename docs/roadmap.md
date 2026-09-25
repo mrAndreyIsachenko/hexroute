@@ -77,10 +77,15 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`decide-by-twilights-rule` is open, the second of item 9's three changes. It gives
-this runtime's decision rule Twilight's three causes in Twilight's definitions,
-records what a comparison needs, and soaks the rule against Twilight acting for
-at least a week before the executor is written against it.
+None. Item 9's third change, the executor, is not proposed yet.
+
+`decide-by-twilights-rule` closed on 2026-09-25, the second of item 9's three
+changes. It gives this runtime's decision rule Twilight's three causes in
+Twilight's definitions, records what a comparison needs, and soaked the rule
+against Twilight acting for a week before the executor is written against it.
+The soak passed at 169 hours with no disagreement in any cause: three natural
+wake gaps from deliberate lid sleeps, two carrier agreements from switching the
+upstream VPN off and on, and two induced process losses.
 
 A day into the soak the rule was found unable to pass it. Its wake gap was the
 interval plus the sleep a steady clock measured, and across three idle sleeps on

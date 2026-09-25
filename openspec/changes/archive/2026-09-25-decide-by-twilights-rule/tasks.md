@@ -362,7 +362,7 @@
       guard fails one test, and a guard that skipped every empty window fails
       the other.
 - [x] 4.2 `make check` green.
-- [ ] 4.3 Install, and run the soak until it passes or a disagreement stops it.
+- [x] 4.3 Install, and run the soak until it passes or a disagreement stops it.
 
       First started 2026-09-14 14:40:35Z and voided a day in, when the wake rule
       was found unable to pass it (2.2). Its ledger is kept on the machine
@@ -516,6 +516,20 @@
       true, tick gap 59,912 ms. The earliest judgement is 2026-09-25
       13:47:52Z.
 
+      Passed 2026-09-25 14:53:11Z, at 169 hours and 5 minutes: no disagreement
+      in any cause, `wake_gap agreed 3 (natural 3)` from three deliberate lid
+      sleeps, `carrier_changed agreed 2 (induced 2)` from switching the upstream
+      VPN off and on with the operator's permission, and `process_gone agreed 2
+      (induced 2)`. Listed beside them, and counted against nothing: nine
+      process-gone episodes the owner's own restart explains, and four carrier
+      flaps shorter than a cycle. The judgement stitched every collection in the
+      ledger with no unobserved stretch, which is what made it judgeable at
+      all.
+
 ## 5. Close
 
-- [ ] 5.1 Sync the delta into the baseline, validate, archive.
+- [x] 5.1 Sync the delta into the baseline, validate, archive.
+
+      The two modified requirements and the added one were carried into
+      `openspec/specs/tunnel-supervision/spec.md` and compared with the delta
+      requirement by requirement before archiving.
