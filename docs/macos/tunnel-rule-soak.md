@@ -52,7 +52,15 @@ before silences were recorded are not evidence either way; collecting once with
 sudo '/Library/Application Support/Hexroute/observe-root/bin/hexroute-soak-compare' --from '<soak start, RFC 3339>' collect
 ```
 
-`--from` always wins over where the ledger reached. A stretch collected twice is
+`--from` always wins over where the ledger reached.
+
+A re-read from the soak's start stops fitting partway through a soak: one read of
+the archive returns at most 100,000 records, and the collection refuses a read the
+limit cut short rather than record a window as observed that it did not read.
+Measured on 2026-09-24 that re-read held 89,206 records and on 2026-09-25 it no
+longer fitted, at about seventeen thousand records a day. So re-read from the
+start only to repair a stretch, early enough that it fits, and collect plain
+otherwise. A stretch collected twice is
 judged by the later collection, so collecting again from the soak's start is how
 a stretch read under an older rule is read afresh.
 
