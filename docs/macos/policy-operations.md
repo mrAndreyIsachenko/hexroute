@@ -244,6 +244,34 @@ and therefore more chances to miss one.
 The first generation signed here took fourteen days for no recorded reason, and
 the machine spent a month locked out of its own policy control plane afterwards.
 
+## When Static Authority Changes
+
+The compiled safety envelope, the signer fingerprint, the schema range and the
+trusted compilers are static authority. A candidate compiled against a different
+one is refused as `restart_required`, and the remedy is to install the
+configuration it needs rather than to force the candidate through.
+
+The order is: install the new static configuration in both domains, restart both
+daemons, install the successor bundle, activate it. Between the restart and the
+activation both daemons report
+
+    state   restart_required
+    reason  static_mismatch
+
+naming the generation they hold and cannot run. They observe, they answer, and
+they authorize nothing: the generation in force was compiled against the
+envelope that came before, and nothing is in force until the successor is
+activated.
+
+That window is short by construction — everything that can be prepared is
+prepared before it — and it is the only state in which the successor can be
+installed. A daemon that refused to start here would make it unreachable:
+measured 2026-09-25, an earlier build did exactly that, and both daemons
+restarted every ten to twenty seconds until the configuration was rolled back.
+
+Rolling back is putting the previous configuration in place and restarting. The
+generation in force validates again, and nothing else has changed.
+
 ## When A Generation Has Lapsed
 
 An expired generation reports `state: none` with reason `expired`, raises no
