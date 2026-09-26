@@ -233,8 +233,6 @@ const (
 	// one would claim a distinction the code does not make.
 	ReasonInvalidRuntime         Reason = "invalid_runtime"
 	ReasonJournalUnwritable      Reason = "journal_unwritable"
-	ReasonArchiveUnwritable      Reason = "archive_unwritable"
-	ReasonReadModelUnwritable    Reason = "read_model_unwritable"
 	ReasonPublicationFailed      Reason = "publication_failed"
 	ReasonControlStateUnwritable Reason = "control_state_unwritable"
 	ReasonOperatorSocketEnded    Reason = "operator_socket_ended"
