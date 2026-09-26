@@ -77,7 +77,22 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`say-why-a-runtime-stopped` is open. A runtime that ends on a failure records
+nothing: eleven exits of the root daemon's observation loop become one exit code,
+and `daemon_stopped` is written for the one ending that needs no explanation — a
+cancelled context — and for none of the ten that do. Measured 2026-09-26, the
+daemon ended at about 09:04:00 leaving a `daemon_started`, no stop, nothing above
+`info` in either log, and a restart count under launchd as the only trace. The
+tunnel its last act had started was gone with it, and the previous owner was
+standing down under this runtime's claim, so the machine went about a minute with
+no tunnel.
+
+It will say that it stopped and what ended it, from a closed vocabulary of the
+part of its own work that failed, through the log the failure cannot have broken.
+It was found by taking the tunnel for the second time, which is the third of item
+9's changes and waits on this one: a defect that ends the daemon while it holds
+the tunnel costs a minute of no tunnel and explains nothing, and seven days of
+ownership would collect those gaps rather than account for them.
 
 `start-when-the-static-authority-moved` closed on 2026-09-26. A daemon whose
 stored active generation was compiled against a different static authority
