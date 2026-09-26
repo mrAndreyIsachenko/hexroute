@@ -29,22 +29,39 @@ asks.
 
 The log record carries a fixed field set and a closed vocabulary, because these
 logs are collected and this repository is public. So what failed has to be a
-name, and the eleven exits collapse into seven kinds:
+name, and the exits collapse into five kinds:
 
 | What failed | Reason |
 |---|---|
 | the runtime was built wrong | `invalid_runtime` |
 | a log record could not be written | `journal_unwritable` |
-| an event could not be recorded | `archive_unwritable` |
-| the read model could not be folded | `read_model_unwritable` |
 | the connectivity publication failed | `publication_failed` |
-| the control state could not be updated | `control_state_unwritable` |
+| the control state could not be written | `control_state_unwritable` |
 | the operator socket ended | `operator_socket_ended` |
 
-Seven rather than eleven because two exits are the same archive and three are the
-same journal, and a reader looking for the cause wants the part that failed
-rather than the line number. Seven rather than one because one would be
+Five rather than nine, because a reader looking for the cause wants the part that
+failed rather than the line number. Five rather than one, because one would be
 `stopped_on_error`, which is what the exit code already says.
+
+Two names that looked obvious are not there, and reading the code is what
+removed them. The read model reports every failure it has of its own —
+observing, sampling, recording — and carries on, so the only error its fold
+returns is the log refusing a record: an exit naming the read model would claim a
+distinction the code does not make. The event archive is the same. So the fold's
+exit is the journal, and there is no `read_model_unwritable` or
+`archive_unwritable` to name.
+
+One name covers two routes to the same thing. The user runtime writes its
+snapshot to disk and updates its controller with the same state, so both exits
+answer `control_state_unwritable`: a runtime whose control state cannot be
+written is answering the operator with something it did not write, whichever
+half failed.
+
+And one call fails for two different reasons. `emitSummary` returns the log's
+refusal and also its own `ErrInvalidConfig`, for a cycle state or a route role
+this runtime does not know — the first is the journal and the second is the
+runtime, and naming the journal for both would send the reader to the wrong
+subsystem.
 
 ## The result is degraded, and the event is the one that exists
 
