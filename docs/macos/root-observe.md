@@ -129,8 +129,18 @@ runtime that could write neither log still stops and still exits non-zero; then
 existed to end. Measured 2026-09-26: the root daemon ended at about 09:04:00
 leaving a `daemon_started`, no stop, nothing above `info`, and `runs = 23`.
 
-`launchctl kickstart -k` is an `ok` stop. A `degraded` one immediately after an
-install is the install, not the machine.
+`launchctl kickstart -k` leaves no stop record at all. Measured 2026-09-26: two
+restarts that way wrote a `daemon_started` and nothing before it on either
+stream, while a plain `kill -TERM` to the same daemon wrote `daemon_stopped`
+with `ok` in the same second. The `-k` kills the job rather than asking it to
+stop, so an absent record after one says nothing about the runtime. To see a
+runtime record its own ending, signal it and let `KeepAlive` bring it back:
+
+```sh
+sudo kill -TERM "$(pgrep -f 'hexrouted --observe')"
+```
+
+A `degraded` stop immediately after an install is the install, not the machine.
 
 ## Rollback
 
