@@ -54,13 +54,55 @@
 
 ## 3. Gates and evidence
 
-- [ ] 3.1 `make check` passes; verified by its exit status.
-- [ ] 3.2 The runbooks say what a stop record means and where to read it; verified by following them.
+- [x] 3.1 `make check` passes; verified by its exit status.
+- [x] 3.2 The runbooks say what a stop record means and where to read it; verified by following them.
+
+      `docs/macos/root-observe.md` and `docs/macos/user-observe.md`, each under
+      its own heading: the two results, the five names, and which stream to read
+      — the error one, because the journal is among the things that end a
+      runtime.
+
+      Following it corrected it. The text said `launchctl kickstart -k` is an
+      `ok` stop; it is not, and task 4.1 is where that was measured.
 
 ## 4. On the machine
 
-- [ ] 4.1 Install both daemons and confirm an ordinary restart still records `daemon_stopped` with `ok`; verified by the logs around a deliberate restart.
-- [ ] 4.2 Confirm a failure is recorded, by inducing one this runtime can be made to meet without damage; verified by the record naming it.
+- [x] 4.1 Install both daemons and confirm an ordinary restart still records `daemon_stopped` with `ok`; verified by the logs around a deliberate restart.
+
+      Installed from the branch that also carries the tunnel executor, because
+      this one is cut from `main` and the machine's root configuration has an
+      execution block `main` does not know: installing a binary from here would
+      have refused the live configuration, which is the crash loop all of this
+      is about.
+
+      2026-09-26T11:04:49Z, root: `daemon_stopped result=ok`, and started again
+      twelve seconds later. 11:11:07Z, user: the same, in the same second.
+
+      What this found is that `launchctl kickstart -k` leaves no record at all.
+      Two restarts that way wrote a `daemon_started` and nothing before it on
+      either stream, and it looked like the defect this change exists for. It is
+      not: `-k` kills the job rather than asking it to stop, and a plain
+      `kill -TERM` to the same daemon wrote the stop in the same second. The
+      runbooks say so now, and say to signal it rather than kickstart it when
+      the question is what a runtime records.
+- [x] 4.2 Confirm a failure is recorded, by inducing one this runtime can be made to meet without damage; verified by the record naming it.
+
+      Induced beside the machine rather than on it: a copy of the root daemon
+      running one cycle in a directory of its own, whose heartbeat opens and
+      cannot be written. The first cycle writes a heartbeat of the real shape,
+      so nothing about it is guessed; `chflags uchg` then stops even root from
+      writing it, which `chmod` does not. What fails is the publication inside
+      the loop, not anything at startup.
+
+      2026-09-26T11:19:27Z: exit 1, and on the error stream
+      `daemon_stopped result=degraded reason=publication_failed`. No installed
+      path was touched, no claim held, nothing performed.
+
+      Three attempts before it failed on the harness rather than on the
+      question: output redirected as the operator into a directory owned by
+      root, `chmod 400` against a process that is root and does not check
+      permissions, and a socket path the daemon accepts only one value for.
+      Each was a fact about this host that reading it first would have given.
 
 ## 5. Close
 
