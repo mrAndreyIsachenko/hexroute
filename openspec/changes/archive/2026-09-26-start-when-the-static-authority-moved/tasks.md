@@ -110,4 +110,9 @@
 
 ## 5. Close
 
-- [ ] 5.1 Sync the delta into the baseline, validate, archive.
+- [x] 5.1 Sync the delta into the baseline, validate, archive.
+
+      The requirement sits beside `Static and dynamic authority separation`,
+      which is the one it is the other side of: that requirement says a
+      candidate needing a different static configuration is refused live, and
+      this one says what becomes of a daemon after the configuration changes.
