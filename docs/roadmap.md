@@ -77,18 +77,27 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`start-when-the-static-authority-moved` is open. A daemon whose stored active
-generation was compiled against a different static authority refuses to start,
-so installing a rebuilt safety envelope stopped both daemons on this machine
-until the configuration was rolled back — and the act that resolves such a
-mismatch, installing and activating the successor, runs through the sockets
-those daemons hold. It will start instead, report `restart_required` with the
-generation it cannot run, and authorize nothing.
+None.
+
+`start-when-the-static-authority-moved` closed on 2026-09-26. A daemon whose
+stored active generation was compiled against a different static authority
+refused to start, so installing a rebuilt safety envelope stopped both daemons
+on this machine until the configuration was rolled back — and the act that
+resolves such a mismatch, installing and activating the successor, runs through
+the sockets those daemons hold. It starts instead, reports `restart_required`
+with the generation it cannot run, and authorizes nothing.
 
 It was found by performing the ceremony that grants `tunnel_ownership`, which
 item 9's third change needs: the capability entered the compiled safety envelope
 after this machine's signer application was built, and that envelope's digest is
 what a policy source carries as its static authority.
+
+It took the same fault twice. Reporting the mismatch was only half of it: a
+runtime that named the generation it held without holding it read every
+candidate's parent as a downgrade, and refused the one bundle that ends the
+mismatch. Both daemons came up on 2026-09-26, said what was wrong, and then
+refused the remedy. Holding the lineage's generation alongside the status closed
+it, and generation 5 activated through the window rather than around it.
 
 `decide-by-twilights-rule` closed on 2026-09-25, the second of item 9's three
 changes. It gives this runtime's decision rule Twilight's three causes in
