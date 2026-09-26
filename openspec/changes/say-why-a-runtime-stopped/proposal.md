@@ -7,11 +7,12 @@ act had started was gone with it, and because this runtime held the tunnel claim
 the previous owner was standing down: the machine went about a minute with no
 tunnel at all.
 
-The daemon cannot say why it stopped. Eleven places in the observation loop
-return an error, `Run` turns any of them into `return 1`, and none of them
-records anything. `daemon_stopped` is written on exactly one path — a context
-that was cancelled — so the record exists for the one ending that needs no
-explanation and for none of the ten that do.
+The daemon cannot say why it stopped. Nine places in its observation loop return
+an error, `Run` turns any of them into `return 1`, and none of them records
+anything. `daemon_stopped` is written on exactly one path — a context that was
+cancelled — so the record exists for the one ending that needs no explanation and
+for none of the nine that do. The runtime measured carries the tunnel executor,
+which adds two more of its own.
 
 This is the instrument, not the fault. A defect that ends the daemon cannot be
 diagnosed from the outside: an operator reading the logs sees a runtime that

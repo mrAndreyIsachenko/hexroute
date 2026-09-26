@@ -139,7 +139,7 @@ func TestObserveLoopPersistsCandidateStateAndEmitsRedactedProposal(t *testing.T)
 		t.Fatalf("operator.NewController() error: %v", err)
 	}
 
-	if err := observeLoop(
+	if _, err := observeLoop(
 		context.Background(),
 		time.Minute,
 		true,

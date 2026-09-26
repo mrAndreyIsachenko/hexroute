@@ -103,7 +103,7 @@ func TestObserveLoopEmitsOnlyRedactedProposals(t *testing.T) {
 		t.Fatalf("operator.NewController() error: %v", err)
 	}
 
-	if err := observeLoop(
+	if _, err := observeLoop(
 		context.Background(),
 		time.Minute,
 		true,
@@ -356,7 +356,7 @@ func TestTheDecisionIsRecordedBeforeTheRestOfTheCycle(t *testing.T) {
 			},
 		},
 	}}
-	err = observeLoop(
+	_, err = observeLoop(
 		context.Background(), time.Minute, true,
 		func() control.Tick { return 7 }, func() time.Duration { return 0 },
 		cycler, failingHeartbeat{}, controller, nil, nil, logger, reader, nil,
@@ -415,7 +415,7 @@ func TestASuspendedCycleRecordsThatTheMachineWasDozing(t *testing.T) {
 			},
 		},
 	}}
-	if err := observeLoop(
+	if _, err := observeLoop(
 		context.Background(), time.Minute, true,
 		func() control.Tick { return 7 }, func() time.Duration { return 0 },
 		cycler, &fixedHeartbeat{}, controller, nil, nil, logger, reader, nil,

@@ -214,6 +214,30 @@ const (
 	ReasonQualificationUnavailable Reason = "qualification_unavailable"
 	ReasonSocketUnavailable        Reason = "socket_unavailable"
 	ReasonPolicyStoreUnavailable   Reason = "policy_store_unavailable"
+
+	// A runtime's own ending, when nobody asked for it.
+	//
+	// These name the part of a runtime's work that failed, because the record
+	// carries a fixed field set and cannot say in a field what it did not do.
+	// Measured 2026-09-26, a daemon that could not say any of this left a
+	// `daemon_started`, no stop, and a restart count under launchd, and the
+	// defect that ended it is not diagnosable from what was kept.
+	//
+	// They are five rather than one: one would be `stopped_on_error`, which is
+	// what the exit code already says. They are five rather than nine — the
+	// number of exits there are — because a reader looking for the cause wants
+	// the part that failed and not the line it failed on.
+	//
+	// There is no name here for the read model or the event archive. Both
+	// report their own failures and carry on by design, so an exit that named
+	// one would claim a distinction the code does not make.
+	ReasonInvalidRuntime         Reason = "invalid_runtime"
+	ReasonJournalUnwritable      Reason = "journal_unwritable"
+	ReasonArchiveUnwritable      Reason = "archive_unwritable"
+	ReasonReadModelUnwritable    Reason = "read_model_unwritable"
+	ReasonPublicationFailed      Reason = "publication_failed"
+	ReasonControlStateUnwritable Reason = "control_state_unwritable"
+	ReasonOperatorSocketEnded    Reason = "operator_socket_ended"
 )
 
 type wireEvent struct {
@@ -453,7 +477,9 @@ func validReason(value Reason) bool {
 		ReasonOuterPathNotReady, ReasonServiceNotStale,
 		ReasonRecoveryUnequipped, ReasonRecoveryFailed,
 		ReasonCredentialsUnavailable, ReasonCodeUnavailable,
-		ReasonSessionNotStarted:
+		ReasonSessionNotStarted,
+		ReasonInvalidRuntime, ReasonJournalUnwritable, ReasonPublicationFailed,
+		ReasonControlStateUnwritable, ReasonOperatorSocketEnded:
 		return true
 	default:
 		return false

@@ -341,7 +341,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// this executor answers "proposed" to everything and the daemon behaves
 	// exactly as it did before it existed.
 	executor := newRecovery(policyHandler, config.Recovery, *rootSocketPath)
-	if err := observeLoop(
+	if reason, err := observeLoop(
 		ctx,
 		config.Interval,
 		*once,
@@ -357,6 +357,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		executor,
 		policyHandler,
 	); err != nil {
+		// On the error stream, because the journal is one of the things that
+		// ends this loop and a record attempted there would go through what
+		// just broke. Its own failure is dropped: a runtime that can write
+		// neither log still stops, with the status the failure calls for.
+		_ = errorLog.Emit(
+			logging.LevelWarn, logging.EventDaemonStopped, logging.ResultDegraded, reason)
 		return 1
 	}
 	return 0
@@ -473,7 +479,7 @@ func observeLoop(
 	publisher *factPublisher,
 	executor *recovery,
 	policyExpiry ExpiryAnnouncer,
-) error {
+) (logging.Reason, error) {
 	// The log records what happened; the state file records that the loop ran.
 	gate := logging.NewChangeGate()
 	if ctx == nil ||
@@ -484,7 +490,7 @@ func observeLoop(
 		controller == nil ||
 		notifications == nil ||
 		logger == nil {
-		return ErrInvalidConfig
+		return logging.ReasonInvalidRuntime, ErrInvalidConfig
 	}
 	if err := logger.Emit(
 		logging.LevelInfo,
@@ -492,7 +498,7 @@ func observeLoop(
 		logging.ResultOK,
 		"",
 	); err != nil {
-		return err
+		return logging.ReasonJournalUnwritable, err
 	}
 	lastState := control.State("")
 	for {
@@ -509,16 +515,20 @@ func observeLoop(
 		// cannot change them: a root that is unreachable, refusing or absent
 		// leaves this loop exactly as it was.
 		if err := publisher.Publish(ctx, summary.Observed, logger); err != nil {
-			return err
+			return logging.ReasonPublicationFailed, err
 		}
+		// The snapshot on disk and the controller's own are the same state by
+		// two routes, so they answer under one name: a runtime whose control
+		// state cannot be written is answering the operator with something it
+		// did not write, whichever half failed.
 		if err := store.Save(summary.Plan.Snapshot); err != nil {
-			return err
+			return logging.ReasonControlStateUnwritable, err
 		}
 		if err := controller.Update(
 			summary.Plan.Snapshot,
 			operatorReason(summary.Plan.Reason),
 		); err != nil {
-			return err
+			return logging.ReasonControlStateUnwritable, err
 		}
 		dispatchPritunlNotification(
 			ctx,
@@ -537,15 +547,18 @@ func observeLoop(
 		)
 		lastState = summary.Plan.Snapshot.State
 		if err := emitSummary(logger, gate, summary); err != nil {
-			return err
+			return logging.ReasonJournalUnwritable, err
 		}
 		if once {
-			return logger.Emit(
+			if err := logger.Emit(
 				logging.LevelInfo,
 				logging.EventDaemonStopped,
 				logging.ResultOK,
 				"",
-			)
+			); err != nil {
+				return logging.ReasonJournalUnwritable, err
+			}
+			return "", nil
 		}
 
 		timer := time.NewTimer(interval)
@@ -556,17 +569,23 @@ func observeLoop(
 				if !timer.Stop() {
 					<-timer.C
 				}
-				return logger.Emit(
+				if err := logger.Emit(
 					logging.LevelInfo,
 					logging.EventDaemonStopped,
 					logging.ResultOK,
 					"",
-				)
+				); err != nil {
+					return logging.ReasonJournalUnwritable, err
+				}
+				return "", nil
+			// Fatal whether it says why or not: an error names what it failed
+			// on, and a closed channel with none says the server returned
+			// without being asked to. Both are the same loss of the one way in.
 			case err := <-serverDone:
 				if err != nil {
-					return err
+					return logging.ReasonOperatorSocketEnded, err
 				}
-				return ErrInvalidConfig
+				return logging.ReasonOperatorSocketEnded, ErrInvalidConfig
 			case envelope := <-requests:
 				if envelope.Active() {
 					envelope.Respond(controller.Handle(envelope.Request))

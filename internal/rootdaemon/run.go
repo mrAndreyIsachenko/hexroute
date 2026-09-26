@@ -2,6 +2,7 @@ package rootdaemon
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelclaim"
@@ -427,7 +428,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	); err != nil {
 		return 1
 	}
-	if err := observeLoop(
+	if reason, err := observeLoop(
 		runCtx,
 		config.Interval,
 		*once,
@@ -444,6 +445,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		observations,
 		tunnelAuthorityOf(policyHandler),
 	); err != nil {
+		// Said here rather than inside the loop, because three of the loop's
+		// exits are its own logger failing and a record attempted there would
+		// go through the thing that just broke. This is where both logs are in
+		// scope, and where the exit status is decided.
+		//
+		// Its own failure is dropped. A runtime that can write neither log still
+		// stops, with the status the failure calls for: letting the record fail
+		// the stop would turn a broken stderr into an illegible ending.
+		_ = errorLog.Emit(
+			logging.LevelWarn, logging.EventDaemonStopped, logging.ResultDegraded, reason)
 		return 1
 	}
 	return 0
@@ -521,7 +532,7 @@ func observeLoop(
 	// nil when this runtime has no policy control at all, which is the same
 	// state in which nothing could be permitted anyway.
 	authority tunnelAuthorizer,
-) error {
+) (logging.Reason, error) {
 	// The gate keeps the log a record of what happened rather than of how
 	// often it was checked. Liveness lives in the heartbeat file.
 	gate := logging.NewChangeGate()
@@ -533,10 +544,10 @@ func observeLoop(
 		publisher == nil ||
 		controller == nil ||
 		logger == nil {
-		return ErrInvalidConfig
+		return logging.ReasonInvalidRuntime, ErrInvalidConfig
 	}
 	if err := logger.Emit(logging.LevelInfo, logging.EventDaemonStarted, logging.ResultOK, ""); err != nil {
-		return err
+		return logging.ReasonJournalUnwritable, err
 	}
 	operatorSnapshot := control.NewSnapshot(control.StateSuspended)
 	for {
@@ -563,23 +574,35 @@ func observeLoop(
 				logging.ResultDegraded,
 				"",
 			); emitErr != nil {
-				return emitErr
+				return logging.ReasonJournalUnwritable, emitErr
 			}
 		}
 		if err := emitSummary(logger, gate, summary); err != nil {
-			return err
+			// Two different failures arrive here. The log refusing a record is
+			// the journal; a summary whose state or route role is not one this
+			// runtime knows is the runtime, and naming the journal for it would
+			// send the reader to the wrong subsystem.
+			if errors.Is(err, ErrInvalidConfig) {
+				return logging.ReasonInvalidRuntime, err
+			}
+			return logging.ReasonJournalUnwritable, err
 		}
 		at := nowTick()
 		// The read model runs after the cycle and changes nothing about it.
 		// Its failure is reported and dropped: a daemon that stops observing
 		// because a description of its observations failed would be worse than
 		// one with no read model at all.
+		// The journal, not the read model. Every failure the fold has of its
+		// own — observing, sampling, recording — is reported and dropped by
+		// design, so the only error it returns is the log refusing a record.
+		// Naming the read model here would be a distinction the code does not
+		// make.
 		if err := connectivityhost.Fold(
 			reader, summary.Observed, plannerIntents(summary.Plan), logger); err != nil {
-			return err
+			return logging.ReasonJournalUnwritable, err
 		}
 		if err := publisher.Publish(at); err != nil {
-			return err
+			return logging.ReasonPublicationFailed, err
 		}
 		operatorSnapshot = nextRootOperatorSnapshot(operatorSnapshot, summary, at)
 		// What this runtime last saw of itself, for the one request it answers
@@ -589,10 +612,15 @@ func observeLoop(
 			operatorSnapshot,
 			rootOperatorReason(summary.State),
 		); err != nil {
-			return err
+			return logging.ReasonControlStateUnwritable, err
 		}
 		if once {
-			return logger.Emit(logging.LevelInfo, logging.EventDaemonStopped, logging.ResultOK, "")
+			if err := logger.Emit(
+				logging.LevelInfo, logging.EventDaemonStopped, logging.ResultOK, "",
+			); err != nil {
+				return logging.ReasonJournalUnwritable, err
+			}
+			return "", nil
 		}
 
 		timer := time.NewTimer(remainingPeriod(began, elapsed(), interval))
@@ -603,17 +631,23 @@ func observeLoop(
 				if !timer.Stop() {
 					<-timer.C
 				}
-				return logger.Emit(
+				if err := logger.Emit(
 					logging.LevelInfo,
 					logging.EventDaemonStopped,
 					logging.ResultOK,
 					"",
-				)
+				); err != nil {
+					return logging.ReasonJournalUnwritable, err
+				}
+				return "", nil
+			// The socket ending is fatal either way. An error says what it
+			// failed on; a closed channel with none says the server returned
+			// without being asked to, which is the same loss of the one way in.
 			case err := <-serverDone:
 				if err != nil {
-					return err
+					return logging.ReasonOperatorSocketEnded, err
 				}
-				return ErrInvalidConfig
+				return logging.ReasonOperatorSocketEnded, ErrInvalidConfig
 			case envelope := <-requests:
 				if envelope.Active() {
 					envelope.Respond(answer(ctx, controller, rescuer, envelope.Request))

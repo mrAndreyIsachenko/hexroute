@@ -78,7 +78,7 @@ Status date: 2026-09-04.
 ## Active Changes
 
 `say-why-a-runtime-stopped` is open. A runtime that ends on a failure records
-nothing: eleven exits of the root daemon's observation loop become one exit code,
+nothing: nine exits of the root daemon's observation loop become one exit code,
 and `daemon_stopped` is written for the one ending that needs no explanation — a
 cancelled context — and for none of the ten that do. Measured 2026-09-26, the
 daemon ended at about 09:04:00 leaving a `daemon_started`, no stop, nothing above
