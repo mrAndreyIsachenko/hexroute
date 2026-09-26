@@ -2,11 +2,13 @@ package policycontrol
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyapproval"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
@@ -196,5 +198,118 @@ func TestTheOtherStartupFailuresKeepTheirAnswers(t *testing.T) {
 	store.recoverErr = errors.New("something nobody wrote a reason for")
 	if _, err := NewHandler(store, runtime, func() time.Time { return now }); err == nil {
 		t.Fatal("an unclassified failure started without saying anything")
+	}
+}
+
+// supersededSuccessor is the bundle that ends the mismatch: generation 5,
+// naming 4 as its parent, compiled against the static authority now installed.
+func supersededSuccessor(
+	installed policy.InstalledCompatibility,
+) (policy.Manifest, policy.DomainPayload) {
+	payload := policy.DomainPayload{
+		Schema: policy.DomainPayloadSchema, Domain: installed.Domain,
+		PolicyGeneration: 4, Rules: []policy.Rule{},
+	}
+	payloadDigest, _, err := policy.CanonicalSHA256(payload)
+	if err != nil {
+		panic(err)
+	}
+	reference := policy.DomainReference{Generation: 4, PayloadSHA256: payloadDigest}
+	other := policy.DomainReference{
+		Generation: 4, PayloadSHA256: policy.SHA256Hex([]byte("the other domain")),
+	}
+	manifest := policy.Manifest{
+		Schema: policy.ManifestSchema, PolicySchema: installed.CurrentPolicySchema,
+		CompilerVersion: "v0.1.0", CompilerSHA256: installed.TrustedCompilerSHA256[0],
+		BundleGeneration: 5, ParentBundleGeneration: 4,
+		Root: reference, User: other,
+		StaticSHA256:      installed.StaticSHA256,
+		SignerFingerprint: policy.SHA256Hex([]byte("synthetic-signer")),
+		IssuedAt:          "2030-01-10T00:00:00Z",
+		NotBefore:         "2030-01-10T00:00:00Z",
+		ExpiresAt:         "2030-02-05T00:00:00Z",
+	}
+	if installed.Domain == policy.DomainUser {
+		manifest.Root, manifest.User = other, reference
+	}
+	return manifest, payload
+}
+
+// The successor is still acceptable. Coming up and naming the mismatch is only
+// half the remedy; the other half is the one bundle that ends it, and a runtime
+// carrying no generation refuses every successor as a downgrade.
+//
+// Measured 2026-09-26 on this machine: both daemons started and reported the
+// mismatch, and `policy commit` of the successor was refused
+// precondition_failed by both.
+func TestTheSuccessorOfASupersededGenerationIsStillAcceptable(t *testing.T) {
+	for _, domain := range []policy.Domain{policy.DomainRoot, policy.DomainUser} {
+		t.Run(string(domain), func(t *testing.T) {
+			store, runtime := supersededStore(t, domain)
+			handler := supersededHandler(t, store, runtime)
+
+			installed := handler.config.Installed
+			if installed.CurrentBundleGeneration != 4 ||
+				installed.CurrentPolicyGeneration != 3 ||
+				installed.CurrentPayloadSHA256 != store.lineage.PayloadSHA256 {
+				t.Fatalf("the runtime carries %d/%d payload %q, and the successor names 4 as its parent",
+					installed.CurrentBundleGeneration, installed.CurrentPolicyGeneration,
+					installed.CurrentPayloadSHA256)
+			}
+			manifest, payload := supersededSuccessor(installed)
+			if err := policy.CheckCandidateCompatibility(manifest, payload, installed); err != nil {
+				t.Fatalf("the bundle that ends the mismatch was refused: %v", err)
+			}
+		})
+	}
+}
+
+// The chain it adopted is the one the store proved, and it is what the store is
+// asked with when the successor is prepared.
+func TestTheAdoptedChainIsWhatThePrepareIsJudgedAgainst(t *testing.T) {
+	store, runtime := supersededStore(t, policy.DomainRoot)
+	handler := supersededHandler(t, store, runtime)
+	store.err = policystore.ErrRecordNotFound
+
+	identity := syntheticIPCIdentity()
+	identity.BundleGeneration = 5
+	handler.HandleIPC(context.Background(), ipc.Request{
+		Action:        ipc.ActionPreparePolicy,
+		PreparePolicy: &ipc.PreparePolicyRequest{Transaction: identity},
+	})
+	if store.calls == 0 {
+		t.Fatal("the candidate was never put to the store")
+	}
+	if store.installed.CurrentBundleGeneration != 4 {
+		t.Fatalf("the store was asked against generation %d",
+			store.installed.CurrentBundleGeneration)
+	}
+}
+
+// Adopting the chain grants nothing. It is the parent of the next generation
+// and nothing else: no generation is active, and the mutation gate refuses.
+func TestTheAdoptedChainAuthorizesNothing(t *testing.T) {
+	store, runtime := supersededStore(t, policy.DomainRoot)
+	handler := supersededHandler(t, store, runtime)
+	if handler.hasActive {
+		t.Fatal("a generation that cannot run was treated as active")
+	}
+	if handler.MutationAllowed() {
+		t.Fatal("the adopted chain allowed a mutation")
+	}
+}
+
+// A chain that would not survive its own validation is reported and not
+// adopted. The state stays unresolvable, which is still better than a runtime
+// that will not start.
+func TestAChainThatWouldNotValidateIsReportedAndNotAdopted(t *testing.T) {
+	store, runtime := supersededStore(t, policy.DomainRoot)
+	store.lineage.PayloadSHA256 = "not a digest"
+	handler := supersededHandler(t, store, runtime)
+	if handler.status.Reason != policy.ReasonStaticMismatch {
+		t.Fatalf("status = %+v", handler.status)
+	}
+	if handler.config.Installed.CurrentBundleGeneration != 0 {
+		t.Fatalf("a chain that does not validate was adopted: %+v", handler.config.Installed)
 	}
 }
