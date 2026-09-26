@@ -19,6 +19,16 @@ start makes the only act that resolves the mismatch impossible. Measured
 machine, each restarting every ten to twenty seconds under launchd, until the
 configuration was rolled back.
 
+Such a daemon SHALL carry the lineage's generation as the generation it holds,
+so that the successor — which names its parent — can be prepared and activated
+through it. A runtime carrying no generation refuses every candidate as a
+downgrade, which would leave the mismatch reported and unresolvable. Measured
+2026-09-26 on this machine, both daemons came up and named the mismatch, and
+both refused the one bundle that ends it. Adopting the chain SHALL grant
+nothing: no generation is active, the mutation gate refuses on that alone, and
+lineage carries no payload, manifest or approval. A chain that would not survive
+its own validation SHALL be reported and not adopted.
+
 Nothing else SHALL change about what may be activated. A candidate whose static
 digest differs from the installed one is still refused, and is still resolved by
 installing the configuration it needs.
@@ -35,8 +45,13 @@ questions, and one of them becoming legible must not make the rest so.
 
 #### Scenario: The successor is installed and activated
 
-- **WHEN** a generation compiled against the installed static authority is installed and activated on such a daemon
-- **THEN** the daemon reports it active in the ordinary way
+- **WHEN** a generation compiled against the installed static authority, naming the held generation as its parent, is prepared and activated on such a daemon
+- **THEN** it is accepted rather than refused as a downgrade, and the daemon reports it active in the ordinary way
+
+#### Scenario: The chain it holds grants nothing
+
+- **WHEN** a daemon holds a generation it cannot run and is asked to act
+- **THEN** it refuses, because no generation is active
 
 #### Scenario: The static authority matches
 

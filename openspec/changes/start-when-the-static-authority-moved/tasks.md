@@ -40,6 +40,27 @@
       value; it now answers with whatever it had read, and the runtime is
       required to refuse anyway.
 
+- [x] 1.6 Such a handler carries the lineage's generation, so the successor — which names its parent — is accepted rather than refused as a downgrade; verified by a test that puts the real compatibility rule a generation-5 bundle and the generation the runtime holds, and by one that reads what the store is asked with when the candidate is prepared. Both fail before the change.
+
+      Reporting the mismatch was only half the remedy. Measured 2026-09-26 on
+      this machine: both daemons came up and named it, and then refused the one
+      bundle that ends it — `precondition_failed` from both, because a runtime
+      carrying no generation reads every candidate's parent as a downgrade.
+      Adopting the chain grants nothing: no generation is active, and the
+      mutation gate refuses on that alone. A chain that would not survive its
+      own validation is reported and not adopted.
+- [x] 1.7 Mutate the adoption; confirm the named tests fail, and record the counts.
+
+      Six applied, five killed: adopting nothing, adopting the bundle without
+      the rest, keeping a chain that does not validate, adopting a number one
+      past the one the lineage proved, and treating the held generation as
+      active.
+
+      One survived and cannot be seen: adopting before the status is validated.
+      Every path where that status fails validation returns no handler, so the
+      object carrying the mutated chain is discarded inside the constructor and
+      no observer exists. Recorded rather than closed.
+
 ## 2. Both daemons
 
 - [x] 2.1 The root daemon starts in that state rather than rejecting its arguments; verified by a test over its startup path.
@@ -63,7 +84,13 @@
 
 ## 4. On the machine
 
-- [ ] 4.1 Install, change the static authority, and confirm both daemons come up reporting `restart_required` with the generation they cannot run; verified by `hexroutectl policy status`.
+- [x] 4.1 Install, change the static authority, and confirm both daemons come up reporting `restart_required` with the generation they cannot run; verified by `hexroutectl policy status`.
+
+      2026-09-26: the fixed binaries installed, the static digest and the new
+      compiler put into both configurations by their own owners, both daemons
+      restarted. Both came up — `root state=restart_required bundle=4 policy=3
+      reason=static_mismatch` and `user state=restart_required bundle=4 policy=2
+      reason=static_mismatch` — instead of the crash loop of 2026-09-25.
 - [ ] 4.2 Install and activate the prepared generation 5, and confirm both domains report it active; verified the same way.
 - [ ] 4.3 Confirm the grant reached the runtime: the tunnel question is answered `authorized`; verified by the recorded answer in the archive.
 

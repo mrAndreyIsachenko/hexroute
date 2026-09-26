@@ -269,6 +269,12 @@ installed. A daemon that refused to start here would make it unreachable:
 measured 2026-09-25, an earlier build did exactly that, and both daemons
 restarted every ten to twenty seconds until the configuration was rolled back.
 
+In the window the daemons still hold the generation they cannot run, and the
+successor names it as its parent, so `policy commit` works there in the ordinary
+way. A build that reported the mismatch without holding the generation refused
+the successor as a downgrade — measured 2026-09-26, `precondition_failed` from
+both daemons, which reads like a dead socket and is not one.
+
 Rolling back is putting the previous configuration in place and restarting. The
 generation in force validates again, and nothing else has changed.
 

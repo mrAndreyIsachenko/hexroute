@@ -147,8 +147,7 @@ func newHandlerWithClock(
 		// machine — observation, operator socket and remedy together — until the
 		// configuration was rolled back.
 		if errors.Is(err, policy.ErrRestartRequired) {
-			if status, named := handler.staticMismatchStatusLocked(currentTime); named {
-				handler.status = status
+			if handler.adoptStaticMismatchLocked(currentTime) {
 				return handler, nil
 			}
 			return nil, err
@@ -1150,7 +1149,8 @@ func classifyPrepareFailure(cause error) (policy.PolicyState, policy.PolicyReaso
 	}
 }
 
-// staticMismatchStatusLocked names the generation this runtime cannot run.
+// adoptStaticMismatchLocked names the generation this runtime cannot run, and
+// adopts its chain so that the successor can still be installed.
 //
 // It reads the lineage rather than the active record. The active record is the
 // operational question — may this generation govern now — and it is what just
@@ -1159,16 +1159,26 @@ func classifyPrepareFailure(cause error) (policy.PolicyState, policy.PolicyReaso
 // store holds must still say what the store holds, and taking the number from
 // anywhere else would be reporting something nobody verified.
 //
+// Adopting the chain is what makes the state resolvable. A candidate names the
+// generation it succeeds, and a runtime carrying no generation refuses every
+// successor as a downgrade: measured 2026-09-26 on this machine, both daemons
+// came up and reported the mismatch, and then refused to prepare the one bundle
+// that ends it. Nothing adopted here can authorize — lineage carries no
+// payload, manifest or approval, no generation is active, and the mutation gate
+// refuses on both counts.
+//
 // A lineage that cannot be read names nothing, and the caller keeps the answer
-// it had.
-func (handler *Handler) staticMismatchStatusLocked(now time.Time) (policy.Status, bool) {
+// it had. A chain that would not survive its own validation is reported and not
+// adopted: a state that cannot be resolved is still better than a runtime that
+// will not start.
+func (handler *Handler) adoptStaticMismatchLocked(now time.Time) bool {
 	if handler.store == nil {
-		return policy.Status{}, false
+		return false
 	}
 	lineage, err := handler.store.RecoverLineage(
 		handler.config.Installed, handler.config.PinnedPublicKey, now)
 	if err != nil || !lineage.StaticSuperseded {
-		return policy.Status{}, false
+		return false
 	}
 	status := policy.Status{
 		Schema: policy.PolicyStatusSchema, Domain: handler.domain,
@@ -1180,9 +1190,18 @@ func (handler *Handler) staticMismatchStatusLocked(now time.Time) (policy.Status
 		Reason:           policy.ReasonStaticMismatch,
 	}
 	if status.Validate() != nil {
-		return policy.Status{}, false
+		return false
 	}
-	return status, true
+	handler.status = status
+	previous := handler.config.Installed
+	handler.config.Installed.CurrentPolicySchema = lineage.PolicySchema
+	handler.config.Installed.CurrentBundleGeneration = lineage.Generation.Bundle
+	handler.config.Installed.CurrentPolicyGeneration = lineage.Generation.Policy
+	handler.config.Installed.CurrentPayloadSHA256 = lineage.PayloadSHA256
+	if handler.config.Installed.Validate() != nil {
+		handler.config.Installed = previous
+	}
+	return true
 }
 
 func noPolicyStatus(domain policy.Domain) policy.Status {
