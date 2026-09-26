@@ -98,6 +98,40 @@ Each install keeps the configuration it replaced beside the installed one as
 `root-observe.json.replaced`. It is one copy, not a history: it answers what was replaced
 just now.
 
+### Reading why it stopped
+
+A daemon under `KeepAlive` that ends is restarted within seconds, so the question
+an operator has is not whether it is running but what ended the process before
+this one. Both endings are `daemon_stopped`, and the result tells them apart:
+
+```
+"event":"daemon_stopped","result":"ok"                                  asked for
+"event":"daemon_stopped","result":"degraded","reason":"journal_unwritable"   not
+```
+
+An `ok` stop is a context that was cancelled — an uninstall, a `kickstart`, a
+restart. A `degraded` stop names the part of the runtime's own work that failed,
+from five names:
+
+| Reason | What failed |
+|---|---|
+| `invalid_runtime` | the loop was handed something it cannot run, or reached a cycle state or route role it does not know |
+| `journal_unwritable` | a log record could not be written |
+| `publication_failed` | the connectivity publication failed |
+| `control_state_unwritable` | the control state could not be written |
+| `operator_socket_ended` | the socket server returned, with or without saying why |
+
+**Read the error log for it, not the journal.** The journal is one of the things
+that ends a runtime, so the stop is reported on the other stream:
+`hexrouted.err.log` for root, `hexroute-userd.err.log` for the user daemon. A
+runtime that could write neither log still stops and still exits non-zero; then
+`launchctl print` and its restart count are all there is, which is the state this
+existed to end. Measured 2026-09-26: the root daemon ended at about 09:04:00
+leaving a `daemon_started`, no stop, nothing above `info`, and `runs = 23`.
+
+`launchctl kickstart -k` is an `ok` stop. A `degraded` one immediately after an
+install is the install, not the machine.
+
 ## Rollback
 
 ```sh
