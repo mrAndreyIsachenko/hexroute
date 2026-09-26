@@ -106,4 +106,8 @@
 
 ## 5. Close
 
-- [ ] 5.1 Sync the delta into the baseline, validate, archive.
+- [x] 5.1 Sync the delta into the baseline, validate, archive.
+
+      The requirement sits beside `A runtime reports quantities about itself`,
+      which is the other thing a runtime says about its own working rather than
+      about the host it watches.

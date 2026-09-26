@@ -77,22 +77,32 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`say-why-a-runtime-stopped` is open. A runtime that ends on a failure records
-nothing: nine exits of the root daemon's observation loop become one exit code,
-and `daemon_stopped` is written for the one ending that needs no explanation — a
-cancelled context — and for none of the ten that do. Measured 2026-09-26, the
-daemon ended at about 09:04:00 leaving a `daemon_started`, no stop, nothing above
-`info` in either log, and a restart count under launchd as the only trace. The
-tunnel its last act had started was gone with it, and the previous owner was
-standing down under this runtime's claim, so the machine went about a minute with
-no tunnel.
+None.
 
-It will say that it stopped and what ended it, from a closed vocabulary of the
-part of its own work that failed, through the log the failure cannot have broken.
+`say-why-a-runtime-stopped` closed on 2026-09-26. A runtime that ended on a
+failure recorded nothing: nine exits of the root daemon's observation loop became
+one exit code, and `daemon_stopped` was written for the one ending that needs no
+explanation — a cancelled context — and for none of the nine that do. The daemon
+ended at about 09:04:00 leaving a `daemon_started`, no stop, nothing above `info`
+in either log, and a restart count under launchd as the only trace. The tunnel
+its last act had started was gone with it, and the previous owner was standing
+down under this runtime's claim, so the machine went about a minute with no
+tunnel.
+
+It says that it stopped and what ended it, from five names for the part of its
+own work that failed, through the log the failure cannot have broken. Two names
+the design began with are not there: the read model and the event archive report
+their own failures and carry on, so an exit naming either would have claimed a
+distinction the code does not make.
+
+It also found that `launchctl kickstart -k` leaves no record at all — it kills
+the job rather than asking it to stop — which had been written down as the
+ordinary way to see one.
+
 It was found by taking the tunnel for the second time, which is the third of item
-9's changes and waits on this one: a defect that ends the daemon while it holds
-the tunnel costs a minute of no tunnel and explains nothing, and seven days of
-ownership would collect those gaps rather than account for them.
+9's changes and was waiting on this one: a defect that ends the daemon while it
+holds the tunnel costs a minute of no tunnel and explains nothing, and seven days
+of ownership would have collected those gaps rather than accounted for them.
 
 `start-when-the-static-authority-moved` closed on 2026-09-26. A daemon whose
 stored active generation was compiled against a different static authority
