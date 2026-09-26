@@ -91,8 +91,22 @@
       restarted. Both came up — `root state=restart_required bundle=4 policy=3
       reason=static_mismatch` and `user state=restart_required bundle=4 policy=2
       reason=static_mismatch` — instead of the crash loop of 2026-09-25.
-- [ ] 4.2 Install and activate the prepared generation 5, and confirm both domains report it active; verified the same way.
-- [ ] 4.3 Confirm the grant reached the runtime: the tunnel question is answered `authorized`; verified by the recorded answer in the archive.
+- [x] 4.2 Install and activate the prepared generation 5, and confirm both domains report it active; verified the same way.
+
+      2026-09-26T00:15:59Z: `root active bundle=5 policy=4` and `user active
+      bundle=5 policy=3`, both expiring 2026-10-25T22:45:57Z. The first attempt,
+      on the binaries that reported the mismatch without holding the generation,
+      was refused `precondition_failed` by both daemons at the prepare phase —
+      which is task 1.6, and is what proves the activation was reached through
+      the window rather than around it.
+- [x] 4.3 Confirm the grant reached the runtime: the tunnel question is answered `authorized`; verified by the recorded answer in the archive.
+
+      Between the activation and the first cause every cycle decided `none` and
+      asked nothing, which is the honest reading of a healthy tunnel and not an
+      answer. Inducing the one cause that can be induced produced two:
+      `rebuild_tunnel ['process_gone']` at 00:22:34Z and 00:23:35Z, both
+      answered `True/authorized` where the same question was answered
+      `selector_mismatch` under generation 4.
 
 ## 5. Close
 
