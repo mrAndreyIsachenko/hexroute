@@ -18,7 +18,7 @@ listing="$(tar -tzf "$first")"
 test "$listing" = "hexroute-ingress-observer"
 tar -xzf "$first" -C "$temporary/extract"
 test -x "$temporary/extract/hexroute-ingress-observer"
-file "$temporary/extract/hexroute-ingress-observer" | grep -q 'ELF 64-bit.*x86-64'
+file "$temporary/extract/hexroute-ingress-observer" | grep 'ELF 64-bit.*x86-64' >/dev/null
 
 first_digest="$(awk '{print $1}' "$first.sha256")"
 second_digest="$(awk '{print $1}' "$second.sha256")"
