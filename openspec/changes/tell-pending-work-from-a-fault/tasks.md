@@ -190,11 +190,36 @@
 
 ## 6. What an operator reads
 
-- [ ] 6.1 Rewrite the section of `docs/macos/root-observe.md` that sends a reader after a probe, so it says a degraded cycle names its failure and a standing proposal is read from `pending_operations`; verified by the documentation gate.
+- [x] 6.1 Say in `docs/macos/root-observe.md` how the health reads while the daemon runs, so a degraded cycle sends a reader to its named failure and a standing proposal to `pending_operations`; verified by the documentation gate.
 
-- [ ] 6.2 Do the same for `docs/macos/user-observe.md`.
+      The task assumed a section that misdirected the reader. There was none:
+      the document covered only why a runtime stopped, and what sent a reader
+      after a probe that had not run was the `last_reason` field itself. So this
+      is a section added, not rewritten — "Reading how it is while it runs",
+      beside "Reading why it stopped".
 
-- [ ] 6.3 Record that a health which never changed was not a health; verified by the paragraph naming the seven hours and what they did not say.
+      It carries the three fields and what each answers, the ten causes a cycle
+      can now name, the rule that the first failure in configuration order is
+      the one reported, and why four quantities are absent rather than zero. It
+      also records the seven hours and that the two ingress routes standing on
+      the wrong links are the owner's arrangement, not this runtime's to
+      correct.
+
+- [x] 6.2 Do the same for `docs/macos/user-observe.md`.
+
+      Shorter, because this domain's health was already the machine's. It says
+      which quantities this domain reports and the root one omits, that
+      `pending_operations` is one or nothing here, and why the distinction was
+      only accidentally safe on this side: the redundant clause requiring no
+      standing act sits beside a state the machine reaches, while the root
+      domain wrote its own state from the cycle.
+
+- [x] 6.3 Record that a health which never changed was not a health; verified by the paragraph naming the seven hours and what they did not say.
+
+      In the root document, under the standing-proposal rule: seven unbroken
+      hours of `DEGRADED` with no failure of any kind, the tunnel present, its
+      payload answering, and the kernel agreeing with every route the runtime
+      had observed.
 
 ## 7. Mutation discipline
 
