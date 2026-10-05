@@ -34,6 +34,9 @@ type Controller struct {
 	allowedTargets map[control.Component]struct{}
 	snapshot       control.Snapshot
 	lastReason     control.Reason
+	// pending is the standing work last reported by the cycle. See
+	// ipc.Status.PendingOperations: it is current, not carried.
+	pending uint32
 	// generation mirrors the snapshot's generation for readers that must not
 	// take this controller's lock. The policy handler is one: the controller
 	// holds the lock while it asks the handler to evaluate a resume, and a
@@ -118,6 +121,7 @@ func (controller *Controller) SetResumePolicyEvaluator(evaluator ResumePolicyEva
 func (controller *Controller) Update(
 	snapshot control.Snapshot,
 	reason control.Reason,
+	pending uint32,
 ) error {
 	if controller == nil || !validSnapshot(snapshot) || !reason.Valid() {
 		return ErrInvalidController
@@ -131,6 +135,7 @@ func (controller *Controller) Update(
 	controller.snapshot = snapshot
 	controller.generation.Store(snapshot.Generation)
 	controller.lastReason = reason
+	controller.pending = pending
 	return nil
 }
 
@@ -268,6 +273,8 @@ func (controller *Controller) status() ipc.Status {
 		State:      controller.snapshot.State,
 		Generation: controller.snapshot.Generation,
 		SafeMode:   controller.snapshot.State == control.StateSafeMode,
+
+		PendingOperations: controller.pending,
 	}
 }
 

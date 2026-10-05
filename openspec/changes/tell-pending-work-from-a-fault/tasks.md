@@ -120,14 +120,36 @@
 
 ## 4. Standing work is a quantity
 
-- [ ] 4.1 Publish `pending_operations` in the `ctl status` and `ctl diagnostics` payloads, computed from the cycle that produced the reported health; verified by a test over the payload with a known plan.
+- [x] 4.1 Publish `pending_operations` in the `ctl status` and `ctl diagnostics` payloads, computed from the cycle that produced the reported health; verified by a test over the payload with a known plan.
 
-- [ ] 4.2 Prove no persisted schema changed: `SnapshotSchemaVersion` is still 1 and a snapshot written before this change still loads; verified by a test that loads a fixture written at the current version.
+      `ipc.Status` carries the field, and `Diagnostics` embeds `Status`, so one
+      field answers both commands. `Controller.Update` gained the count as a
+      third argument rather than a setter of its own: the state and the count
+      are written by the same call per cycle, so the two cannot drift apart.
+
+      The root domain reports `len(summary.Plan.Operations)`. The user domain's
+      planner proposes a single act, so `pendingActs` reports one or nothing
+      rather than a count.
+
+      `TestControllerReportsPendingWorkWithoutGradingTheHealth` reads the field
+      from both payloads.
+
+- [x] 4.2 Prove no persisted schema changed: `SnapshotSchemaVersion` is still 1 and a snapshot written before this change still loads; verified by a test that loads a fixture written at the current version.
 
       The user daemon treats an unreadable snapshot as fatal, so this is what
       keeps both the install and its rollback able to start.
 
-- [ ] 4.3 Prove the count does not decide health; verified by a test where the count is non-zero and the health is sound.
+      `TestPendingWorkIsNotPersistedInTheSnapshot` asserts the constant is still
+      1 and decodes a snapshot in the shape written before this change,
+      including a non-zero failure counter and attempt, then checks it against
+      the package's own validity rule.
+
+- [x] 4.3 Prove the count does not decide health; verified by a test where the count is non-zero and the health is sound.
+
+      Held at both levels. In the cycle by
+      `TestCycleIsSoundWhileHoldingAProposalItMayNotApply`, and in the payload
+      by `TestControllerReportsPendingWorkWithoutGradingTheHealth`, which
+      reports two operations standing beside a healthy state.
 
 ## 5. A quantity the path does not keep
 
