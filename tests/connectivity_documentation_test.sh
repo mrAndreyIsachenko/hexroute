@@ -108,7 +108,7 @@ for project in firezone/firezone netbirdio/netbird \
     continue
   }
   # A link to the project without a commit is not a pin.
-  grep -F "$project" "$references" | grep -qE '/(blob|tree)/[0-9a-f]{40}' || {
+  grep -F "$project" "$references" | grep -E '/(blob|tree)/[0-9a-f]{40}' >/dev/null || {
     printf '%s is referenced without pinning the reviewed commit\n' \
       "$project" >&2
     status=1

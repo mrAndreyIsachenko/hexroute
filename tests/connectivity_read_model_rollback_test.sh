@@ -32,7 +32,7 @@ grep -q 'launchctl bootstrap system' "$doc"
 
 # It may not depend on the thing being rolled back.
 if grep -nE 'hexroute-connectivity-(replay|qualify)' "$doc" |
-  sed -n '/Rollback/,$p' | grep -q .; then
+  sed -n '/Rollback/,$p' | grep . >/dev/null; then
   echo "the rollback depends on the read model's own tooling" >&2
   exit 1
 fi
