@@ -135,6 +135,7 @@ shell-test-tools:
 
 shell-test: shell-test-tools build-observe-root build-observe-user build-policy-installer build-policy-qualification
 	bash -n scripts/baseline/*.sh scripts/macos/*.sh scripts/ops/*.sh scripts/*.sh tests/*.sh
+	tests/pipeline_shape_test.sh
 	tests/credential_shape_test.sh
 	tests/roadmap_drift_test.sh
 	tests/route_coverage_roles_test.sh

@@ -93,8 +93,8 @@ status=0
 for directory in internal/*/; do
   package="$(basename "$directory")"
   compgen -G "$directory*.go" >/dev/null || continue
-  if printf '%s\n' "$linked" \
-    | grep -qx "github.com/mrAndreyIsachenko/hexroute/internal/$package"; then
+  if grep -qx "github.com/mrAndreyIsachenko/hexroute/internal/$package" \
+    <<<"$linked"; then
     if contains "$package" "${unwired[@]}"; then
       printf 'internal/%s is now reachable from a binary; remove it from the unwired list\n' \
         "$package" >&2

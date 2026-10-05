@@ -28,7 +28,7 @@ while read -r document; do
   while read -r target; do
     [ -n "$target" ] || continue
     checked=$((checked + 1))
-    if ! printf '%s\n' "$targets" | grep -qx "$target"; then
+    if ! grep -qx "$target" <<<"$targets"; then
       echo "$document names a make target that does not exist: make $target"
       missing=1
     fi
