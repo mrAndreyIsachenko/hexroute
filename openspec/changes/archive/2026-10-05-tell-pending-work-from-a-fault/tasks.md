@@ -2,7 +2,7 @@
 
 ## 1. The ground
 
-- [ ] 1.1 Record what was already known and what is new, so this change does not claim a reading it inherited; verified by the earlier task that holds it.
+- [x] 1.1 Record what was already known and what is new, so this change does not claim a reading it inherited; verified by the earlier task that holds it.
 
       `hold-the-tunnel-under-a-grant` task 1.1 read on 2026-09-25 that the two
       standing operations swap the two ingress targets, and concluded that
@@ -14,7 +14,7 @@
       proposal is right and standing, the cycle's health can never be sound, so
       the health reports the same value forever and reports nothing by it.
 
-- [ ] 1.2 Record the state the health was in before this change, from the machine; verified by a reading that names the duration and the counters together.
+- [x] 1.2 Record the state the health was in before this change, from the machine; verified by a reading that names the duration and the counters together.
 
       Measured 2026-10-05: root `DEGRADED` unbroken from 04:12:45Z to 11:36Z,
       `consecutive_failures: 0`, `attempts: 0`, `last_reason: probe_failed`,
@@ -23,7 +23,19 @@
       One `observation_cycle` record covers the whole stretch because the
       change gate suppresses a result that has not changed.
 
-- [ ] 1.3 Read how many operations stand unapplied right now and from which roles, so the quantity this change publishes has a value to be checked against on the machine.
+- [x] 1.3 Read how many operations stand unapplied right now and from which roles, so the quantity this change publishes has a value to be checked against on the machine.
+
+      Two in the root domain and none in the user domain, read 2026-10-05 after
+      the install as `pending_operations: 2` and `0`. The two are the ingress
+      routes standing on the opposite links from their configured
+      `preferred_link`, which `hold-the-tunnel-under-a-grant` task 1.1 had
+      already read on 2026-09-25 and found to be the tunnel owner's
+      arrangement.
+
+      The read model counts the same divergence differently — `scoped_routes`
+      reports `{configured: 21, conflicting: 14, installed: 7}` — because it
+      counts conflicting destinations and the plan counts operations. Both are
+      right about different things, and neither is the other's check.
 
 ## 2. Health answers soundness
 
@@ -257,26 +269,127 @@
 
 ## 8. On the machine
 
-- [ ] 8.1 Install the built runtime and read the health in the first cycle after it starts; verified by a reading that gives the health, the reason and `pending_operations` together.
+- [x] 8.1 Install the built runtime and read the health in the first cycle after it starts; verified by a reading that gives the health, the reason and `pending_operations` together.
 
-      Install the build from the same command that builds it. The checkout's
-      private root configuration diverges from the installed one —
-      `wake_threshold_seconds` 90 against 180 — so the installed configuration
-      is left in place and the divergence is recorded, not resolved here.
+      Installed 2026-10-05T18:56Z, built in the same command. Read at 19:00Z:
 
-- [ ] 8.2 Prove the route divergence is still visible after the health stopped grading it; verified by the proposal events and the count in the same reading.
+      ```
+      root  state=HEALTHY  pending=2  reason=probe_succeeded  attempts=ABSENT
+      user  state=HEALTHY  pending=0  reason=probe_succeeded  attempts=0
+      ```
 
-- [ ] 8.3 Prove a real failure still reads as unsound on this machine, under a condition induced once; verified by a reading of the health and the named cause while the condition holds.
+      The root daemon had read `DEGRADED` for seven unbroken hours before this.
 
-      One induced occurrence proves the forced mode only. Record what natural
-      occurrence, if any, this leaves unread.
+      The divergence was worse than the task recorded. A full field-by-field
+      comparison against the installed configuration found **ten settings that
+      installing the checkout would have removed** — the whole of
+      `tunnel_supervision.execution`, which is the executor that change 3 built:
+      its thresholds, its state paths, its handover binary, `sing_box` and the
+      target key, plus a second trusted compiler digest — and two values that
+      differ, `static_sha256` and `wake_threshold_seconds` (180 installed
+      against 90 in the checkout). The user domain diverges too, by one digest
+      and `static_sha256`.
 
-- [ ] 8.4 Read the health again after a restart, to prove nothing about it was carried in a file; verified by a reading that follows a `kill -TERM` and the daemon's own restart.
+      So no configuration was installed at all. Both installers keep the live
+      file when the path given is the installed one, and both printed
+      `configuration is already in place; keeping it`. The repository's plist was
+      compared with the installed one first and is identical, so reinstalling it
+      could not reduce the job's arguments.
+
+- [x] 8.2 Prove the route divergence is still visible after the health stopped grading it; verified by the proposal events and the count in the same reading.
+
+      `pending_operations: 2` in the same reading as `HEALTHY`, and
+      `ingress_route_proposed` published at 18:56:46.710406Z and again at
+      19:04:04.363972Z. The divergence did not become invisible; it stopped
+      being called ill health.
+
+- [x] 8.3 Prove a real failure still reads as unsound on this machine. Nothing was induced: two occurred on their own within eight minutes of the install, and natural occurrences are what the rule will meet.
+
+      `observation_cycle result=degraded` at 18:57:47.30782Z and
+      19:02:54.788408Z, between cycles that read `ok`.
+
+      The cause is recoverable after the fact, which the task did not assume. It
+      is not in the cycle's own record — that carries the result and no reason —
+      but the event archive keeps the per-component facts, and at the same
+      microsecond as each degraded cycle:
+
+      ```
+      18:57:47.307944Z  relay_ingress  failed  probe_failed  {configured:1, reachable:0}
+      19:02:54.788714Z  relay_ingress  failed  probe_failed  {configured:1, reachable:0}
+      ```
+
+      The single configured outer path was unreachable. That is `probe_failed`
+      in the one sense this change kept for it: the probes ran, answered, and
+      left no outer path ready. The natural occurrence confirms the mapping
+      rather than a forced one.
+
+      Left unread: the other nine causes. Each would need its own occurrence,
+      and nothing about this reading says what those will look like.
+
+- [x] 8.4 Read the health again after a restart, to prove nothing about it was carried in a file; verified by a reading that follows a `kill -TERM` and the daemon's own restart.
+
+      `kill -TERM` rather than `kickstart -k`, which leaves no stop record.
+      `daemon_stopped result=ok` at 19:03:32.578192Z — an asked-for ending, not
+      a failure — and `daemon_started` at 19:04:01.269787Z under `KeepAlive`.
+
+      The reading after it: `state=HEALTHY`, `pending=2`, `attempts` absent, and
+      generation **5**. The generation counts from zero at every start, so the
+      health was reached again from observation rather than restored, which is
+      the whole reason the count was kept out of the persisted snapshot.
 
 ## 9. Close
 
-- [ ] 9.1 Run the full gate and report any gate that did not run and why; verified by the gate's exit status, not by reading its output.
+- [x] 9.1 Run the full gate and report any gate that did not run and why; verified by the gate's exit status, not by reading its output.
 
-- [ ] 9.2 Sync the delta into the baseline, validate and archive; verified by the drift gate.
+      `make check` returned 0. `make policy-qualification-status` returned 0
+      with `lifecycle: complete` and `failed_evidence: false`, run because this
+      change installed both daemons on this machine.
 
-- [ ] 9.3 Record what this change leaves open: HEX-11's remaining question, whether a standing proposal should be re-derived every cycle at all.
+      Three gates did not run, and none of them is applicable to this diff,
+      which touches `internal/control`, `internal/ctl`, `internal/ipc`,
+      `internal/operator`, both daemons, two documents and this change:
+      `postgres-test` (no migration or persistence change), `container-build`
+      and `container-test` (no Dockerfile or ingest change), `terraform-test`
+      and `terraform-state-test` (no module or fixture change). Docker and the
+      Terraform CLI are both present on this machine, so they were skipped for
+      being out of scope rather than unavailable.
+
+- [x] 9.2 Sync the delta into the baseline, validate and archive; verified by the drift gate.
+
+      The delta added one requirement, that a cycle's health answers soundness
+      and not workload, and modified the observe-only output requirement to say
+      that a proposal this plane cannot execute is not a divergence from health.
+      Both are in the baseline capability `local-control-plane-foundation`.
+
+- [x] 9.3 Record what this change leaves open.
+
+      **HEX-11's remaining question.** The planner proposing the same two
+      operations every cycle is correct for a runtime with no authority to apply
+      them, and this change stops calling it ill health. Whether a standing
+      proposal should be re-derived every cycle at all is untouched.
+
+      **The same conflation one level down.** The read model's `scoped_routes`
+      component reports `degraded` with `probe_failed` in every cycle, including
+      the cycles that read `ok` — measured at 18:56:46, 18:58:44 and 19:04:04 on
+      2026-10-05, with `{configured: 21, conflicting: 14, installed: 7}`. It is
+      permanently degraded for the same reason the cycle used to be: the routes
+      diverge and nothing may correct them. The cycle no longer inherits it; the
+      component still carries it, and a reader of component health meets the
+      same signal that cannot change. Its own change.
+
+      **The checkout has fallen behind the machine.** `private/root-observe.json`
+      is missing the whole of `tunnel_supervision.execution` — the executor
+      change 3 built — and `private/user-observe.json` a trusted compiler
+      digest. The installer's reduction guard would refuse such an install, so
+      this is a hazard rather than a wound, but the divergence should be closed
+      where it is: the settings exist only on the machine.
+
+      **Nine causes unread.** One natural occurrence named `probe_failed`
+      through `relay_ingress`. The other nine a cycle can report have not been
+      seen on this machine, and nothing read here says what they will look like.
+
+      **Where a past cause is read.** The cycle's own record carries its result
+      and no reason; `last_reason` answers for the present only. A degraded
+      cycle in the past is explained from the event archive, by the component
+      facts at the same microsecond. That is a place to look, not a defect, but
+      no document says it yet.
