@@ -28,6 +28,10 @@ var (
 // If the previous owner does not raise a tunnel inside the deadline, this
 // runtime takes it again. A machine with no tunnel and no owner until a person
 // reads the terminal is what the handover refused; it is no better this way.
+//
+// Unless it is a giving-up: see Relinquish. There, this runtime has decided it
+// should not hold the tunnel at all, and the machine is left without one rather
+// than held by a runtime that has just concluded it must not.
 func (transaction *Transaction) Release(ctx context.Context, id string) (Outcome, error) {
 	if transaction.Policy.Proofs < 1 || transaction.Policy.Deadline <= 0 ||
 		transaction.Policy.Possession <= 0 || transaction.Policy.Between <= 0 {
@@ -75,6 +79,15 @@ func (transaction *Transaction) Release(ctx context.Context, id string) (Outcome
 	if proofs < transaction.Policy.Proofs {
 		if reason == "" {
 			reason = "the previous owner's tunnel did not carry traffic twice inside the deadline"
+		}
+		// A giving-up does not take the tunnel back. This runtime reached it by
+		// deciding it should not hold the tunnel, and restoring would undo that
+		// decision to keep a machine on a network it no longer has the standing
+		// to keep it on. The machine may be left with none, and the outcome
+		// says so.
+		if transaction.Relinquish {
+			outcome.Reason = reason
+			return outcome, transaction.Store.Clear()
 		}
 		return outcome, transaction.restore(ctx, &outcome, session, reason)
 	}

@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/configversion"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelstop"
 )
 
 var (
@@ -137,10 +138,9 @@ func (ExecRunner) Start(ctx context.Context, binary string, args ...string) (int
 	return command.Process.Pid, nil
 }
 
+// Stop ends the tunnel process through the one place that does it. It used to
+// send an interrupt of its own, on its own window, and disagreed with the
+// executor's about both.
 func (ExecRunner) Stop(pid int) error {
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return err
-	}
-	return process.Signal(os.Interrupt)
+	return tunnelstop.Stop(pid)
 }

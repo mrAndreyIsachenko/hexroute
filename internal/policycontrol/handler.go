@@ -49,8 +49,20 @@ type CandidateStore interface {
 	RecoverPendingCommit() (policystore.CommitIntent, error)
 }
 
+// ControlState is the runtime's own control state, as far as an authorization
+// needs it: which generation this runtime is at.
+//
+// It is an interface rather than a store because what holds the control state
+// differs by runtime, and because the holder must be read without taking a lock
+// the caller may already hold — the controller asks this handler to evaluate a
+// resume while holding its own.
+type ControlState interface {
+	CurrentGeneration() (uint64, error)
+}
+
 type Handler struct {
 	mu                      sync.Mutex
+	controlState            ControlState
 	domain                  policy.Domain
 	store                   CandidateStore
 	config                  RuntimeConfig
@@ -176,6 +188,18 @@ func newHandlerWithClock(
 // thing: the damage is the fault, and it suspends under the damage's own reason
 // rather than under the expiry. Reporting nothing at all is not an option — that
 // would be a daemon refusing to start over the passage of time.
+// SetControlState gives the handler the runtime's own control state to judge
+// requests against. Until it has one it authorizes nothing.
+func (handler *Handler) SetControlState(state ControlState) error {
+	if handler == nil || state == nil {
+		return errors.New("a handler and a control state are both required")
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	handler.controlState = state
+	return nil
+}
+
 func (handler *Handler) resolveExpiredActiveLocked(cause error, at time.Time) bool {
 	if !errors.Is(cause, policyapproval.ErrApprovalExpired) || handler.store == nil {
 		return false

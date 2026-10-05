@@ -61,6 +61,9 @@ func rootPayload(rules []policy.Rule, leases []policy.AuthorizationLease) policy
 // would be refused so under any generation.
 func TestTunnelQuestionWithoutGenerationOrDigestIsMalformed(t *testing.T) {
 	handler := activeRootHandler(t, rootPayload(nil, nil))
+	if err := handler.SetControlState(fixedControlState{generation: 7}); err != nil {
+		t.Fatal(err)
+	}
 	answer := handler.AuthorizeTunnelOwnership("tunnel", 0, "")
 	if answer.Allowed || answer.Reason != policy.ActionInvalidRequest {
 		t.Fatalf("answer = %+v, want a malformed-request refusal", answer)
@@ -71,6 +74,9 @@ func TestTunnelQuestionWithoutGenerationOrDigestIsMalformed(t *testing.T) {
 // policy — and says so, rather than calling the question malformed.
 func TestTunnelQuestionUnderAGenerationGrantingNothingIsAPolicyRefusal(t *testing.T) {
 	handler := activeRootHandler(t, rootPayload(nil, nil))
+	if err := handler.SetControlState(fixedControlState{generation: 7}); err != nil {
+		t.Fatal(err)
+	}
 	answer := handler.AuthorizeTunnelOwnership(
 		"tunnel", 7, policy.SHA256Hex([]byte(tunnelTestPlan)))
 	if answer.Allowed {
@@ -84,6 +90,36 @@ func TestTunnelQuestionUnderAGenerationGrantingNothingIsAPolicyRefusal(t *testin
 // The same question under a generation that grants the capability is
 // authorized. This is the turn the daemon's records were promised to make, and
 // could not while the question was malformed.
+// grantingTunnelPayload grants the tunnel, Pritunl recovery and operator resume
+// to the root domain, so that a test about generations is not also a test about
+// which capability was granted.
+func grantingTunnelPayload() policy.DomainPayload {
+	var rules []policy.Rule
+	var leases []policy.AuthorizationLease
+	for _, capability := range []policy.Capability{
+		policy.CapabilityTunnelOwnership,
+		policy.CapabilityPritunlRecovery,
+		policy.CapabilityOperatorResume,
+	} {
+		for _, target := range []string{"tunnel", "pritunl"} {
+			selector := "root.synthetic-" + string(capability) + "-" + target
+			rules = append(rules, policy.Rule{
+				ID: "root.rule-" + string(capability) + "-" + target, Effect: policy.EffectAllow,
+				Selector: policy.Selector{
+					ID: selector, Kind: policy.SelectorAction,
+					Action: &policy.ActionSelector{Capability: capability, Target: target},
+				},
+			})
+			leases = append(leases, policy.AuthorizationLease{
+				ID: "root.lease-" + string(capability) + "-" + target, Domain: policy.DomainRoot,
+				Capability: capability, SelectorIDs: []string{selector},
+				IssuedAt: "2030-01-01T01:00:00Z", ExpiresAt: "2030-01-01T02:00:00Z",
+			})
+		}
+	}
+	return rootPayload(rules, leases)
+}
+
 func TestTunnelQuestionUnderAGrantingGenerationIsAuthorized(t *testing.T) {
 	selector := "root.tunnel-synthetic-selector"
 	handler := activeRootHandler(t, rootPayload(
@@ -103,6 +139,9 @@ func TestTunnelQuestionUnderAGrantingGenerationIsAuthorized(t *testing.T) {
 			IssuedAt:    "2030-01-01T01:00:00Z", ExpiresAt: "2030-01-01T02:00:00Z",
 		}},
 	))
+	if err := handler.SetControlState(fixedControlState{generation: 7}); err != nil {
+		t.Fatal(err)
+	}
 	answer := handler.AuthorizeTunnelOwnership(
 		"tunnel", 7, policy.SHA256Hex([]byte(tunnelTestPlan)))
 	if !answer.Allowed || answer.Reason != policy.ActionAuthorized {

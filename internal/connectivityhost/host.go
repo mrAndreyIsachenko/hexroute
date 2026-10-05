@@ -752,6 +752,34 @@ type StreamPosition struct {
 // that stopped observing because a comparison could not be written down would
 // have traded the thing that matters for the thing that helps later, which is
 // the same judgement the archive's own absence already gets here.
+// RecordTunnelExecution writes what became of a decision to act: the gate that
+// stopped it, or the rebuild that happened and what it cost. It is written after
+// the act, where the decision is written before it.
+func (reader *Reader) RecordTunnelExecution(execution event.TunnelExecution) error {
+	if reader == nil || reader.archive == nil {
+		return nil
+	}
+	encoded, err := event.Encode(event.SchemaTunnelExecution, execution)
+	if err != nil {
+		return err
+	}
+	_, err = reader.archive.Append(encoded)
+	return err
+}
+
+// RecordTunnelHandback writes down this runtime giving the tunnel up.
+func (reader *Reader) RecordTunnelHandback(handback event.TunnelHandback) error {
+	if reader == nil || reader.archive == nil {
+		return nil
+	}
+	encoded, err := event.Encode(event.SchemaTunnelHandback, handback)
+	if err != nil {
+		return err
+	}
+	_, err = reader.archive.Append(encoded)
+	return err
+}
+
 func (reader *Reader) RecordTunnelDecision(decision event.TunnelDecision) error {
 	if reader == nil || reader.archive == nil {
 		return nil

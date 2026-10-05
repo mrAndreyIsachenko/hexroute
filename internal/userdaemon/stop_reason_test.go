@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -93,6 +94,31 @@ func stopTestSummary() Summary {
 	}}
 }
 
+// stoppedAs finds the record about this runtime's own ending and answers its
+// result and reason.
+//
+// It reads the record rather than the log, because a log holds other records
+// that say `ok` — a start, a cycle — and a test that looked for the word would
+// pass for a stop that said anything at all. One did: a mutation making every
+// requested stop `degraded` was not noticed by two tests that searched the
+// whole output.
+func stoppedAs(t *testing.T, output string) (result, reason string) {
+	t.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		var record struct {
+			Event  string `json:"event"`
+			Result string `json:"result"`
+			Reason string `json:"reason"`
+		}
+		if json.Unmarshal([]byte(line), &record) != nil || record.Event != "daemon_stopped" {
+			continue
+		}
+		return record.Result, record.Reason
+	}
+	t.Fatalf("nothing said this runtime stopped: %q", output)
+	return "", ""
+}
+
 func stopTestStore(t *testing.T) StateStore {
 	t.Helper()
 	stateDir := t.TempDir()
@@ -139,7 +165,7 @@ func TestTheUserLoopSaysWhatEndedIt(t *testing.T) {
 			context.Background(), 0, true, func() control.Tick { return 0 },
 			fixedUserCycler{summary: stopTestSummary()}, stopTestStore(t),
 			stopTestController(t, 0), &fakeIncidentNotifier{}, nil, nil,
-			stopTestLogger(t, &output), nil, &recovery{}, nil)
+			stopTestLogger(t, &output), nil, &recovery{}, nil, "")
 		if err == nil {
 			t.Fatal("a loop with no interval ran")
 		}
@@ -158,7 +184,7 @@ func TestTheUserLoopSaysWhatEndedIt(t *testing.T) {
 			context.Background(), time.Minute, true, func() control.Tick { return 0 },
 			fixedUserCycler{summary: stopTestSummary()}, stopTestStore(t),
 			stopTestController(t, 0), &fakeIncidentNotifier{}, nil, nil,
-			logger, nil, &recovery{}, nil)
+			logger, nil, &recovery{}, nil, "")
 		if err == nil {
 			t.Fatal("a loop whose log refused its own start ran")
 		}
@@ -179,7 +205,7 @@ func TestTheUserLoopSaysWhatEndedIt(t *testing.T) {
 			context.Background(), time.Minute, true, func() control.Tick { return 0 },
 			fixedUserCycler{summary: summary}, stopTestStore(t),
 			stopTestController(t, 0), &fakeIncidentNotifier{}, nil, nil,
-			stopTestLogger(t, &output), unownedPublisher(t), &recovery{}, nil)
+			stopTestLogger(t, &output), unownedPublisher(t), &recovery{}, nil, "")
 		if err == nil {
 			t.Fatal("the publication refused and the loop carried on")
 		}
@@ -200,7 +226,7 @@ func TestTheUserLoopSaysWhatEndedIt(t *testing.T) {
 			context.Background(), time.Minute, true, func() control.Tick { return 0 },
 			fixedUserCycler{summary: stopTestSummary()}, stopTestStore(t),
 			stopTestController(t, 0), &fakeIncidentNotifier{}, nil, nil,
-			logger, nil, &recovery{}, nil)
+			logger, nil, &recovery{}, nil, "")
 		if err == nil {
 			t.Fatal("the cycle's record was refused and the loop carried on")
 		}
@@ -217,7 +243,7 @@ func TestTheUserLoopSaysWhatEndedIt(t *testing.T) {
 			context.Background(), time.Minute, true, func() control.Tick { return 0 },
 			fixedUserCycler{summary: stopTestSummary()}, refusingStore{},
 			stopTestController(t, 0), &fakeIncidentNotifier{}, nil, nil,
-			stopTestLogger(t, &output), nil, &recovery{}, nil)
+			stopTestLogger(t, &output), nil, &recovery{}, nil, "")
 		if err == nil {
 			t.Fatal("the state file refused the snapshot and the loop carried on")
 		}
@@ -241,7 +267,7 @@ func TestTheUserLoopSaysWhatEndedIt(t *testing.T) {
 			context.Background(), time.Minute, true, func() control.Tick { return 0 },
 			fixedUserCycler{summary: stopTestSummary()}, stopTestStore(t),
 			controller, &fakeIncidentNotifier{}, nil, nil,
-			stopTestLogger(t, &output), nil, &recovery{}, nil)
+			stopTestLogger(t, &output), nil, &recovery{}, nil, "")
 		if err == nil {
 			t.Fatal("the controller refused the update and the loop carried on")
 		}
@@ -265,12 +291,46 @@ func TestTheUserLoopSaysWhatEndedIt(t *testing.T) {
 				context.Background(), time.Minute, false, func() control.Tick { return 0 },
 				fixedUserCycler{summary: stopTestSummary()}, stopTestStore(t),
 				stopTestController(t, 0), &fakeIncidentNotifier{}, nil, done,
-				stopTestLogger(t, &output), nil, &recovery{}, nil)
+				stopTestLogger(t, &output), nil, &recovery{}, nil, "")
 			if err == nil {
 				t.Fatal("the socket ended and the loop carried on")
 			}
 			if reason != logging.ReasonOperatorSocketEnded {
 				t.Fatalf("reason = %q", reason)
+			}
+		})
+	}
+}
+
+// And a socket ended by the stop is not a failure here either.
+func TestTheUserSocketEndedByTheStopIsNotAFailure(t *testing.T) {
+	for name, withError := range map[string]bool{
+		"the server said why it ended": true,
+		"the server said nothing":      false,
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			done := make(chan error, 1)
+			if withError {
+				done <- errors.New("the socket server ended")
+			} else {
+				close(done)
+			}
+			var output bytes.Buffer
+			reason, err := observeLoop(
+				ctx, time.Minute, false, func() control.Tick { return 0 },
+				fixedUserCycler{summary: stopTestSummary()}, stopTestStore(t),
+				stopTestController(t, 0), &fakeIncidentNotifier{}, nil, done,
+				stopTestLogger(t, &output), nil, &recovery{}, nil, "")
+			if err != nil {
+				t.Fatalf("a stop that was asked for failed: %v", err)
+			}
+			if reason != "" {
+				t.Fatalf("an ending that was asked for named %q", reason)
+			}
+			if result, reason := stoppedAs(t, output.String()); result != "ok" || reason != "" {
+				t.Fatalf("the stop was recorded as %q/%q", result, reason)
 			}
 		})
 	}
@@ -291,16 +351,15 @@ func TestTheUserLoopNamesNothingWhenNobodyFailed(t *testing.T) {
 				ctx, time.Minute, once, func() control.Tick { return 0 },
 				fixedUserCycler{summary: stopTestSummary()}, stopTestStore(t),
 				stopTestController(t, 0), &fakeIncidentNotifier{}, nil, nil,
-				stopTestLogger(t, &output), nil, &recovery{}, nil)
+				stopTestLogger(t, &output), nil, &recovery{}, nil, "")
 			if err != nil {
 				t.Fatalf("observeLoop: %v", err)
 			}
 			if reason != "" {
 				t.Fatalf("an ending nobody failed on named %q", reason)
 			}
-			if !strings.Contains(output.String(), `"event":"daemon_stopped"`) ||
-				!strings.Contains(output.String(), `"result":"ok"`) {
-				t.Fatalf("output = %q", output.String())
+			if result, reason := stoppedAs(t, output.String()); result != "ok" || reason != "" {
+				t.Fatalf("the stop was recorded as %q/%q", result, reason)
 			}
 		})
 	}

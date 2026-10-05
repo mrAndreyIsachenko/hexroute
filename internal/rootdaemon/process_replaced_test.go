@@ -150,3 +150,92 @@ func TestASuspendedCycleDoesNotProbeThePayload(t *testing.T) {
 		t.Fatalf("a suspended cycle invented a payload answer: %+v", summary.Tunnel.Grounds)
 	}
 }
+
+// swappableOwnerCycle is the same cycle with the owner's configuration under the
+// test's control, which is how a change of hands is seen.
+func swappableOwnerCycle(t *testing.T) (*Cycle, *observe.ProcessObservation, *pairedClocks, *string) {
+	t.Helper()
+	cycle, current, clocks := swappableCycle(t)
+	owner := new(string)
+	*owner = "/Library/Application Support/twilight/client/tunnel.json"
+	cycle.ownerConfig = func() (string, error) { return *owner, nil }
+	return cycle, current, clocks, owner
+}
+
+// A change of hands is not a process loss.
+//
+// The exchange replaces the process by design: the previous owner's is stopped
+// and this runtime's is started. Measured 2026-09-26, the cycle after the
+// handover read that as the loss the rule rebuilds for and rebuilt the tunnel it
+// had been given thirty-eight seconds earlier; a second rebuild a minute later
+// reached the rate bound.
+func TestAChangeOfHandsIsNotAProcessLoss(t *testing.T) {
+	cycle, current, clocks, owner := swappableOwnerCycle(t)
+	cycle.Observe(context.Background())
+	clocks.advance(time.Minute, time.Minute)
+	if summary := cycle.Observe(context.Background()); namesProcessGone(summary) {
+		t.Fatalf("the same process twice named a loss: %v", summary.Tunnel.Causes)
+	}
+
+	// The handover: another configuration, another process.
+	*owner = "/Library/Application Support/Hexroute/observe-root/state/tunnel-config.json"
+	current.Process.PID = 200
+	clocks.advance(time.Minute, time.Minute)
+	summary := cycle.Observe(context.Background())
+	if namesProcessGone(summary) || summary.Tunnel.Grounds.ProcessReplaced {
+		t.Fatalf("an exchange named a loss: %v, grounds %+v",
+			summary.Tunnel.Causes, summary.Tunnel.Grounds)
+	}
+	if summary.OwnerConfig != *owner {
+		t.Fatalf("the summary says the owner runs %q", summary.OwnerConfig)
+	}
+
+	// And under the new owner a replacement is a loss again.
+	current.Process.PID = 300
+	clocks.advance(time.Minute, time.Minute)
+	if summary := cycle.Observe(context.Background()); !namesProcessGone(summary) {
+		t.Fatalf("a replacement under one owner named nothing: %v", summary.Tunnel.Causes)
+	}
+}
+
+// A replacement this runtime made is not a loss it found.
+//
+// Without this the rebuild causes the next rebuild: the cycle after it compares
+// the new process against the one this runtime itself ended, decides the tunnel
+// was lost, and rebuilds again — bounded only by the counters this runtime keeps
+// on itself, which is where it stopped on 2026-09-26.
+func TestARebuildThisRuntimeMadeIsNotALoss(t *testing.T) {
+	cycle, current, clocks, _ := swappableOwnerCycle(t)
+	cycle.Observe(context.Background())
+	clocks.advance(time.Minute, time.Minute)
+	cycle.Observe(context.Background())
+
+	// The rebuild: this runtime stopped 100 and started 200, and says so.
+	current.Process.PID = 200
+	cycle.Replaced(200)
+	clocks.advance(time.Minute, time.Minute)
+	if summary := cycle.Observe(context.Background()); namesProcessGone(summary) {
+		t.Fatalf("a rebuild this runtime made named a loss: %v", summary.Tunnel.Causes)
+	}
+
+	// A replacement it did not make still is one.
+	current.Process.PID = 300
+	clocks.advance(time.Minute, time.Minute)
+	if summary := cycle.Observe(context.Background()); !namesProcessGone(summary) {
+		t.Fatalf("a replacement nobody here made named nothing: %v", summary.Tunnel.Causes)
+	}
+}
+
+// Nothing is remembered from a rebuild that started no process.
+func TestAReplacementOfNothingIsNotRemembered(t *testing.T) {
+	cycle, current, clocks, _ := swappableOwnerCycle(t)
+	cycle.Observe(context.Background())
+	clocks.advance(time.Minute, time.Minute)
+	cycle.Observe(context.Background())
+	cycle.Replaced(0)
+	current.Process.PID = 200
+	clocks.advance(time.Minute, time.Minute)
+	if summary := cycle.Observe(context.Background()); !namesProcessGone(summary) {
+		t.Fatalf("a replacement nobody performed hid a loss: %v", summary.Tunnel.Causes)
+	}
+}
