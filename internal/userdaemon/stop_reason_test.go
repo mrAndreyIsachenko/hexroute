@@ -138,7 +138,7 @@ func stopTestController(t *testing.T, tick control.Tick) *operator.Controller {
 		ipc.RoleUser, ipc.ModeObserveOnly,
 		[]control.Component{control.ComponentPritunl},
 		control.NewSnapshot(control.StateHealthy), control.ReasonNone, nil,
-		func() control.Tick { return tick })
+		func() control.Tick { return tick }, operator.ReportsRecovery)
 	if err != nil {
 		t.Fatalf("operator.NewController() error: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestTheUserLoopSaysWhatEndedIt(t *testing.T) {
 		controller, err := operator.NewController(
 			ipc.RoleUser, ipc.ModeObserveOnly,
 			[]control.Component{control.ComponentPritunl},
-			ahead, control.ReasonNone, nil, func() control.Tick { return 0 })
+			ahead, control.ReasonNone, nil, func() control.Tick { return 0 }, operator.ReportsRecovery)
 		if err != nil {
 			t.Fatalf("operator.NewController() error: %v", err)
 		}

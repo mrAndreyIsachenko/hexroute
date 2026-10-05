@@ -104,15 +104,23 @@ type Status struct {
 	Policy            *PolicyStatusResult `json:"policy,omitempty"`
 }
 
+// Diagnostics is what a runtime reports about itself beyond its status.
+//
+// The recovery quantities are pointers because a path that keeps no recovery
+// budget and a path that has spent none of one are different claims, and both
+// read as zero. A runtime whose snapshot does not come from the recovery
+// machine leaves them absent rather than reporting a budget it does not keep:
+// the root observe path published `attempts: 0` for weeks, which reads as a
+// budget with nothing spent.
 type Diagnostics struct {
 	Status              Status         `json:"status"`
 	ConsecutiveFailures uint32         `json:"consecutive_failures"`
-	Attempts            uint32         `json:"attempts"`
 	LastTick            control.Tick   `json:"last_tick"`
-	RecoveringSince     control.Tick   `json:"recovering_since"`
-	NextActionAt        control.Tick   `json:"next_action_at"`
-	SafeUntil           control.Tick   `json:"safe_until"`
 	LastReason          control.Reason `json:"last_reason"`
+	Attempts            *uint32        `json:"attempts,omitempty"`
+	RecoveringSince     *control.Tick  `json:"recovering_since,omitempty"`
+	NextActionAt        *control.Tick  `json:"next_action_at,omitempty"`
+	SafeUntil           *control.Tick  `json:"safe_until,omitempty"`
 }
 
 type ResumeResult struct {
@@ -331,12 +339,32 @@ func policyDomainForRole(role DaemonRole) policy.Domain {
 }
 
 func (diagnostics Diagnostics) valid() bool {
-	return diagnostics.Status.valid() &&
-		diagnostics.LastTick >= 0 &&
-		diagnostics.RecoveringSince >= 0 &&
-		diagnostics.NextActionAt >= 0 &&
-		diagnostics.SafeUntil >= 0 &&
-		diagnostics.LastReason.Valid()
+	if !diagnostics.Status.valid() ||
+		diagnostics.LastTick < 0 ||
+		!diagnostics.LastReason.Valid() {
+		return false
+	}
+	// The recovery quantities come from one machine, so they are reported
+	// together or not at all. A payload carrying some of them describes a path
+	// that maintains half a budget, which no path does.
+	present := 0
+	if diagnostics.Attempts != nil {
+		present++
+	}
+	for _, tick := range []*control.Tick{
+		diagnostics.RecoveringSince,
+		diagnostics.NextActionAt,
+		diagnostics.SafeUntil,
+	} {
+		if tick == nil {
+			continue
+		}
+		if *tick < 0 {
+			return false
+		}
+		present++
+	}
+	return present == 0 || present == 4
 }
 
 func (result ResumeResult) valid() bool {

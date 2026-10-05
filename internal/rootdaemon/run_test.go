@@ -102,6 +102,7 @@ func TestObserveLoopEmitsOnlyRedactedProposals(t *testing.T) {
 		control.ReasonNone,
 		nil,
 		func() control.Tick { return 7 },
+		operator.KeepsNoRecovery,
 	)
 	if err != nil {
 		t.Fatalf("operator.NewController() error: %v", err)
@@ -347,7 +348,7 @@ func TestTheDecisionIsRecordedBeforeTheRestOfTheCycle(t *testing.T) {
 		ipc.RoleRoot, ipc.ModeObserveOnly,
 		[]control.Component{control.ComponentTunnel},
 		control.NewSnapshot(control.StateHealthy), control.ReasonNone, nil,
-		func() control.Tick { return 7 })
+		func() control.Tick { return 7 }, operator.KeepsNoRecovery)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +407,7 @@ func TestASuspendedCycleRecordsThatTheMachineWasDozing(t *testing.T) {
 		ipc.RoleRoot, ipc.ModeObserveOnly,
 		[]control.Component{control.ComponentTunnel},
 		control.NewSnapshot(control.StateHealthy), control.ReasonNone, nil,
-		func() control.Tick { return 7 })
+		func() control.Tick { return 7 }, operator.KeepsNoRecovery)
 	if err != nil {
 		t.Fatal(err)
 	}

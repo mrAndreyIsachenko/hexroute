@@ -153,11 +153,40 @@
 
 ## 5. A quantity the path does not keep
 
-- [ ] 5.1 Omit from a role's reported payload the fields that role's path does not maintain, starting with `attempts` on the root path; verified by a test asserting the field is absent rather than zero.
+- [x] 5.1 Omit from a role's reported payload the fields that role's path does not maintain, starting with `attempts` on the root path; verified by a test asserting the field is absent rather than zero.
 
-- [ ] 5.2 Prove the paths that do maintain it still report it; verified by a test over the sentinel or recovery path's payload where a spent attempt appears.
+      Four fields, not one. `nextRootOperatorSnapshot` writes the state, the
+      failure counter, the tick and the generation, and nothing else:
+      `attempts`, `recovering_since`, `next_action_at` and `safe_until` were all
+      structurally zero on the root path and all published.
 
-- [ ] 5.3 Hold the two shapes together; verified by a test asserting every field in a role's reported payload is written by that role's path.
+      They are pointers in `ipc.Diagnostics` now, nil when the path maintains
+      none. A controller is told which at construction —
+      `operator.KeepsNoRecovery` for the root path, `operator.ReportsRecovery`
+      for the user path, whose snapshot is the recovery machine's own — so the
+      declaration sits at the call site rather than being inferred from a role.
+
+      `TestRootPathReportsNoRecoveryBudgetAtAll`.
+
+- [x] 5.2 Prove the paths that do maintain it still report it; verified by a test over the recovery path's payload where a spent attempt appears.
+
+      `TestRecoveryPathReportsTheBudgetItKeeps` reads a safe-mode snapshot's
+      spent attempt back out of the payload. `TestAMeasuredZeroIsNotAnAbsentQuantity`
+      holds the distinction the pointer exists for: a zero the path measured and
+      a quantity the path does not keep are different claims.
+
+- [x] 5.3 Hold the two shapes together; verified by the payload refusing a mixture.
+
+      Mechanical rather than by inspection: the four quantities come from one
+      machine, so `Diagnostics.valid()` accepts all four or none and refuses any
+      mixture. A future field added to one path and not the other fails the
+      gate instead of being published as a zero.
+      `TestRecoveryQuantitiesAreReportedTogetherOrNotAtAll` covers none, one,
+      all four, and a negative tick.
+
+      This replaces the design's suggestion of a test asserting field-by-field
+      which path writes what. An invariant the payload itself enforces is
+      stronger than a test enumerating today's fields.
 
 ## 6. What an operator reads
 

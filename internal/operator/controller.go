@@ -37,6 +37,8 @@ type Controller struct {
 	// pending is the standing work last reported by the cycle. See
 	// ipc.Status.PendingOperations: it is current, not carried.
 	pending uint32
+	// reporting says which quantities this controller's path maintains.
+	reporting RecoveryReporting
 	// generation mirrors the snapshot's generation for readers that must not
 	// take this controller's lock. The policy handler is one: the controller
 	// holds the lock while it asks the handler to evaluate a resume, and a
@@ -69,6 +71,24 @@ func (controller *Controller) EnableResumePolicyEnforcement(
 
 var ErrInvalidController = errors.New("invalid operator controller")
 
+// RecoveryReporting says whether the path feeding a controller maintains the
+// recovery quantities — the attempt budget, the recovering mark, the next
+// action and the cooldown.
+//
+// A path whose snapshot comes from the machine in internal/control maintains
+// them. The root observe path writes a snapshot itself and maintains none of
+// them, so reporting them would publish a budget it does not keep.
+type RecoveryReporting string
+
+const (
+	ReportsRecovery RecoveryReporting = "reports_recovery"
+	KeepsNoRecovery RecoveryReporting = "keeps_no_recovery"
+)
+
+func validRecoveryReporting(reporting RecoveryReporting) bool {
+	return reporting == ReportsRecovery || reporting == KeepsNoRecovery
+}
+
 func NewController(
 	role ipc.DaemonRole,
 	mode ipc.RuntimeMode,
@@ -77,12 +97,14 @@ func NewController(
 	reason control.Reason,
 	resume ResumeFunc,
 	now func() control.Tick,
+	reporting RecoveryReporting,
 ) (*Controller, error) {
 	if !validRole(role) ||
 		!validMode(mode) ||
 		len(targets) == 0 ||
 		!validSnapshot(snapshot) ||
 		!reason.Valid() ||
+		!validRecoveryReporting(reporting) ||
 		now == nil {
 		return nil, ErrInvalidController
 	}
@@ -96,6 +118,7 @@ func NewController(
 	controller := &Controller{
 		role:           role,
 		mode:           mode,
+		reporting:      reporting,
 		allowedTargets: allowed,
 		snapshot:       snapshot,
 		lastReason:     reason,
@@ -279,16 +302,26 @@ func (controller *Controller) status() ipc.Status {
 }
 
 func (controller *Controller) diagnostics() ipc.Diagnostics {
-	return ipc.Diagnostics{
+	diagnostics := ipc.Diagnostics{
 		Status:              controller.status(),
 		ConsecutiveFailures: controller.snapshot.ConsecutiveFailures,
-		Attempts:            controller.snapshot.Attempts,
 		LastTick:            controller.snapshot.LastTick,
-		RecoveringSince:     controller.snapshot.RecoveringSince,
-		NextActionAt:        controller.snapshot.NextActionAt,
-		SafeUntil:           controller.snapshot.SafeUntil,
 		LastReason:          controller.lastReason,
 	}
+	// A quantity this path does not maintain is absent, not zero. Reporting it
+	// as zero said "a budget with nothing spent" where the truth was "this path
+	// keeps no budget", and the two look the same to every reader.
+	if controller.reporting == ReportsRecovery {
+		attempts := controller.snapshot.Attempts
+		recovering := controller.snapshot.RecoveringSince
+		next := controller.snapshot.NextActionAt
+		safeUntil := controller.snapshot.SafeUntil
+		diagnostics.Attempts = &attempts
+		diagnostics.RecoveringSince = &recovering
+		diagnostics.NextActionAt = &next
+		diagnostics.SafeUntil = &safeUntil
+	}
+	return diagnostics
 }
 
 func validSnapshot(snapshot control.Snapshot) bool {
