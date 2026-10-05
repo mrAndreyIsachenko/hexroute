@@ -77,17 +77,44 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`tell-pending-work-from-a-fault` is open. The root daemon reported `DEGRADED`
-for seven unbroken hours on 2026-10-05 while nothing was wrong: zero failures,
-the tunnel present, the payload answering, and the kernel agreeing with every
-route the runtime had observed. A cycle is healthy only when its plan is empty,
-and in `observe-only` no plan is ever applied, so none is ever empty. The state
-is always on and therefore reports nothing; this runtime would read `DEGRADED`
-through a real outage exactly as it reads now. Two further claims the report
-cannot back came with it: `probe_failed` is a label mapped from the state rather
-than an event, and the counters published beside the state come from a path that
-never accumulates them. The change separates work a runtime may not do from work
-it could not do. It corrects no route.
+None.
+
+`tell-pending-work-from-a-fault` closed on 2026-10-05. The root daemon had
+reported `DEGRADED` for seven unbroken hours with nothing wrong: zero failures,
+the tunnel present, its payload answering, and the kernel agreeing with every
+route the runtime had observed. A cycle was healthy only when its plan was
+empty, and in `observe-only` no plan is ever applied, so none was ever empty.
+The state was always on and reported nothing by it.
+
+Health is a function of failures alone now, and the work a runtime proposes and
+may not apply is counted beside it as `pending_operations`. The count is not in
+the persisted snapshot: that snapshot is version-validated and the user daemon
+treats an unreadable one as fatal, so a field there would have stopped the
+install and its rollback both, bought for a quantity that means nothing after a
+restart.
+
+Two further claims the report could not back went with it. The reason was
+derived from the health, so `probe_failed` was published for all eleven ways a
+cycle can fail — including the ones where no probe ran — and a physical network
+the cycle could not read was reported as an intentional sleep; a cycle now keeps
+the cause of its first failure in configuration order and publishes that.
+`attempts`, `recovering_since`, `next_action_at` and `safe_until` were reported
+as zero by a path that maintains none of them, and are absent from that domain
+now, all four or none.
+
+Read on the machine after the install: `HEALTHY` with `pending_operations: 2`,
+the two ingress routes still standing on the opposite links from their
+configured `preferred_link`, which is the tunnel owner's arrangement. Two real
+failures occurred on their own within eight minutes, read as unsound, and their
+cause is recoverable from the event archive — `relay_ingress`, one configured
+and none reachable. Sixteen mutations, all killed; the three that survived the
+first run were each a claim made in prose that no test held.
+
+It corrected no route. What it leaves open is recorded in its tasks: HEX-11's
+remaining question, the read model's `scoped_routes` component carrying the same
+permanent degradation one level down, and the private configurations in the
+working copy having fallen behind this machine by the whole of change 3's
+executor settings.
 
 `say-why-a-runtime-stopped` closed on 2026-09-26. A runtime that ended on a
 failure recorded nothing: nine exits of the root daemon's observation loop became
