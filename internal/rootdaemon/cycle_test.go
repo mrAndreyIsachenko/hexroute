@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 )
@@ -67,12 +68,18 @@ func (observer fakeProcessObserver) Tunnel(
 
 type fakeEndpointObserver struct {
 	ready map[string]bool
+	// unreadable names the endpoints whose probe cannot run at all, which is a
+	// different failure from one that runs and answers not ready.
+	unreadable map[string]bool
 }
 
 func (observer fakeEndpointObserver) Endpoint(
 	_ context.Context,
 	endpoint observe.Endpoint,
 ) (observe.ReadinessObservation, error) {
+	if observer.unreadable[endpoint.Name] {
+		return observe.ReadinessObservation{}, errors.New("the probe could not run")
+	}
 	return observe.ReadinessObservation{Name: endpoint.Name, Ready: observer.ready[endpoint.Name]}, nil
 }
 
@@ -200,7 +207,9 @@ func TestCycleReportsScopedProposalWithoutApplyingIt(t *testing.T) {
 	cycle, _ := NewCycle(config, network, processes, endpoints)
 
 	summary := cycle.Observe(context.Background())
-	if summary.State != CycleDegraded ||
+	// The proposal is recorded and not applied. It does not grade the health:
+	// a runtime that may not act on what it sees is working when it sees it.
+	if summary.State != CycleHealthy ||
 		len(summary.Plan.Operations) != 1 ||
 		!summary.Plan.ObserveOnly {
 		t.Fatalf("Observe() = %+v", summary)
@@ -218,5 +227,126 @@ func TestCycleReadinessFailureDoesNotRestartProcess(t *testing.T) {
 	summary := cycle.Observe(context.Background())
 	if summary.State != CycleDegraded || summary.OuterReady || !summary.SingBoxRunning {
 		t.Fatalf("Observe() = %+v", summary)
+	}
+}
+
+// A proposal this runtime may not apply stands for as long as the condition
+// holds, so a health that counted it reported the same value forever. Measured
+// 2026-10-05: seven unbroken hours of degraded with no failure of any kind.
+func TestCycleIsSoundWhileHoldingAProposalItMayNotApply(t *testing.T) {
+	config, network, processes, endpoints := healthyCycleFixtures(t)
+	target := config.Targets[0]
+	network.routes[target.Destination] = observe.RouteObservation{
+		Destination: target.Destination,
+		Interface:   "utun8",
+	}
+	cycle, _ := NewCycle(config, network, processes, endpoints)
+
+	summary := cycle.Observe(context.Background())
+	if summary.Failures != 0 {
+		t.Fatalf("the fixture failed an observation: %+v", summary)
+	}
+	if len(summary.Plan.Operations) == 0 {
+		t.Fatalf("the fixture proposed nothing, so it proves nothing: %+v", summary)
+	}
+	if summary.State != CycleHealthy {
+		t.Fatalf("a standing proposal graded the health: %+v", summary.State)
+	}
+}
+
+// The other half of the same rule: work outstanding does not excuse a failure.
+func TestCycleIsUnsoundOnFailureWhetherWorkStandsOrNot(t *testing.T) {
+	for _, standing := range []bool{false, true} {
+		config, network, processes, endpoints := healthyCycleFixtures(t)
+		// A missing route observation is the failure; a second target moved to
+		// a foreign interface is the standing work beside it.
+		delete(network.routes, config.Targets[0].Destination)
+		if standing {
+			target := config.Targets[1]
+			network.routes[target.Destination] = observe.RouteObservation{
+				Destination: target.Destination,
+				Interface:   "utun8",
+			}
+		}
+		cycle, _ := NewCycle(config, network, processes, endpoints)
+
+		summary := cycle.Observe(context.Background())
+		if summary.Failures == 0 {
+			t.Fatalf("standing=%v: the fixture did not fail: %+v", standing, summary)
+		}
+		if summary.State != CycleDegraded {
+			t.Fatalf("standing=%v: a failure did not read as unsound: %+v", standing, summary.State)
+		}
+	}
+}
+
+// The cause kept is the first failure the fold met, and a later failure does
+// not replace it. The probes run together and are folded in configuration
+// order, so the fold decides, not which answer arrived first.
+func TestCycleKeepsTheCauseOfItsFirstFailure(t *testing.T) {
+	config, network, processes, endpoints := healthyCycleFixtures(t)
+	endpoints.unreadable = map[string]bool{"normal-codex": true, "twilight-codex": true}
+	endpoints.ready["outer-ready"] = false
+	cycle, _ := NewCycle(config, network, processes, endpoints)
+
+	summary := cycle.Observe(context.Background())
+	// Two probes that could not run, then an outer path that answered and was
+	// not ready: three failures, two causes, one kept.
+	if summary.Failures != 3 {
+		t.Fatalf("the fixture did not fail three times: %+v", summary.Failures)
+	}
+	if summary.Cause != control.ReasonEndpointUnreadable {
+		t.Fatalf("the cause kept was not the first met: %q", summary.Cause)
+	}
+	if got := rootOperatorReason(summary); got != control.ReasonEndpointUnreadable {
+		t.Fatalf("the published reason = %q", got)
+	}
+}
+
+// The record that sent a reader after a probe that had not run.
+func TestCycleNamesAFailureThatWasNotAProbe(t *testing.T) {
+	config, network, processes, endpoints := healthyCycleFixtures(t)
+	delete(network.routes, config.Targets[0].Destination)
+	cycle, _ := NewCycle(config, network, processes, endpoints)
+
+	summary := cycle.Observe(context.Background())
+	if summary.State != CycleDegraded || summary.Failures == 0 {
+		t.Fatalf("the fixture was not degraded: %+v", summary)
+	}
+	if summary.Cause != control.ReasonRouteUnreadable {
+		t.Fatalf("the cause = %q", summary.Cause)
+	}
+	if got := rootOperatorReason(summary); got == control.ReasonProbeFailed {
+		t.Fatalf("a route it could not read was published as a failed probe")
+	}
+}
+
+// And the other half: the word keeps its meaning where it is true.
+func TestCycleReportsAFailedProbeAsAFailedProbe(t *testing.T) {
+	config, network, processes, endpoints := healthyCycleFixtures(t)
+	endpoints.ready["outer-ready"] = false
+	cycle, _ := NewCycle(config, network, processes, endpoints)
+
+	summary := cycle.Observe(context.Background())
+	if summary.Failures != 1 || summary.Cause != control.ReasonProbeFailed {
+		t.Fatalf("a probe that ran and failed = %+v / %q", summary.Failures, summary.Cause)
+	}
+	if got := rootOperatorReason(summary); got != control.ReasonProbeFailed {
+		t.Fatalf("the published reason = %q", got)
+	}
+}
+
+// A physical network it could not read was published as an intentional sleep.
+func TestCycleDoesNotCallAnUnreadableNetworkASleep(t *testing.T) {
+	config, network, processes, endpoints := healthyCycleFixtures(t)
+	network.physical = observe.PhysicalNetwork{}
+	cycle, _ := NewCycle(config, network, processes, endpoints)
+
+	summary := cycle.Observe(context.Background())
+	if summary.State != CycleSuspended || summary.Failures == 0 {
+		t.Fatalf("the fixture was not the suspended-with-failure case: %+v", summary)
+	}
+	if got := rootOperatorReason(summary); got != control.ReasonPhysicalNetworkUnready {
+		t.Fatalf("the published reason = %q", got)
 	}
 }

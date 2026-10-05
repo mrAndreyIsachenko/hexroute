@@ -51,7 +51,9 @@ asks `ctl`.
 ### Health is a function of failures alone
 
 A cycle is sound when `Failures == 0`. The `len(plan.Operations) == 0` clause
-is removed, and the user daemon's `ActionNone` clause with it.
+is removed. The user daemon is left alone: its health already comes from the
+control machine's transitions, and its `ActionNone` clause is redundant with
+the state those transitions produce.
 
 This stays correct after cutover. A runtime that may apply its plan and does
 not succeed records a failure, and the failure is what makes it unsound — not
