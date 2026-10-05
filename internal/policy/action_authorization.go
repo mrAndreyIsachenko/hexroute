@@ -14,6 +14,11 @@ const (
 	ActionSelectorMismatch        ActionAuthorizationReason = "selector_mismatch"
 	ActionAuthorizationLeaseEnded ActionAuthorizationReason = "authorization_lease_inactive"
 	ActionExplicitlyDenied        ActionAuthorizationReason = "explicitly_denied"
+	// ActionControlStateUnreadable is a runtime that could not read the control
+	// state it must compare the request against. It refuses rather than
+	// authorizes: an authorization that proceeds when it cannot establish what
+	// it is authorizing against is the failure the comparison exists to prevent.
+	ActionControlStateUnreadable ActionAuthorizationReason = "control_state_unreadable"
 )
 
 type ActionAuthorizationState struct {

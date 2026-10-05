@@ -3,6 +3,7 @@ package operator
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
@@ -33,6 +34,12 @@ type Controller struct {
 	allowedTargets map[control.Component]struct{}
 	snapshot       control.Snapshot
 	lastReason     control.Reason
+	// generation mirrors the snapshot's generation for readers that must not
+	// take this controller's lock. The policy handler is one: the controller
+	// holds the lock while it asks the handler to evaluate a resume, and a
+	// handler that read the generation back through the lock would deadlock the
+	// act it was asked about. Every write of the snapshot writes this beside it.
+	generation     atomic.Uint64
 	resume         ResumeFunc
 	resumePolicy   ResumePolicyEvaluator
 	resumeExecutor ResumePolicyExecutor
@@ -83,7 +90,7 @@ func NewController(
 		}
 		allowed[target] = struct{}{}
 	}
-	return &Controller{
+	controller := &Controller{
 		role:           role,
 		mode:           mode,
 		allowedTargets: allowed,
@@ -91,7 +98,9 @@ func NewController(
 		lastReason:     reason,
 		resume:         resume,
 		now:            now,
-	}, nil
+	}
+	controller.generation.Store(snapshot.Generation)
+	return controller, nil
 }
 
 // SetResumePolicyEvaluator enables observational policy evaluation. The
@@ -120,8 +129,21 @@ func (controller *Controller) Update(
 		return control.ErrStaleGeneration
 	}
 	controller.snapshot = snapshot
+	controller.generation.Store(snapshot.Generation)
 	controller.lastReason = reason
 	return nil
+}
+
+// CurrentGeneration is the control-state generation this runtime holds.
+//
+// It is what an authorization compares a caller's generation against, so it is
+// read from the runtime rather than taken from the request. It takes no lock:
+// see the field it reads.
+func (controller *Controller) CurrentGeneration() (uint64, error) {
+	if controller == nil {
+		return 0, ErrInvalidController
+	}
+	return controller.generation.Load(), nil
 }
 
 func (controller *Controller) Handle(request ipc.Request) ipc.Response {
@@ -217,6 +239,7 @@ func (controller *Controller) handleResume(
 		return response
 	}
 	controller.snapshot = after
+	controller.generation.Store(after.Generation)
 	controller.lastReason = control.ReasonOperatorResume
 	result := ipc.ResumeResult{
 		Role:               controller.role,

@@ -283,3 +283,37 @@ func TestWirePayloadIsAnObject(t *testing.T) {
 		t.Fatalf("payload = %s, want JSON object", wire["payload"])
 	}
 }
+
+// What became of a decision is recorded in a closed vocabulary, and performed
+// and blocked are one statement rather than two fields a reader must reconcile.
+// It is its own record: the decision is written before the act, and this is what
+// says whether anything followed.
+func TestATunnelExecutionIsRecordedInAClosedVocabulary(t *testing.T) {
+	routes := 3
+	elapsed := int64(17_000)
+	performed := TunnelExecution{Performed: true, Routes: &routes, ElapsedMS: &elapsed}
+	if _, err := Encode(SchemaTunnelExecution, performed); err != nil {
+		t.Fatalf("a performed rebuild was refused: %v", err)
+	}
+	if _, err := Encode(SchemaTunnelExecution, TunnelExecution{Blocked: "suspended"}); err != nil {
+		t.Fatalf("a blocked act was refused: %v", err)
+	}
+	// It is critical: it is the only record that the machine was changed.
+	definition, ok := DefinitionFor(SchemaTunnelExecution)
+	if !ok || definition.Priority != PriorityCritical {
+		t.Fatalf("definition = %+v", definition)
+	}
+	for name, execution := range map[string]TunnelExecution{
+		"a gate nobody defined":     {Blocked: "because_i_said_so"},
+		"a reason nobody defined":   {Performed: true, Reason: "it_felt_wrong", ElapsedMS: &elapsed},
+		"performed and blocked":     {Performed: true, Blocked: "suspended", ElapsedMS: &elapsed},
+		"neither performed nor not": {},
+		"a gate with a reason":      {Blocked: "suspended", Reason: "stop_failed"},
+		"performed without a cost":  {Performed: true},
+		"a cost without an act":     {Blocked: "suspended", ElapsedMS: &elapsed},
+	} {
+		if _, err := Encode(SchemaTunnelExecution, execution); err == nil {
+			t.Fatalf("%s was accepted", name)
+		}
+	}
+}

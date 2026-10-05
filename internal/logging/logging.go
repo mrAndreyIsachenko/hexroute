@@ -87,21 +87,28 @@ const (
 	EventCorporateRoute             EventName = "corporate_route_proposed"
 	EventGitLabHTTPSRoute           EventName = "gitlab_https_route_proposed"
 	EventCodexRoute                 EventName = "codex_fallback_route_proposed"
-	EventPritunlReconnect           EventName = "pritunl_reconnect_proposed"
-	EventPritunlRescueRefused       EventName = "pritunl_rescue_refused"
-	EventPolicyAuthorityUnreadable  EventName = "policy_authority_unreadable"
-	EventSentinelEvidence           EventName = "sentinel_restart_evidence"
-	EventLocalNotification          EventName = "local_notification"
-	EventCloudAPIStarted            EventName = "cloud_api_started"
-	EventCloudAPIStopped            EventName = "cloud_api_stopped"
-	EventCloudWorkerStarted         EventName = "cloud_worker_started"
-	EventCloudWorkerStopped         EventName = "cloud_worker_stopped"
-	EventCloudMigration             EventName = "cloud_migration"
-	EventCloudHeartbeat             EventName = "cloud_heartbeat"
-	EventCloudReconcile             EventName = "cloud_reconcile"
-	EventCloudAlertQueue            EventName = "cloud_alert_queue"
-	EventCloudAlertDelivery         EventName = "cloud_alert_delivery"
-	EventCloudRetention             EventName = "cloud_retention"
+	// EventInheritedRoute names a route carried across a handover whose purpose
+	// this runtime does not claim to know. It was missing while the role
+	// existed, and a summary that could not name an event ended the runtime:
+	// measured 2026-10-05, the daemon stopped with `invalid_runtime` and
+	// launchd restarted it for as long as the planner kept proposing one, which
+	// is as long as the machine had no tunnel to put the routes back on.
+	EventInheritedRoute            EventName = "inherited_route_proposed"
+	EventPritunlReconnect          EventName = "pritunl_reconnect_proposed"
+	EventPritunlRescueRefused      EventName = "pritunl_rescue_refused"
+	EventPolicyAuthorityUnreadable EventName = "policy_authority_unreadable"
+	EventSentinelEvidence          EventName = "sentinel_restart_evidence"
+	EventLocalNotification         EventName = "local_notification"
+	EventCloudAPIStarted           EventName = "cloud_api_started"
+	EventCloudAPIStopped           EventName = "cloud_api_stopped"
+	EventCloudWorkerStarted        EventName = "cloud_worker_started"
+	EventCloudWorkerStopped        EventName = "cloud_worker_stopped"
+	EventCloudMigration            EventName = "cloud_migration"
+	EventCloudHeartbeat            EventName = "cloud_heartbeat"
+	EventCloudReconcile            EventName = "cloud_reconcile"
+	EventCloudAlertQueue           EventName = "cloud_alert_queue"
+	EventCloudAlertDelivery        EventName = "cloud_alert_delivery"
+	EventCloudRetention            EventName = "cloud_retention"
 	// EventCloudConnectivity names the pass that folds uploaded connectivity
 	// projections into the cloud read model.
 	EventCloudConnectivity EventName = "cloud_connectivity_projection"
@@ -231,8 +238,13 @@ const (
 	// There is no name here for the read model or the event archive. Both
 	// report their own failures and carry on by design, so an exit that named
 	// one would claim a distinction the code does not make.
-	ReasonInvalidRuntime         Reason = "invalid_runtime"
-	ReasonJournalUnwritable      Reason = "journal_unwritable"
+	ReasonInvalidRuntime    Reason = "invalid_runtime"
+	ReasonJournalUnwritable Reason = "journal_unwritable"
+	// ReasonArchiveUnwritable is the event archive, and it is here because the
+	// executor made writing it fatal. Every other use of the archive reports
+	// its own failure and carries on; an execution and a handback are acts, and
+	// a runtime that acted and could not say so is worse than one that stopped.
+	ReasonArchiveUnwritable      Reason = "archive_unwritable"
 	ReasonPublicationFailed      Reason = "publication_failed"
 	ReasonControlStateUnwritable Reason = "control_state_unwritable"
 	ReasonOperatorSocketEnded    Reason = "operator_socket_ended"
@@ -423,7 +435,8 @@ func validEvent(value EventName) bool {
 		EventSentinelRecoveryBound,
 		EventSentinelPlannerUnavailable,
 		EventObservationCycle, EventIngressRoute,
-		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute, EventPritunlReconnect,
+		EventCorporateRoute, EventGitLabHTTPSRoute, EventCodexRoute,
+		EventInheritedRoute, EventPritunlReconnect,
 		EventPritunlRescueRefused, EventPolicyAuthorityUnreadable,
 		EventSentinelEvidence, EventLocalNotification, EventCloudAPIStarted,
 		EventCloudAPIStopped, EventCloudWorkerStarted, EventCloudWorkerStopped,
@@ -476,7 +489,8 @@ func validReason(value Reason) bool {
 		ReasonRecoveryUnequipped, ReasonRecoveryFailed,
 		ReasonCredentialsUnavailable, ReasonCodeUnavailable,
 		ReasonSessionNotStarted,
-		ReasonInvalidRuntime, ReasonJournalUnwritable, ReasonPublicationFailed,
+		ReasonInvalidRuntime, ReasonJournalUnwritable, ReasonArchiveUnwritable,
+		ReasonPublicationFailed,
 		ReasonControlStateUnwritable, ReasonOperatorSocketEnded:
 		return true
 	default:

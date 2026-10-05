@@ -16,6 +16,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/ipc"
 	"github.com/mrAndreyIsachenko/hexroute/internal/logging"
 	"github.com/mrAndreyIsachenko/hexroute/internal/operator"
+	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 )
 
 // refusingWriter refuses exactly the records naming one event, and takes the
@@ -48,6 +49,31 @@ func privateDir(t *testing.T) string {
 		t.Fatalf("Mkdir() error: %v", err)
 	}
 	return path
+}
+
+// stoppedAs finds the record about this runtime's own ending and answers its
+// result and reason.
+//
+// It reads the record rather than the log, because a log holds other records
+// that say `ok` — a start, a cycle — and a test that looked for the word would
+// pass for a stop that said anything at all. One did: a mutation making every
+// requested stop `degraded` was not noticed by two tests that searched the
+// whole output.
+func stoppedAs(t *testing.T, output string) (result, reason string) {
+	t.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		var record struct {
+			Event  string `json:"event"`
+			Result string `json:"result"`
+			Reason string `json:"reason"`
+		}
+		if json.Unmarshal([]byte(line), &record) != nil || record.Event != "daemon_stopped" {
+			continue
+		}
+		return record.Result, record.Reason
+	}
+	t.Fatalf("nothing said this runtime stopped: %q", output)
+	return "", ""
 }
 
 func stopTestController(t *testing.T) *operator.Controller {
@@ -89,7 +115,7 @@ func TestTheLoopSaysWhatEndedIt(t *testing.T) {
 			context.Background(), 0, true,
 			func() control.Tick { return 7 }, func() time.Duration { return 0 },
 			fixedCycler{summary: Summary{State: CycleHealthy}}, &fixedHeartbeat{}, stopTestController(t), nil, nil,
-			stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil)
+			stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil, executor{})
 		if err == nil {
 			t.Fatal("a loop with no interval ran")
 		}
@@ -108,7 +134,7 @@ func TestTheLoopSaysWhatEndedIt(t *testing.T) {
 			context.Background(), time.Minute, true,
 			func() control.Tick { return 7 }, func() time.Duration { return 0 },
 			fixedCycler{summary: Summary{State: CycleHealthy}}, &fixedHeartbeat{}, stopTestController(t), nil, nil,
-			logger, nil, nil, &rootObservations{}, nil)
+			logger, nil, nil, &rootObservations{}, nil, executor{})
 		if err == nil {
 			t.Fatal("a loop whose log refused its own start ran")
 		}
@@ -127,7 +153,7 @@ func TestTheLoopSaysWhatEndedIt(t *testing.T) {
 			func() control.Tick { return 7 }, func() time.Duration { return 0 },
 			fixedCycler{summary: Summary{State: CycleState("a state nobody wrote")}},
 			&fixedHeartbeat{}, stopTestController(t), nil, nil,
-			stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil)
+			stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil, executor{})
 		if err == nil {
 			t.Fatal("a summary nobody can report was reported")
 		}
@@ -142,7 +168,7 @@ func TestTheLoopSaysWhatEndedIt(t *testing.T) {
 			context.Background(), time.Minute, true,
 			func() control.Tick { return 7 }, func() time.Duration { return 0 },
 			fixedCycler{summary: Summary{State: CycleHealthy}}, failingHeartbeat{}, stopTestController(t), nil, nil,
-			stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil)
+			stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil, executor{})
 		if err == nil {
 			t.Fatal("the heartbeat refused and the loop carried on")
 		}
@@ -174,7 +200,7 @@ func TestTheLoopSaysWhatEndedIt(t *testing.T) {
 			func() control.Tick { return 7 }, func() time.Duration { return 0 },
 			fixedCycler{summary: Summary{State: CycleHealthy}}, &fixedHeartbeat{},
 			stopTestController(t), nil, nil, logger, reader, nil,
-			&rootObservations{}, nil)
+			&rootObservations{}, nil, executor{})
 		if err == nil {
 			t.Fatal("the fold's record was refused and the loop carried on")
 		}
@@ -202,7 +228,7 @@ func TestTheLoopSaysWhatEndedIt(t *testing.T) {
 			func() control.Tick { return 7 }, func() time.Duration { return 0 },
 			fixedCycler{summary: Summary{State: CycleHealthy}}, &fixedHeartbeat{},
 			controller, nil, nil,
-			stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil)
+			stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil, executor{})
 		if err == nil {
 			t.Fatal("the controller refused the update and the loop carried on")
 		}
@@ -228,12 +254,53 @@ func TestTheLoopSaysWhatEndedIt(t *testing.T) {
 				context.Background(), time.Minute, false,
 				func() control.Tick { return 7 }, func() time.Duration { return 0 },
 				fixedCycler{summary: Summary{State: CycleHealthy}}, &fixedHeartbeat{}, stopTestController(t), nil, done,
-				stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil)
+				stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil, executor{})
 			if err == nil {
 				t.Fatal("the socket ended and the loop carried on")
 			}
 			if reason != logging.ReasonOperatorSocketEnded {
 				t.Fatalf("reason = %q", reason)
+			}
+		})
+	}
+}
+
+// A socket that ended because the runtime was asked to stop is not a socket that
+// failed.
+//
+// The server runs on the loop's context, so cancelling it ends the server too
+// and both cases of the select are ready at once: which is taken is a coin.
+// Measured 2026-09-27, the same signal and the same act were recorded twice as
+// `operator_socket_ended` on the error stream and twice as `ok` in the journal.
+func TestASocketEndedByTheStopIsNotAFailure(t *testing.T) {
+	for name, withError := range map[string]bool{
+		"the server said why it ended": true,
+		"the server said nothing":      false,
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			done := make(chan error, 1)
+			if withError {
+				done <- errors.New("the socket server ended")
+			} else {
+				close(done)
+			}
+			var output bytes.Buffer
+			reason, err := observeLoop(
+				ctx, time.Minute, false,
+				func() control.Tick { return 7 }, func() time.Duration { return 0 },
+				fixedCycler{summary: Summary{State: CycleHealthy}}, &fixedHeartbeat{},
+				stopTestController(t), nil, done,
+				stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil, executor{})
+			if err != nil {
+				t.Fatalf("a stop that was asked for failed: %v", err)
+			}
+			if reason != "" {
+				t.Fatalf("an ending that was asked for named %q", reason)
+			}
+			if result, reason := stoppedAs(t, output.String()); result != "ok" || reason != "" {
+				t.Fatalf("the stop was recorded as %q/%q", result, reason)
 			}
 		})
 	}
@@ -254,16 +321,15 @@ func TestAnEndingThatWasAskedForNamesNoFailure(t *testing.T) {
 				ctx, time.Minute, once,
 				func() control.Tick { return 7 }, func() time.Duration { return 0 },
 				fixedCycler{summary: Summary{State: CycleHealthy}}, &fixedHeartbeat{}, stopTestController(t), nil, nil,
-				stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil)
+				stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil, executor{})
 			if err != nil {
 				t.Fatalf("observeLoop: %v", err)
 			}
 			if reason != "" {
 				t.Fatalf("an ending nobody failed on named %q", reason)
 			}
-			if !strings.Contains(output.String(), `"event":"daemon_stopped"`) ||
-				!strings.Contains(output.String(), `"result":"ok"`) {
-				t.Fatalf("output = %q", output.String())
+			if result, reason := stoppedAs(t, output.String()); result != "ok" || reason != "" {
+				t.Fatalf("the stop was recorded as %q/%q", result, reason)
 			}
 		})
 	}
@@ -329,5 +395,52 @@ func TestARuntimeThatCanWriteNeitherLogStillStops(t *testing.T) {
 
 	if code != 1 {
 		t.Fatalf("Run() = %d", code)
+	}
+}
+
+// A route role carried in the configuration has an event, and one that does not
+// costs the record rather than the runtime.
+//
+// Measured 2026-10-05: the `inherited` role had no event, the planner proposes
+// one whenever the machine has no tunnel to put the routes back on, and the
+// summary that could not name it ended the daemon. launchd restarted it for as
+// long as that lasted, so the one runtime that could have rebuilt the tunnel
+// never finished a cycle — and the tunnel stayed down with the claim held.
+func TestEveryRouteRoleHasAnEvent(t *testing.T) {
+	for _, role := range []routeplan.Role{
+		routeplan.RoleIngress, routeplan.RoleCorporate,
+		routeplan.RoleGitLabHTTPS, routeplan.RoleCodexFallback,
+		routeplan.RoleInherited,
+	} {
+		event, err := routeEvent(routeplan.Operation{Role: role})
+		if err != nil || event == "" {
+			t.Fatalf("the role %q has no event: %v", role, err)
+		}
+	}
+}
+
+// And a role nobody has named yet does not end the loop.
+func TestARoleWithoutAnEventDoesNotEndTheLoop(t *testing.T) {
+	var output bytes.Buffer
+	summary := Summary{
+		State: CycleHealthy,
+		Plan: routeplan.Plan{Operations: []routeplan.Operation{
+			{Role: routeplan.Role("a role nobody wrote an event for")},
+		}},
+	}
+	reason, err := observeLoop(
+		context.Background(), time.Minute, true,
+		func() control.Tick { return 7 }, func() time.Duration { return 0 },
+		fixedCycler{summary: summary}, &fixedHeartbeat{},
+		stopTestController(t), nil, nil,
+		stopTestLogger(t, &output), nil, nil, &rootObservations{}, nil, executor{})
+	if err != nil {
+		t.Fatalf("a role with no event ended the loop: %v (%s)", err, reason)
+	}
+	if result, _ := stoppedAs(t, output.String()); result != "ok" {
+		t.Fatalf("the stop was recorded as %q", result)
+	}
+	if !strings.Contains(output.String(), `"result":"degraded"`) {
+		t.Fatalf("nothing said the cycle was degraded: %q", output.String())
 	}
 }

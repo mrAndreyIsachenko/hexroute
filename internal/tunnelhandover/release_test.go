@@ -239,3 +239,55 @@ func TestAReleaseIsRefusedBesideATransactionInFlight(t *testing.T) {
 }
 
 var _ = time.Second
+
+// Giving the tunnel up does not take it back.
+//
+// A runtime reaches this by deciding it should not hold the tunnel — its grant
+// lapsed, its own bound was reached, or what it held carried nothing — and
+// taking it back to keep the machine on the network would undo the decision that
+// started it. The machine may be left with none, and the outcome says so.
+func TestGivingUpDoesNotTakeTheTunnelBack(t *testing.T) {
+	handover, claim, tunnel, _, _, journal := releasing(t, &answers{sequence: []bool{false}})
+	handover.Relinquish = true
+
+	outcome, err := handover.Release(context.Background(), "relinquish-1")
+	if err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if outcome.Completed {
+		t.Fatal("giving up reported a completed release")
+	}
+	if outcome.Phase != PhaseReleased {
+		t.Fatalf("phase = %q, want the release to have stopped where it let go", outcome.Phase)
+	}
+	if !strings.Contains(outcome.Reason, "did not carry traffic") {
+		t.Fatalf("the reason does not say what happened: %q", outcome.Reason)
+	}
+	if got := strings.Join(journal.steps, ","); got != "stop-own,release" {
+		t.Fatalf("giving up went %q, not stop-own,release", got)
+	}
+	if claim.held {
+		t.Fatal("giving up kept the claim")
+	}
+	if tunnel.started != 0 {
+		t.Fatalf("giving up started %d tunnels", tunnel.started)
+	}
+}
+
+// Where the previous owner does raise one, giving up is an ordinary completed
+// release: the machine has a tunnel and this runtime holds nothing.
+func TestGivingUpCompletesWhenSomebodyElseTakesIt(t *testing.T) {
+	handover, claim, tunnel, _, _, _ := releasing(t, &answers{sequence: []bool{true, true}})
+	handover.Relinquish = true
+
+	outcome, err := handover.Release(context.Background(), "relinquish-2")
+	if err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if !outcome.Completed || outcome.Phase != PhaseProven {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if claim.held || tunnel.started != 0 {
+		t.Fatalf("held=%v started=%d", claim.held, tunnel.started)
+	}
+}

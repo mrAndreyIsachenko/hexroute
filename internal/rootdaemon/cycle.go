@@ -53,9 +53,14 @@ type Summary struct {
 	// that never reached the observation has not seen the tunnel gone.
 	ProcessObserved bool
 	SingBoxRunning  bool
-	OuterReady      bool
-	Failures        uint32
-	Plan            routeplan.Plan
+	// OwnerConfig is the configuration the tunnel's owner runs, which is this
+	// runtime's when it holds the claim and the previous owner's otherwise. It
+	// is carried because a change of it is a change of hands, and an exchange
+	// replaces the process without anything being lost.
+	OwnerConfig string
+	OuterReady  bool
+	Failures    uint32
+	Plan        routeplan.Plan
 	// Observed carries the raw observations this cycle already made, so a
 	// reader can build facts from them without probing the host a second
 	// time. The cycle gathers all of it either way; keeping it was the only
@@ -118,6 +123,12 @@ type Cycle struct {
 	// runtime was not running is not one it watched go, and remembering it
 	// across an installation would decide a loss on every restart.
 	lastTunnelPID int
+	// lastOwnerConfig is the configuration the tunnel's owner ran when a
+	// process was last seen. Ownership changing hands replaces the process, and
+	// a cycle that compared across that exchange would read this runtime's own
+	// handover as the loss the rule rebuilds for: measured 2026-09-26, it did,
+	// thirty-eight seconds after being given the tunnel.
+	lastOwnerConfig string
 	// lastPayloadOK is the last answer the payload probe gave. A suspended
 	// cycle does not probe and carries it, so the ground says the last thing
 	// known rather than a failure nobody measured.
@@ -170,6 +181,23 @@ func NewCycle(
 // being in trouble is exactly when several of them do — so a decision that only
 // happened on complete cycles would be absent at the moments it exists for.
 // What an incomplete cycle did not see, it does not decide from.
+// Replaced tells the cycle which process this runtime put in place of the one it
+// was watching.
+//
+// A replacement this runtime made is not a loss it found. Without this the next
+// cycle compares the new process against the one this runtime itself ended and
+// decides the tunnel was lost — a rebuild that causes the next rebuild, bounded
+// only by the counters this runtime keeps on itself.
+//
+// In memory and not on disk, for the reason the rest of this memory is: a
+// process replaced while this runtime was not running is not one it watched go.
+func (cycle *Cycle) Replaced(pid int) {
+	if cycle == nil || pid <= 0 {
+		return
+	}
+	cycle.lastTunnelPID = pid
+}
+
 func (cycle *Cycle) Observe(ctx context.Context) Summary {
 	summary := cycle.observe(ctx)
 	// It performs nothing: another runtime owns the tunnel, and the decision
@@ -208,6 +236,7 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 	if processErr == nil {
 		process, processErr = cycle.processes.Tunnel(ctx, configPath)
 	}
+	summary.OwnerConfig = configPath
 	summary.Observed.Process, summary.Observed.ProcessError = process, processErr
 	if processErr != nil {
 		summary.Failures++
@@ -494,8 +523,15 @@ func (cycle *Cycle) decideTunnel(
 	replaced := false
 	if summary.Observed.ProcessError == nil && summary.Observed.Process.Running {
 		pid := summary.Observed.Process.Process.PID
-		replaced = cycle.lastTunnelPID != 0 && pid != 0 && pid != cycle.lastTunnelPID
+		// Same owner, or nothing to compare with. A process under a different
+		// configuration than the one last seen is the other runtime's, or this
+		// runtime's own where the last was the other's, and neither is a loss
+		// anybody watched: an exchange replaces the process by design.
+		sameOwner := cycle.lastOwnerConfig == summary.OwnerConfig
+		replaced = sameOwner && cycle.lastTunnelPID != 0 && pid != 0 &&
+			pid != cycle.lastTunnelPID
 		cycle.lastTunnelPID = pid
+		cycle.lastOwnerConfig = summary.OwnerConfig
 	}
 
 	summary.Carrier = tunnelplan.NewSignature(summary.Carried)
