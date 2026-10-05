@@ -107,10 +107,12 @@ func TestDiagnosticsOutputIsTypedAndRedacted(t *testing.T) {
 				SafeMode:   true,
 			},
 			ConsecutiveFailures: 3,
-			Attempts:            2,
 			LastTick:            100,
-			SafeUntil:           700,
 			LastReason:          control.ReasonRecoveryBudget,
+			Attempts:            ptr(uint32(2)),
+			RecoveringSince:     ptr(control.Tick(0)),
+			NextActionAt:        ptr(control.Tick(0)),
+			SafeUntil:           ptr(control.Tick(700)),
 		}
 		return ipc.Response{
 			Version:     ipc.ProtocolVersion,
@@ -246,4 +248,10 @@ func testConfig(roundTrip RoundTripFunc) Config {
 			return "request-" + string(rune('0'+sequence)), nil
 		},
 	}
+}
+
+// ptr is for the diagnostics quantities a reporting path fills in. They are
+// pointers because absent and zero are different claims.
+func ptr[T any](value T) *T {
+	return &value
 }

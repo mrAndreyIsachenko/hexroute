@@ -313,6 +313,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		control.ReasonNone,
 		nil,
 		nowTick,
+		// This path writes its own snapshot from the cycle and maintains no
+		// recovery budget, so it reports none rather than reporting zero.
+		operator.KeepsNoRecovery,
 	)
 	if err != nil {
 		return 1

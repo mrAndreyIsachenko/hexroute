@@ -539,7 +539,7 @@ func TestTheLoopTellsTheCycleWhatItReplaced(t *testing.T) {
 		ipc.RoleRoot, ipc.ModeObserveOnly,
 		[]control.Component{control.ComponentTunnel},
 		control.NewSnapshot(control.StateHealthy), control.ReasonNone, nil,
-		func() control.Tick { return 7 })
+		func() control.Tick { return 7 }, operator.KeepsNoRecovery)
 	if err != nil {
 		t.Fatal(err)
 	}

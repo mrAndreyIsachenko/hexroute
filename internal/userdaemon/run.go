@@ -221,6 +221,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return planner.Resume(expected, at, store.Save)
 		},
 		nowTick,
+		// This path's snapshot is the recovery machine's own, so every quantity
+		// beside it is one the machine maintains.
+		operator.ReportsRecovery,
 	)
 	if err != nil {
 		return 1

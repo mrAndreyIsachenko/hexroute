@@ -134,6 +134,7 @@ func TestObserveLoopPersistsCandidateStateAndEmitsRedactedProposal(t *testing.T)
 		control.ReasonNone,
 		nil,
 		func() control.Tick { return 0 },
+		operator.ReportsRecovery,
 	)
 	if err != nil {
 		t.Fatalf("operator.NewController() error: %v", err)

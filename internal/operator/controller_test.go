@@ -70,6 +70,7 @@ func TestControllerReportsBoundedStatusAndDiagnostics(t *testing.T) {
 			return control.Snapshot{}, nil
 		},
 		func() control.Tick { return 100 },
+		ReportsRecovery,
 	)
 	if err != nil {
 		t.Fatalf("NewController() error: %v", err)
@@ -95,7 +96,8 @@ func TestControllerReportsBoundedStatusAndDiagnostics(t *testing.T) {
 	})
 	if !diagnostics.OK ||
 		diagnostics.Diagnostics == nil ||
-		diagnostics.Diagnostics.Attempts != snapshot.Attempts ||
+		diagnostics.Diagnostics.Attempts == nil ||
+		*diagnostics.Diagnostics.Attempts != snapshot.Attempts ||
 		diagnostics.Diagnostics.LastReason != control.ReasonRecoveryBudget {
 		t.Fatalf("diagnostics response = %+v", diagnostics)
 	}
@@ -201,6 +203,7 @@ func TestControllerResumeRequiresRoleSafeModeAndExactGeneration(t *testing.T) {
 					return updated, nil
 				},
 				func() control.Tick { return 100 },
+				ReportsRecovery,
 			)
 			if err != nil {
 				t.Fatalf("NewController() error: %v", err)
@@ -246,6 +249,7 @@ func TestControllerRejectsStaleUpdatesAndResumeFailures(t *testing.T) {
 			return control.Snapshot{}, control.ErrStaleGeneration
 		},
 		func() control.Tick { return 100 },
+		ReportsRecovery,
 	)
 	if err != nil {
 		t.Fatalf("NewController() error: %v", err)
@@ -290,6 +294,7 @@ func TestControllerEvaluatesResumePolicyInShadowWithoutChangingLegacyOutcome(t *
 			return updated, nil
 		},
 		func() control.Tick { return 100 },
+		ReportsRecovery,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -324,6 +329,7 @@ func TestControllerPreservesGenerationGuardBeforeShadowEvaluation(t *testing.T) 
 			return control.Snapshot{}, nil
 		},
 		func() control.Tick { return 100 },
+		ReportsRecovery,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -356,6 +362,7 @@ func TestControllerEnforcesResumeOnlyBehindValidatedQualification(t *testing.T) 
 			return control.Snapshot{}, errors.New("legacy resume must stay disabled")
 		},
 		func() control.Tick { return 100 },
+		ReportsRecovery,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -412,6 +419,7 @@ func TestControllerActiveResumeDenialCannotReachAnyMutation(t *testing.T) {
 			return control.Snapshot{}, nil
 		},
 		func() control.Tick { return 100 },
+		ReportsRecovery,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -626,6 +634,7 @@ func TestTheControlGenerationAReaderSeesFollowsTheSnapshot(t *testing.T) {
 			return control.Snapshot{}, errors.New("not used")
 		},
 		func() control.Tick { return 100 },
+		ReportsRecovery,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -660,6 +669,7 @@ func TestTheControlGenerationAReaderSeesFollowsTheSnapshot(t *testing.T) {
 			return resumed, nil
 		},
 		func() control.Tick { return 100 },
+		ReportsRecovery,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -695,6 +705,7 @@ func TestControllerReportsPendingWorkWithoutGradingTheHealth(t *testing.T) {
 		control.ReasonProbeSucceeded,
 		nil,
 		func() control.Tick { return 100 },
+		KeepsNoRecovery,
 	)
 	if err != nil {
 		t.Fatalf("NewController() error: %v", err)
@@ -755,5 +766,67 @@ func TestPendingWorkIsNotPersistedInTheSnapshot(t *testing.T) {
 	}
 	if restored.Generation != 7 || restored.ConsecutiveFailures != 3 {
 		t.Fatalf("restored = %+v", restored)
+	}
+}
+
+// A quantity a path does not maintain is absent, not zero.
+func TestRootPathReportsNoRecoveryBudgetAtAll(t *testing.T) {
+	snapshot := control.NewSnapshot(control.StateHealthy)
+	controller, err := NewController(
+		ipc.RoleRoot,
+		ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentRoutes},
+		snapshot,
+		control.ReasonProbeSucceeded,
+		nil,
+		func() control.Tick { return 100 },
+		KeepsNoRecovery,
+	)
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+
+	diagnostics := controller.diagnostics()
+	// All four come from the one machine this path does not run.
+	if diagnostics.Attempts != nil ||
+		diagnostics.RecoveringSince != nil ||
+		diagnostics.NextActionAt != nil ||
+		diagnostics.SafeUntil != nil {
+		t.Fatalf("a path that keeps no budget reported one: %+v", diagnostics)
+	}
+	// What it does maintain is still reported.
+	if diagnostics.LastReason != control.ReasonProbeSucceeded ||
+		diagnostics.Status.State != control.StateHealthy {
+		t.Fatalf("diagnostics = %+v", diagnostics)
+	}
+}
+
+// The other half: a path that does keep the budget still reports it, including
+// a zero it has genuinely measured.
+func TestRecoveryPathReportsTheBudgetItKeeps(t *testing.T) {
+	snapshot := safeModeSnapshot()
+	controller, err := NewController(
+		ipc.RoleUser,
+		ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentPritunl},
+		snapshot,
+		control.ReasonRecoveryBudget,
+		nil,
+		func() control.Tick { return 100 },
+		ReportsRecovery,
+	)
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+
+	diagnostics := controller.diagnostics()
+	if diagnostics.Attempts == nil ||
+		diagnostics.RecoveringSince == nil ||
+		diagnostics.NextActionAt == nil ||
+		diagnostics.SafeUntil == nil {
+		t.Fatalf("a path that keeps the budget reported none: %+v", diagnostics)
+	}
+	if *diagnostics.Attempts != snapshot.Attempts {
+		t.Fatalf("attempts = %d, snapshot = %d", *diagnostics.Attempts, snapshot.Attempts)
 	}
 }
