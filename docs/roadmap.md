@@ -77,7 +77,17 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`tell-pending-work-from-a-fault` is open. The root daemon reported `DEGRADED`
+for seven unbroken hours on 2026-10-05 while nothing was wrong: zero failures,
+the tunnel present, the payload answering, and the kernel agreeing with every
+route the runtime had observed. A cycle is healthy only when its plan is empty,
+and in `observe-only` no plan is ever applied, so none is ever empty. The state
+is always on and therefore reports nothing; this runtime would read `DEGRADED`
+through a real outage exactly as it reads now. Two further claims the report
+cannot back came with it: `probe_failed` is a label mapped from the state rather
+than an event, and the counters published beside the state come from a path that
+never accumulates them. The change separates work a runtime may not do from work
+it could not do. It corrects no route.
 
 `say-why-a-runtime-stopped` closed on 2026-09-26. A runtime that ended on a
 failure recorded nothing: nine exits of the root daemon's observation loop became
