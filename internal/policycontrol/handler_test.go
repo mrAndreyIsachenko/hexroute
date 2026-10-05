@@ -957,6 +957,9 @@ func TestHandlerEvaluatesOperatorResumeAgainstRevalidatedActivePayload(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := handler.SetControlState(fixedControlState{generation: 7}); err != nil {
+		t.Fatal(err)
+	}
 	planSHA256 := policy.SHA256Hex([]byte("synthetic-resume-plan"))
 	decision := handler.EvaluateOperatorResume(
 		policy.DomainUser,
@@ -1017,6 +1020,9 @@ func TestHandlerIssuesExactDurableOperatorResumeAuthorization(t *testing.T) {
 	}
 	handler, err := newHandlerWithClock(store, runtime, clock.now, clock.monotonicNow)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.SetControlState(fixedControlState{generation: 7}); err != nil {
 		t.Fatal(err)
 	}
 	before := control.NewSnapshot(control.StateSafeMode)
@@ -1155,6 +1161,9 @@ func pritunlRecoveryHandlerAndStore(
 	now := time.Date(2030, time.January, 1, 0, 40, 0, 0, time.UTC)
 	handler, err := NewHandler(store, runtime, func() time.Time { return now })
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.SetControlState(fixedControlState{generation: 7}); err != nil {
 		t.Fatal(err)
 	}
 	return handler, store

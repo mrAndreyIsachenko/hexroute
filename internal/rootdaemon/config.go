@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -336,6 +337,58 @@ type TunnelSupervisionConfig struct {
 	// completed connection is not that proof, which is why this is a request
 	// rather than a dial.
 	Payload PayloadProbeConfig `json:"payload"`
+	// Execution is what this runtime needs to perform what it decides. Absent,
+	// it decides and performs nothing, which is what it did for the seven days
+	// the rule was proved over.
+	Execution *TunnelExecutionConfig `json:"execution,omitempty"`
+}
+
+// TunnelExecutionConfig is what a rebuild is performed with.
+//
+// The version, the key and the target are the same three the handover uses,
+// because the tunnel this runtime rebuilds is the tunnel it took: a rebuild that
+// started something else would be a different machine wearing the same name.
+type TunnelExecutionConfig struct {
+	// VersionPath is the signed configuration version, on disk beside the host
+	// that runs it.
+	VersionPath string `json:"version_path"`
+	// TargetKey is what this host is. A version meant for another host must not
+	// run here merely because it verified.
+	TargetKey string `json:"target_key"`
+	// ContentPath is where the verified bytes are written for the process to
+	// read, rewritten at every start.
+	ContentPath string `json:"content_path"`
+	// Binary is the tunnel executable.
+	Binary string `json:"sing_box"`
+	// HandoverBinary raises the tunnel. The daemon does not verify the signed
+	// version itself: that belongs to the delivery path, which the always-
+	// running daemons are kept off, so the start goes through the binary an
+	// operator runs for the handover.
+	HandoverBinary string `json:"handover_binary"`
+	// BoundSeconds is how long the interface and the payload together may take
+	// before a rebuild counts as failed.
+	BoundSeconds uint32 `json:"bound_seconds"`
+	// PollSeconds is how often the rebuild looks while it waits.
+	PollSeconds uint32 `json:"poll_seconds"`
+	// RebuildsPath is where the count of rebuilds is kept. It is named rather
+	// than derived because the operator's own command clears it, and a path two
+	// programs work out separately is a path they can work out differently.
+	RebuildsPath string `json:"rebuilds_path"`
+	// HandbackPayloadFailures is how many consecutive cycles the payload must
+	// fail, with the outer path up, before this runtime gives the tunnel back.
+	//
+	// It is its own number because it answers its own question. The one beside
+	// it — `payload_failures` — was chosen when a failing payload was a cause to
+	// rebuild, which costs about two and a half seconds; this decides whether to
+	// stop holding the tunnel at all. Measured 2026-09-27 over eight hours on
+	// this machine: 62 of 478 cycles with the outer path up did not traverse,
+	// and the longest run was two — which is what the shared number was set to,
+	// so ownership ended three times in two days while a run of three never
+	// happened at all.
+	//
+	// Absent, the number beside it stands, so a runtime installed before this
+	// existed behaves exactly as it did.
+	HandbackPayloadFailures uint32 `json:"handback_payload_failures,omitempty"`
 }
 
 type PayloadProbeConfig struct {
@@ -352,8 +405,25 @@ type PayloadProbeConfig struct {
 
 // RuntimeTunnelSupervision is the validated form.
 type RuntimeTunnelSupervision struct {
-	Policy  tunnelplan.Policy
-	Payload observe.PayloadEndpoint
+	Policy    tunnelplan.Policy
+	Payload   observe.PayloadEndpoint
+	Execution *RuntimeTunnelExecution
+}
+
+// RuntimeTunnelExecution is the validated form of what a rebuild is performed
+// with.
+type RuntimeTunnelExecution struct {
+	HandoverBinary string
+	RebuildsPath   string
+	// HandbackPayloadFailures is zero when the configuration did not name one,
+	// and the shared threshold stands in its place.
+	HandbackPayloadFailures uint32
+	VersionPath             string
+	TargetKey               string
+	ContentPath             string
+	Binary                  string
+	Bound                   time.Duration
+	Poll                    time.Duration
 }
 
 func (config TunnelSupervisionConfig) runtime() (*RuntimeTunnelSupervision, error) {
@@ -377,12 +447,49 @@ func (config TunnelSupervisionConfig) runtime() (*RuntimeTunnelSupervision, erro
 	if err := endpoint.Validate(); err != nil {
 		return nil, ErrInvalidConfig
 	}
-	return &RuntimeTunnelSupervision{
+	supervision := &RuntimeTunnelSupervision{
 		Policy: tunnelplan.Policy{
 			WakeThreshold:   time.Duration(config.WakeThresholdSeconds) * time.Second,
 			PayloadFailures: config.PayloadFailures,
 			LinkFailures:    config.LinkFailures,
 		},
 		Payload: endpoint,
+	}
+	if config.Execution != nil {
+		execution, err := config.Execution.runtime()
+		if err != nil {
+			return nil, err
+		}
+		supervision.Execution = execution
+	}
+	return supervision, nil
+}
+
+// runtime validates what a rebuild would be performed with. Every path is
+// absolute and every bound is positive: a runtime that may stop the tunnel must
+// not be one step from starting nothing, and a bound of zero is a wait that ends
+// before the tunnel it is waiting for.
+func (config TunnelExecutionConfig) runtime() (*RuntimeTunnelExecution, error) {
+	if !filepath.IsAbs(config.VersionPath) ||
+		!filepath.IsAbs(config.ContentPath) ||
+		!filepath.IsAbs(config.Binary) ||
+		!filepath.IsAbs(config.HandoverBinary) ||
+		!filepath.IsAbs(config.RebuildsPath) ||
+		config.TargetKey == "" ||
+		config.BoundSeconds == 0 ||
+		config.PollSeconds == 0 ||
+		time.Duration(config.PollSeconds) > time.Duration(config.BoundSeconds) {
+		return nil, ErrInvalidConfig
+	}
+	return &RuntimeTunnelExecution{
+		HandoverBinary:          config.HandoverBinary,
+		RebuildsPath:            config.RebuildsPath,
+		VersionPath:             config.VersionPath,
+		TargetKey:               config.TargetKey,
+		ContentPath:             config.ContentPath,
+		Binary:                  config.Binary,
+		Bound:                   time.Duration(config.BoundSeconds) * time.Second,
+		Poll:                    time.Duration(config.PollSeconds) * time.Second,
+		HandbackPayloadFailures: config.HandbackPayloadFailures,
 	}, nil
 }

@@ -20,9 +20,11 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/buildinfo"
 	"github.com/mrAndreyIsachenko/hexroute/internal/configversion"
+	"github.com/mrAndreyIsachenko/hexroute/internal/incumbentcheck"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/rootdaemon"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelclaim"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelexec"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelhandover"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelstart"
 )
@@ -48,6 +50,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	targetKey := flags.String("target-key", "", "what this host is, for the version's target")
 	singBox := flags.String("sing-box", "", "the tunnel binary")
 	contentPath := flags.String("content", "", "where the verified configuration is written")
+	relinquish := flags.Bool("relinquish", false,
+		"give the tunnel up rather than exchange it: do not take it back if nobody else raises one")
 	if flags.Parse(args) != nil {
 		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] begin|check|rehearse|release|check-release|abort")
 		return 2
@@ -160,6 +164,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		transaction.Tunnel = starter
 		transaction.Own = own
 		transaction.Incumbent = incumbent
+		// A giving-up does not take the tunnel back. The runtime asks for this
+		// when it has decided it should not hold the tunnel at all, and a
+		// restore would undo the decision that started the release.
+		transaction.Relinquish = *relinquish
 		// A restore places the claim again, naming the configuration it starts.
 		claims.WithProcessConfig(*contentPath)
 		outcome, err := transaction.Release(context.Background(), releaseID())
@@ -209,10 +217,89 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return report(stdout, outcome)
+	case "start-tunnel":
+		// Raising the tunnel again, for a runtime that holds it already.
+		//
+		// It is here rather than in the daemon because verifying a signed
+		// version is the delivery path's, and the daemons are kept off it: a
+		// configuration that arrives can then reach a binary an operator runs,
+		// and never a process that is always running. The executor calls this
+		// and reads the process it started.
+		//
+		// It claims nothing and stops nothing. Whoever calls it has already
+		// decided the tunnel is theirs to raise; this refuses if it is not.
+		claim, held, err := claims.Held()
+		if err != nil || !held {
+			fmt.Fprintln(stderr, "error: the tunnel is not this runtime's to start")
+			return 2
+		}
+		_ = claim
+		starter, err := tunnelStarter(*configPath, *versionPath, *targetKey, *singBox, *contentPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 2
+		}
+		pid, err := starter.Start(context.Background())
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "%d\n", pid)
+		return 0
+	case "resume-executor":
+		// Clearing what stopped the runtime from acting, and nothing else.
+		//
+		// It takes no tunnel: a handover interrupts traffic for as long as the
+		// exchange takes, and doing that at a moment nobody chose is worse than
+		// waiting for the operator to run the handover themselves. So this is
+		// the half that is safe at any moment, and the other half stays a
+		// separate command.
+		config, err := rootdaemon.LoadConfig(*configPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 2
+		}
+		if config.TunnelSupervision == nil || config.TunnelSupervision.Execution == nil {
+			fmt.Fprintln(stderr, "error: this host has no executor to resume")
+			return 2
+		}
+		rate := tunnelexec.Rate{
+			Path: config.TunnelSupervision.Execution.RebuildsPath,
+			Now:  time.Now,
+		}
+		performed, err := rate.Performed()
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		if err := rate.Clear(); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		held, owned, err := claims.Held()
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		_ = held
+		fmt.Fprintf(stdout, "cleared %d rebuilds; the tunnel is %s\n",
+			len(performed), tunnelHolder(owned))
+		return 0
 	default:
-		fmt.Fprintln(stderr, "usage: hexroute-handover [flags] begin|check|rehearse|release|check-release|abort")
+		fmt.Fprintln(stderr,
+			"usage: hexroute-handover [flags] "+
+				"begin|check|rehearse|release|check-release|abort|start-tunnel|resume-executor")
 		return 2
 	}
+}
+
+// tunnelHolder says who holds the tunnel, so a resume cannot be mistaken for a
+// handover: clearing the bound changes nothing about ownership.
+func tunnelHolder(owned bool) string {
+	if owned {
+		return "still this runtime's"
+	}
+	return "not this runtime's; run the handover to take it"
 }
 
 // tunnelStarter verifies the signed version at every start and runs the tunnel
@@ -360,6 +447,35 @@ func check(
 	// handover the other side cannot honour.
 	say("previous owner reads claims", supervisorReadsClaims(previousOwnerProgram), previousOwnerProgram)
 
+	// And whether it is running what it reads.
+	//
+	// That runtime restarts its tunnel inside its own process, so it goes on
+	// running the script it loaded at start however many times a newer one is
+	// installed: measured 2026-09-25, a supervisor eleven days into bytes
+	// replaced within hours of its start. The check above reads the file; this
+	// asks whether the process is running it.
+	checker := incumbentcheck.Checker{
+		Script:    previousOwnerProgram,
+		Log:       incumbentcheck.DefaultLog,
+		Processes: incumbentcheck.PSProcesses{Runner: incumbentcheck.ExecRunner{}},
+	}
+	if reading, err := checker.Read(context.Background()); err != nil {
+		say("previous owner is current", err, "")
+	} else if !reading.Found {
+		say("previous owner is current", errors.New(
+			"no supervisor is running that script; there is nothing to hand over from"), "")
+	} else if !reading.Fresh() {
+		say("previous owner is current", fmt.Errorf(
+			"pid %d started %s, before its script was written %s; restart it first",
+			reading.PID,
+			reading.StartedAt.Format(time.RFC3339),
+			reading.ScriptWrittenAt.Format(time.RFC3339)), "")
+	} else {
+		say("previous owner is current", nil, fmt.Sprintf(
+			"pid %d started %s, after its script was written; it announces a %s health interval",
+			reading.PID, reading.StartedAt.Format(time.RFC3339), reading.Announced))
+	}
+
 	// What this does not cover, named rather than left to be discovered.
 	//
 	// The list exists because an empty slot in it is visible where an absent
@@ -372,6 +488,8 @@ func check(
 	fmt.Fprintln(stdout, "not checked:")
 	for _, uncovered := range [...]string{
 		"whether the signed version's content is what the previous owner runs today",
+		"whether the previous owner's script on disk is the bytes it was installed with, " +
+			"which a copy preserving its timestamp would hide",
 		"whether the routes this runtime plans match the ones in place",
 		"whether anything other than a tunnel process holds the tunnel address",
 		"what the previous owner does after the claim is released",

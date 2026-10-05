@@ -68,8 +68,20 @@ var (
 
 // Transaction runs one handover, or rehearses one.
 type Transaction struct {
-	Store *Store
-	Claim Claimer
+	// Relinquish makes a release a giving-up rather than an exchange.
+	//
+	// An exchange keeps the machine on the network: if the previous owner does
+	// not raise a tunnel, this runtime takes it again rather than leave the
+	// machine with none. A giving-up is the opposite act — this runtime has
+	// decided it should not hold the tunnel, because its grant lapsed, its own
+	// bound was reached or the tunnel it held carried nothing — and taking it
+	// back would undo the decision that started it.
+	//
+	// The machine can then be left with no tunnel, and the outcome says so
+	// rather than reporting a completed release.
+	Relinquish bool
+	Store      *Store
+	Claim      Claimer
 	// Incumbent is who holds the tunnel now, and is stopped before this runtime
 	// starts its own. Absent during a rehearsal, for the same reason Tunnel is.
 	Incumbent Incumbent

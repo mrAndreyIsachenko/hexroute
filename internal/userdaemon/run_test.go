@@ -154,6 +154,7 @@ func TestObserveLoopPersistsCandidateStateAndEmitsRedactedProposal(t *testing.T)
 		nil,
 		&recovery{},
 		nil,
+		"",
 	); err != nil {
 		t.Fatalf("observeLoop() error: %v", err)
 	}

@@ -33,6 +33,11 @@ import (
 
 type Cycler interface {
 	Observe(context.Context) Summary
+	// Replaced says which process this runtime put in place of the one it was
+	// watching. It is on this interface because the memory a loss is decided
+	// from belongs to the cycle, and an act that replaced the process has to
+	// reach it.
+	Replaced(pid int)
 }
 
 type HeartbeatPublisher interface {
@@ -198,6 +203,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return rejected(errorLog, logging.ReasonInvalidConfiguration)
 	}
+	// What acts on the decision. A configuration without an execution block
+	// builds no rebuilder, and the runtime decides exactly as it did while the
+	// rule was being proved.
+	performer, err := newExecutor(
+		config, *configPath, network, observe.NewPayloadProber(), claims, readiness)
+	if err != nil {
+		return rejected(errorLog, logging.ReasonInvalidConfiguration)
+	}
 	cycle, err := NewCycle(config, network, processes, readiness,
 		WithPayloadObserver(observe.NewPayloadProber()),
 		WithTunnelState(tunnelState),
@@ -352,6 +365,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err := controller.SetResumePolicyEvaluator(policyHandler); err != nil {
 			return 1
 		}
+		// The generations an authorization is judged against are this runtime's.
+		// The controller holds its control state, so the handler reads it from
+		// there rather than believing what a request says about it.
+		if err := policyHandler.SetControlState(controller); err != nil {
+			return 1
+		}
 		dispatcher, err := operator.NewDispatcher(
 			controller, broker, policyHandler, refusals,
 			connectivityPublisher{reader: reader}, shadowHandler(shadowStore))
@@ -444,6 +463,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		rescuer,
 		observations,
 		tunnelAuthorityOf(policyHandler),
+		performer,
 	); err != nil {
 		// Said here rather than inside the loop, because three of the loop's
 		// exits are its own logger failing and a record attempted there would
@@ -532,6 +552,9 @@ func observeLoop(
 	// nil when this runtime has no policy control at all, which is the same
 	// state in which nothing could be permitted anyway.
 	authority tunnelAuthorizer,
+	// performer acts on what was decided, where every gate is open. A zero one
+	// performs nothing and records which gate stopped it.
+	performer executor,
 ) (logging.Reason, error) {
 	// The gate keeps the log a record of what happened rather than of how
 	// often it was checked. Liveness lives in the heartbeat file.
@@ -563,11 +586,12 @@ func observeLoop(
 		// decision that agreed and a decision never reached look the same in an
 		// empty record, and the comparison against the runtime that owns the
 		// tunnel is the whole reason for deciding without acting.
-		if err := recordTunnelDecision(
+		decision, err := recordTunnelDecision(
 			reader, summary.Tunnel, uint16(len(summary.Plan.Operations)),
 			summary.State == CycleSuspended,
 			authority, operatorSnapshot.Generation,
-		); err != nil {
+		)
+		if err != nil {
 			if emitErr := logger.Emit(
 				logging.LevelWarn,
 				logging.EventConnectivitySnapshot,
@@ -575,6 +599,39 @@ func observeLoop(
 				"",
 			); emitErr != nil {
 				return logging.ReasonJournalUnwritable, emitErr
+			}
+		}
+		// The act follows the record, never precedes it: a machine that sleeps
+		// between the two leaves the decision behind, and the execution record
+		// is what says whether anything followed.
+		execution, started := performer.perform(
+			ctx,
+			decision.Action != "" && decision.Action != string(tunnelplan.ActionNone),
+			summary.State == CycleSuspended,
+			decision.Authorization,
+			currentTunnel(summary),
+		)
+		if execution != nil {
+			if err := reader.RecordTunnelExecution(*execution); err != nil {
+				return logging.ReasonArchiveUnwritable, err
+			}
+		}
+		// Said before the next cycle observes, so the process this runtime put
+		// in place is the one the next cycle compares against. A cycle that
+		// compared against the process this runtime itself ended would decide
+		// the tunnel was lost and rebuild again.
+		cycler.Replaced(started)
+		// Whether this runtime should still be holding the tunnel at all is
+		// read on every cycle, including the ones that decided nothing: a grant
+		// that lapsed and a tunnel that carries nothing are not noticed by
+		// deciding to rebuild.
+		if handback := performer.handBack(ctx, performer.standing(
+			summary.Tunnel.Grounds,
+			summary.Complete,
+			authorityActive(authority),
+		)); handback != nil {
+			if err := reader.RecordTunnelHandback(*handback); err != nil {
+				return logging.ReasonArchiveUnwritable, err
 			}
 		}
 		if err := emitSummary(logger, gate, summary); err != nil {
@@ -615,12 +672,7 @@ func observeLoop(
 			return logging.ReasonControlStateUnwritable, err
 		}
 		if once {
-			if err := logger.Emit(
-				logging.LevelInfo, logging.EventDaemonStopped, logging.ResultOK, "",
-			); err != nil {
-				return logging.ReasonJournalUnwritable, err
-			}
-			return "", nil
+			return requestedStop(logger)
 		}
 
 		timer := time.NewTimer(remainingPeriod(began, elapsed(), interval))
@@ -631,19 +683,25 @@ func observeLoop(
 				if !timer.Stop() {
 					<-timer.C
 				}
-				if err := logger.Emit(
-					logging.LevelInfo,
-					logging.EventDaemonStopped,
-					logging.ResultOK,
-					"",
-				); err != nil {
-					return logging.ReasonJournalUnwritable, err
-				}
-				return "", nil
+				return requestedStop(logger)
 			// The socket ending is fatal either way. An error says what it
 			// failed on; a closed channel with none says the server returned
 			// without being asked to, which is the same loss of the one way in.
+			//
+			// Unless the runtime was asked to stop. The server runs on this
+			// loop's context, so cancelling it ends the server too, and both
+			// cases of this select are ready at once — which of them is taken is
+			// a coin, not a fact about the machine. Measured 2026-09-27, two
+			// restarts in a day were recorded as `operator_socket_ended` on the
+			// error stream and two as `ok` in the journal, for the same signal
+			// and the same act.
 			case err := <-serverDone:
+				if ctx.Err() != nil {
+					if !timer.Stop() {
+						<-timer.C
+					}
+					return requestedStop(logger)
+				}
 				if err != nil {
 					return logging.ReasonOperatorSocketEnded, err
 				}
@@ -657,6 +715,18 @@ func observeLoop(
 			}
 		}
 	}
+}
+
+// requestedStop records an ending somebody asked for, and is the only place
+// that says so: an ending nobody asked for is told from it by the result, and
+// two callers writing that record separately is two chances to disagree.
+func requestedStop(logger *logging.Logger) (logging.Reason, error) {
+	if err := logger.Emit(
+		logging.LevelInfo, logging.EventDaemonStopped, logging.ResultOK, "",
+	); err != nil {
+		return logging.ReasonJournalUnwritable, err
+	}
+	return "", nil
 }
 
 func nextRootOperatorSnapshot(
@@ -717,7 +787,23 @@ func emitSummary(logger *logging.Logger, gate *logging.ChangeGate, summary Summa
 	for _, operation := range summary.Plan.Operations {
 		event, err := routeEvent(operation)
 		if err != nil {
-			return err
+			// A role this runtime cannot name costs the record and not the
+			// runtime. Ending here is what a missing name did: measured
+			// 2026-10-05, the `inherited` role had no event, the planner
+			// proposed one whenever the machine had no tunnel to put routes
+			// back on, and the daemon stopped and was restarted for as long as
+			// that lasted — so the one runtime that could have rebuilt the
+			// tunnel never finished a cycle.
+			//
+			// The summary says it was degraded instead, which is the same
+			// answer the read model's own failures get.
+			if emitErr := logger.Emit(
+				logging.LevelWarn, logging.EventObservationCycle,
+				logging.ResultDegraded, "",
+			); emitErr != nil {
+				return emitErr
+			}
+			continue
 		}
 		if !gate.Changed(event, string(logging.ResultProposed)) {
 			continue
@@ -747,6 +833,7 @@ func routeEvents() []logging.EventName {
 	return []logging.EventName{
 		logging.EventIngressRoute, logging.EventCorporateRoute,
 		logging.EventGitLabHTTPSRoute, logging.EventCodexRoute,
+		logging.EventInheritedRoute,
 	}
 }
 
@@ -760,6 +847,8 @@ func routeEvent(operation routeplan.Operation) (logging.EventName, error) {
 		return logging.EventGitLabHTTPSRoute, nil
 	case routeplan.RoleCodexFallback:
 		return logging.EventCodexRoute, nil
+	case routeplan.RoleInherited:
+		return logging.EventInheritedRoute, nil
 	default:
 		return "", ErrInvalidConfig
 	}
@@ -809,18 +898,23 @@ func recordTunnelDecision(
 	suspended bool,
 	authority tunnelAuthorizer,
 	controlGeneration uint64,
-) error {
+) (event.TunnelDecision, error) {
 	if reader == nil || !decided(plan) {
-		return nil
+		return event.TunnelDecision{}, nil
 	}
-	return reader.RecordTunnelDecision(
-		tunnelDecisionRecord(plan, routesPlanned, suspended, authority, controlGeneration))
+	record := tunnelDecisionRecord(plan, routesPlanned, suspended, authority, controlGeneration)
+	return record, reader.RecordTunnelDecision(record)
 }
 
 // tunnelAuthorizer is the one question this runtime asks of policy about the
 // tunnel. It is an interface so the daemon's tests can ask it without a policy
 // store, and narrow so that nothing else arrives through it.
 type tunnelAuthorizer interface {
+	// MutationAllowed is this runtime's standing at all: an active generation,
+	// no suspension, nothing grandfathered. It is asked on every cycle that
+	// holds the tunnel, because a generation expires whether or not anything
+	// was decided that cycle.
+	MutationAllowed() bool
 	AuthorizeTunnelOwnership(
 		target string,
 		controlStateGeneration uint64,

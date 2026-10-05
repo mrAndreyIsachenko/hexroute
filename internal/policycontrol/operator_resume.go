@@ -148,15 +148,35 @@ func (handler *Handler) operatorResumeRequestLocked(
 	}
 }
 
+// evaluateActionLocked judges a request against the state this runtime holds.
+//
+// The control-state generation comes from the runtime, never from the request.
+// It used to come from the request: the evaluator compared a caller's generation
+// with a copy of the caller's generation, so the only thing the check required
+// was a number that was not zero, on every action path there is. A request
+// naming a control state from an hour ago was authorized as readily as one
+// naming the current one.
+//
+// A runtime that cannot read its own control state refuses. That includes one
+// that was never given anything to read it from: a handler wired without a
+// control state authorizes nothing, because the alternative is authorizing
+// precisely where the comparison is impossible.
 func (handler *Handler) evaluateActionLocked(
 	request policy.ActionAuthorizationRequest,
 	at time.Time,
 ) policy.ActionAuthorizationDecision {
+	if handler.controlState == nil {
+		return policy.ActionAuthorizationDecision{Reason: policy.ActionControlStateUnreadable}
+	}
+	generation, err := handler.controlState.CurrentGeneration()
+	if err != nil {
+		return policy.ActionAuthorizationDecision{Reason: policy.ActionControlStateUnreadable}
+	}
 	return policy.EvaluateActionAuthorization(
 		policy.ActionAuthorizationState{
 			Status: handler.status, Suspension: handler.authorizationSuspension,
 			Payload:                handler.activePayload,
-			ControlStateGeneration: request.ControlStateGeneration,
+			ControlStateGeneration: generation,
 		},
 		request,
 		at,

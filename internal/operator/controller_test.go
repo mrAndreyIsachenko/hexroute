@@ -607,3 +607,79 @@ func assertNoSecretBearingFields(t *testing.T, value reflect.Type) {
 		}
 	}
 }
+
+// The generation a reader sees follows every write of the snapshot.
+//
+// It is mirrored rather than read through the controller's lock because the
+// controller holds that lock while it asks the policy handler to evaluate a
+// resume, and the handler reads this to judge it: through the lock, the act
+// would deadlock on itself.
+func TestTheControlGenerationAReaderSeesFollowsTheSnapshot(t *testing.T) {
+	snapshot := control.NewSnapshot(control.StateSafeMode)
+	snapshot.Generation = 4
+	snapshot.LastTick = 40
+	controller, err := NewController(
+		ipc.RoleUser, ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentPritunl},
+		snapshot, control.ReasonProbeFailed,
+		func(uint64, control.Tick) (control.Snapshot, error) {
+			return control.Snapshot{}, errors.New("not used")
+		},
+		func() control.Tick { return 100 },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	generation, err := controller.CurrentGeneration()
+	if err != nil || generation != 4 {
+		t.Fatalf("at construction: %d, %v", generation, err)
+	}
+	next := snapshot
+	next.Generation = 5
+	next.LastTick = 50
+	if err := controller.Update(next, control.ReasonProbeFailed); err != nil {
+		t.Fatal(err)
+	}
+	if generation, err = controller.CurrentGeneration(); err != nil || generation != 5 {
+		t.Fatalf("after an update: %d, %v", generation, err)
+	}
+	// A resume moves the snapshot too, and a reader that did not follow it would
+	// judge the next act against the generation the resume replaced.
+	resuming, err := NewController(
+		ipc.RoleUser, ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentPritunl},
+		safeModeSnapshot(), control.ReasonRecoveryBudget,
+		func(expected uint64, at control.Tick) (control.Snapshot, error) {
+			resumed := safeModeSnapshot()
+			resumed.State = control.StateDegraded
+			resumed.Generation = expected + 1
+			resumed.Attempts = 0
+			resumed.RecoveringSince = 0
+			resumed.NextActionAt = at
+			resumed.SafeUntil = 0
+			return resumed, nil
+		},
+		func() control.Tick { return 100 },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := resuming.CurrentGeneration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := resuming.Handle(resumeRequest(control.ComponentPritunl, before)); !response.OK {
+		t.Fatalf("resume response = %+v", response)
+	}
+	after, err := resuming.CurrentGeneration()
+	if err != nil || after != before+1 {
+		t.Fatalf("after a resume: %d, want %d (%v)", after, before+1, err)
+	}
+
+	// A controller that is not there reports no generation and says why, rather
+	// than reporting zero as though it had read one.
+	var absent *Controller
+	if _, err := absent.CurrentGeneration(); err == nil {
+		t.Fatal("a nil controller answered with a generation")
+	}
+}

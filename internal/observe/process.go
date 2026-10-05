@@ -1,6 +1,7 @@
 package observe
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"path/filepath"
@@ -49,7 +50,7 @@ func (observer *ProcessObserver) Tunnel(ctx context.Context, configPath string) 
 	if !filepath.IsAbs(configPath) {
 		return ProcessObservation{}, ErrInvalidProcessObservation
 	}
-	output, err := observer.runner.Output(ctx, psCommand, "-axo", "pid=,ppid=,uid=,args=")
+	output, err := observer.listing(ctx)
 	if err != nil {
 		return ProcessObservation{}, err
 	}
@@ -76,6 +77,28 @@ func (observer *ProcessObserver) Tunnel(ctx context.Context, configPath string) 
 		return ProcessObservation{Running: true, Process: process}, nil
 	}
 	return ProcessObservation{}, nil
+}
+
+// listing is the process table, kept to the lines that could be a tunnel.
+//
+// A runner that can read line by line is asked to, so the table's size cannot
+// refuse the observation: measured 2026-10-05, it passed the cap on a whole
+// listing and this runtime could neither find its tunnel nor declare it absent.
+// A runner that cannot is asked as before, so every fake and every other
+// adapter behaves exactly as it did.
+func (observer *ProcessObserver) listing(ctx context.Context) ([]byte, error) {
+	arguments := []string{"-axo", "pid=,ppid=,uid=,args="}
+	if reader, ok := observer.runner.(LineReader); ok {
+		return reader.OutputLines(ctx, couldBeTunnel, psCommand, arguments...)
+	}
+	return observer.runner.Output(ctx, psCommand, arguments...)
+}
+
+// couldBeTunnel keeps the lines worth parsing. The executable's name is what
+// the parse looks at, so a line without it cannot be the tunnel however it is
+// read.
+func couldBeTunnel(line []byte) bool {
+	return bytes.Contains(line, []byte("sing-box"))
 }
 
 // runsConfiguration says whether a command line runs exactly this configuration.

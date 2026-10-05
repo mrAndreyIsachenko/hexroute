@@ -2,6 +2,7 @@ package observe
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -174,4 +175,98 @@ func TestAnUnprivilegedSingBoxIsNotTheTunnel(t *testing.T) {
 	if err != nil || !observation.Running || observation.Process.PID != 321 {
 		t.Fatalf("Tunnel() beside a user's sing-box = %+v, %v; want root's pid 321", observation, err)
 	}
+}
+
+// A process table too large for the cap on a whole listing does not refuse the
+// observation.
+//
+// Measured 2026-10-05: the table passed 256 KiB on this machine, every cycle
+// reported a failed observation, and the runtime could neither find its tunnel
+// nor declare it absent — while holding the claim that kept the previous owner
+// from starting one. Any user can enlarge that table at will, so a bigger cap
+// is a later outage rather than a fix.
+func TestATableTooLargeForTheCapIsStillObserved(t *testing.T) {
+	var listing strings.Builder
+	for index := 0; index < 400; index++ {
+		listing.WriteString(fmt.Sprintf("%d 1 501 /usr/bin/noise %s\n",
+			2000+index, strings.Repeat("x", 900)))
+	}
+	listing.WriteString(
+		"4242 1 0 /opt/homebrew/bin/sing-box run -c /var/hexroute/tunnel-config.json\n")
+	if listing.Len() <= MaxCommandOutput {
+		t.Fatalf("the listing is %d bytes, which the cap would not refuse", listing.Len())
+	}
+
+	observer, err := NewProcessObserver(scriptedLineRunner{output: listing.String()})
+	if err != nil {
+		t.Fatalf("NewProcessObserver: %v", err)
+	}
+	observation, err := observer.Tunnel(
+		context.Background(), "/var/hexroute/tunnel-config.json")
+	if err != nil {
+		t.Fatalf("Tunnel: %v", err)
+	}
+	if !observation.Running || observation.Process.PID != 4242 {
+		t.Fatalf("observation = %+v", observation)
+	}
+}
+
+// And a tunnel that is absent from such a table is reported absent rather than
+// as a failure, because those are the two answers a cause is decided from.
+func TestATunnelAbsentFromALargeTableIsAbsent(t *testing.T) {
+	var listing strings.Builder
+	for index := 0; index < 400; index++ {
+		listing.WriteString(fmt.Sprintf("%d 1 501 /usr/bin/noise %s\n",
+			2000+index, strings.Repeat("x", 900)))
+	}
+	observer, err := NewProcessObserver(scriptedLineRunner{output: listing.String()})
+	if err != nil {
+		t.Fatalf("NewProcessObserver: %v", err)
+	}
+	observation, err := observer.Tunnel(
+		context.Background(), "/var/hexroute/tunnel-config.json")
+	if err != nil {
+		t.Fatalf("Tunnel: %v", err)
+	}
+	if observation.Running {
+		t.Fatalf("observation = %+v", observation)
+	}
+}
+
+// scriptedLineRunner answers from a fixed listing, line by line, as the real
+// runner does.
+type scriptedLineRunner struct{ output string }
+
+func (runner scriptedLineRunner) Output(
+	context.Context, string, ...string,
+) ([]byte, error) {
+	if len(runner.output) > MaxCommandOutput {
+		return nil, ErrOutputTooLarge
+	}
+	return []byte(runner.output), nil
+}
+
+func (runner scriptedLineRunner) OutputLines(
+	_ context.Context,
+	keep func(line []byte) bool,
+	_ string,
+	_ ...string,
+) ([]byte, error) {
+	// The limit is applied as the real runner applies it, so a fake cannot give
+	// an answer the machine would refuse.
+	var kept []byte
+	for _, line := range strings.Split(runner.output, "\n") {
+		if line == "" {
+			continue
+		}
+		if !keep([]byte(line)) {
+			continue
+		}
+		if len(kept)+len(line)+1 > MaxCommandOutput {
+			return nil, ErrOutputTooLarge
+		}
+		kept = append(kept, line...)
+		kept = append(kept, '\n')
+	}
+	return kept, nil
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyexpiry"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policystore"
 	"github.com/mrAndreyIsachenko/hexroute/internal/pritunlplan"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelexec"
 	"github.com/mrAndreyIsachenko/hexroute/internal/userobserve"
 )
 
@@ -291,6 +292,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err := controller.SetResumePolicyEvaluator(policyHandler); err != nil {
 			return 1
 		}
+		// The generations an authorization is judged against are this runtime's.
+		// The controller holds its control state, so the handler reads it from
+		// there rather than believing what a request says about it.
+		if err := policyHandler.SetControlState(controller); err != nil {
+			return 1
+		}
 		dispatcher, err := operator.NewDispatcher(
 			// The user daemon publishes facts; it never receives them, and it
 			// holds no shadow store of its own in this build.
@@ -356,6 +363,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		publisher,
 		executor,
 		policyHandler,
+		tunnelexec.DefaultNoticePath,
 	); err != nil {
 		// On the error stream, because the journal is one of the things that
 		// ends this loop and a record attempted there would go through what
@@ -479,6 +487,10 @@ func observeLoop(
 	publisher *factPublisher,
 	executor *recovery,
 	policyExpiry ExpiryAnnouncer,
+	// noticePath is where the root runtime leaves word of giving the tunnel up.
+	// Empty means this daemon does not look, which is the state it was in
+	// before anything could give a tunnel up.
+	noticePath string,
 ) (logging.Reason, error) {
 	// The log records what happened; the state file records that the loop ran.
 	gate := logging.NewChangeGate()
@@ -545,20 +557,17 @@ func observeLoop(
 			now,
 			logger,
 		)
+		// Word the root runtime left of giving the tunnel up. It reaches the
+		// operator from here because this is the session that can speak to
+		// them: the root daemon has no way to, and the two daemons' only
+		// connection runs the other way.
+		dispatchTunnelHandbackNotification(ctx, notifications, noticePath, logger)
 		lastState = summary.Plan.Snapshot.State
 		if err := emitSummary(logger, gate, summary); err != nil {
 			return logging.ReasonJournalUnwritable, err
 		}
 		if once {
-			if err := logger.Emit(
-				logging.LevelInfo,
-				logging.EventDaemonStopped,
-				logging.ResultOK,
-				"",
-			); err != nil {
-				return logging.ReasonJournalUnwritable, err
-			}
-			return "", nil
+			return requestedStop(logger)
 		}
 
 		timer := time.NewTimer(interval)
@@ -569,19 +578,22 @@ func observeLoop(
 				if !timer.Stop() {
 					<-timer.C
 				}
-				if err := logger.Emit(
-					logging.LevelInfo,
-					logging.EventDaemonStopped,
-					logging.ResultOK,
-					"",
-				); err != nil {
-					return logging.ReasonJournalUnwritable, err
-				}
-				return "", nil
+				return requestedStop(logger)
 			// Fatal whether it says why or not: an error names what it failed
 			// on, and a closed channel with none says the server returned
 			// without being asked to. Both are the same loss of the one way in.
+			//
+			// Unless the runtime was asked to stop, which ends the server too:
+			// both cases are then ready and the choice between them is a coin.
+			// The other runtime recorded the same signal as a socket failure
+			// twice in a day and as an ordinary ending twice.
 			case err := <-serverDone:
+				if ctx.Err() != nil {
+					if !timer.Stop() {
+						<-timer.C
+					}
+					return requestedStop(logger)
+				}
 				if err != nil {
 					return logging.ReasonOperatorSocketEnded, err
 				}
@@ -616,6 +628,61 @@ type ExpiryAnnouncer interface {
 //
 // Delivery deduplicates on the incident identity and the generation, so a stage
 // announces once per generation however many cycles run through it.
+// dispatchTunnelHandbackNotification tells the operator that the root runtime
+// gave the tunnel up.
+//
+// It is critical, and deliberately: the machine may be on the network by
+// somebody else's tunnel or on nothing at all, and that is worth a night. The
+// service deduplicates on the incident's identity, which carries the moment it
+// happened, so a handback is announced once however many cycles read it.
+//
+// A notice that cannot be read is not an alert about a handback. It is logged
+// and dropped: a runtime that announced a tunnel loss because it could not parse
+// a file would be worse than one that said nothing.
+func dispatchTunnelHandbackNotification(
+	ctx context.Context,
+	notifications IncidentNotifier,
+	noticePath string,
+	logger *logging.Logger,
+) {
+	if ctx == nil || notifications == nil || logger == nil || noticePath == "" {
+		return
+	}
+	notice, found, err := tunnelexec.ReadNotice(noticePath)
+	if err != nil || !found {
+		return
+	}
+	notifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	outcome, err := notifications.Dispatch(
+		notifyCtx,
+		notification.Input{
+			Incident: event.Incident{
+				IncidentID: "tunnel-handback-" + notice.At,
+				Status:     event.IncidentOpened,
+				Severity:   event.SeverityCritical,
+				Category:   event.IncidentAvailability,
+				Component:  control.ComponentTunnel,
+				Generation: 1,
+			},
+			External: notification.ExternalNotRequired,
+			// The identity carries the moment it happened, so it is the same
+			// identity in the next process and must not be announced again.
+			DurableGeneration: true,
+		},
+		time.Now(),
+	)
+	if err != nil {
+		_ = logger.Emit(logging.LevelWarn, logging.EventLocalNotification,
+			logging.ResultDegraded, "")
+		return
+	}
+	if outcome.LocalDelivery == notification.LocalDelivered {
+		_ = logger.Emit(logging.LevelInfo, logging.EventLocalNotification,
+			logging.ResultOK, "")
+	}
+}
+
 func dispatchPolicyExpiryNotification(
 	ctx context.Context,
 	notifications IncidentNotifier,
@@ -748,6 +815,17 @@ func unreachableClientAddress(summary Summary) string {
 		return ""
 	}
 	return address.String()
+}
+
+// requestedStop records an ending somebody asked for, and is the only place
+// that says so.
+func requestedStop(logger *logging.Logger) (logging.Reason, error) {
+	if err := logger.Emit(
+		logging.LevelInfo, logging.EventDaemonStopped, logging.ResultOK, "",
+	); err != nil {
+		return logging.ReasonJournalUnwritable, err
+	}
+	return "", nil
 }
 
 func operatorReason(reason pritunlplan.Reason) control.Reason {

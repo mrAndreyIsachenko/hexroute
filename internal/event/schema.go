@@ -36,6 +36,15 @@ const (
 	// be compared against what that runtime actually did — a decision that
 	// agreed and a decision never reached look the same in an empty log.
 	SchemaTunnelDecision Schema = "tunnel.decision"
+	// SchemaTunnelExecution is what this runtime did about a decision: the gate
+	// that stopped it, or the rebuild it performed and what that cost. It is
+	// critical — it is the only record that a machine was changed, and an
+	// account of an act that can be evicted for size is not an account.
+	SchemaTunnelExecution Schema = "tunnel.execution"
+	// SchemaTunnelHandback is this runtime giving the tunnel up: why, and
+	// whether it got it back to whoever else can hold one. Critical for the
+	// same reason.
+	SchemaTunnelHandback Schema = "tunnel.handback"
 	SchemaPolicy         Schema = "policy.lifecycle"
 
 	// A baseline restates a component in full and is what clears a gap, so
@@ -272,6 +281,25 @@ type TunnelDecision struct {
 	Authorization *TunnelAuthorization `json:"authorization,omitempty"`
 }
 
+// TunnelExecution is what became of a decision to act.
+//
+// It is its own record because the decision is written before the act and the
+// outcome is known after it: a machine that sleeps between the two leaves the
+// decision, and this record is what says whether anything followed. It names
+// which gate stopped an act that did not happen, so that a reader is not sent to
+// the policy for a machine that was merely asleep, and for one that happened it
+// says whether traffic passed and what it cost.
+//
+// The routes are a count. Which destinations they were is the projection's
+// standing rule: how many, never which.
+type TunnelExecution struct {
+	Performed bool   `json:"performed"`
+	Blocked   string `json:"blocked,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	Routes    *int   `json:"routes_restored,omitempty"`
+	ElapsedMS *int64 `json:"elapsed_ms,omitempty"`
+}
+
 // TunnelAuthorization is the policy handler's answer, in its own vocabulary.
 type TunnelAuthorization struct {
 	Allowed bool   `json:"allowed"`
@@ -361,6 +389,8 @@ func DefinitionFor(schema Schema) (Definition, bool) {
 		// to the archive's bound costs a comparison rather than an account of
 		// something that happened.
 		priority = PriorityOperational
+	case SchemaTunnelExecution, SchemaTunnelHandback:
+		priority = PriorityCritical
 	default:
 		return Definition{}, false
 	}
@@ -479,6 +509,10 @@ func newPayload(schema Schema) any {
 		return &Sleep{}
 	case SchemaTunnelDecision:
 		return &TunnelDecision{}
+	case SchemaTunnelExecution:
+		return &TunnelExecution{}
+	case SchemaTunnelHandback:
+		return &TunnelHandback{}
 	case SchemaPolicy:
 		return &PolicyLifecycle{}
 	case SchemaConnectivityBaseline, SchemaConnectivityObservation:
@@ -556,6 +590,16 @@ func validatePayload(schema Schema, payload any) error {
 	case SchemaTunnelDecision:
 		value, ok := asTunnelDecision(payload)
 		if !ok || !validTunnelDecision(value) {
+			return ErrInvalidField
+		}
+	case SchemaTunnelExecution:
+		value, ok := asTunnelExecution(payload)
+		if !ok || !validTunnelExecution(&value) {
+			return ErrInvalidField
+		}
+	case SchemaTunnelHandback:
+		value, ok := asTunnelHandback(payload)
+		if !ok || !validTunnelHandback(&value) {
 			return ErrInvalidField
 		}
 	case SchemaPolicy:
@@ -881,6 +925,20 @@ func asSleep(payload any) (Sleep, bool) {
 	return Sleep{}, false
 }
 
+func asTunnelExecution(payload any) (TunnelExecution, bool) {
+	switch value := payload.(type) {
+	case TunnelExecution:
+		return value, true
+	case *TunnelExecution:
+		if value == nil {
+			return TunnelExecution{}, false
+		}
+		return *value, true
+	default:
+		return TunnelExecution{}, false
+	}
+}
+
 func asTunnelDecision(payload any) (TunnelDecision, bool) {
 	switch value := payload.(type) {
 	case TunnelDecision:
@@ -930,6 +988,84 @@ func validTunnelDecision(value TunnelDecision) bool {
 		return false
 	}
 	return validTunnelGrounds(value.Grounds)
+}
+
+// TunnelHandback is this runtime giving the tunnel up.
+//
+// Given says whether the transaction completed: a runtime that decided to let go
+// and could not is in a different state from one that let go, and the record
+// that could not tell them apart would be read as the tunnel being somebody
+// else's when it is still this one's.
+type TunnelHandback struct {
+	Reason string `json:"reason"`
+	Given  bool   `json:"given"`
+}
+
+// validTunnelHandback keeps its vocabulary closed as well.
+func validTunnelHandback(handback *TunnelHandback) bool {
+	if handback == nil {
+		return true
+	}
+	switch handback.Reason {
+	case "rate_bound", "grant_lapsed", "tunnel_carries_nothing":
+		return true
+	default:
+		return false
+	}
+}
+
+func asTunnelHandback(payload any) (TunnelHandback, bool) {
+	switch value := payload.(type) {
+	case TunnelHandback:
+		return value, true
+	case *TunnelHandback:
+		if value == nil {
+			return TunnelHandback{}, false
+		}
+		return *value, true
+	default:
+		return TunnelHandback{}, false
+	}
+}
+
+// validTunnelExecution keeps the executor's vocabulary closed, as the
+// authorization's is: a record that can say anything says nothing.
+func validTunnelExecution(execution *TunnelExecution) bool {
+	if execution == nil {
+		return true
+	}
+	switch execution.Blocked {
+	case "", "not_owned", "suspended", "authorization_unasked", "unauthorized", "rate_bound":
+	default:
+		return false
+	}
+	switch execution.Reason {
+	case "", "stop_failed", "start_failed", "interface_absent",
+		"route_not_restored", "payload_did_not_pass", "outer_path_absent":
+	default:
+		return false
+	}
+	// Performed and blocked are one statement: an act that happened was stopped
+	// by no gate, and an act a gate stopped did not happen.
+	if execution.Performed == (execution.Blocked != "") {
+		return false
+	}
+	// A reason is about an act that happened; a gate that stopped one leaves
+	// nothing to have a reason about.
+	if !execution.Performed && execution.Reason != "" {
+		return false
+	}
+	if execution.Routes != nil && *execution.Routes < 0 {
+		return false
+	}
+	if execution.ElapsedMS != nil && *execution.ElapsedMS < 0 {
+		return false
+	}
+	// What an act cost is known exactly when it happened.
+	if execution.Performed != (execution.ElapsedMS != nil) {
+		return false
+	}
+	return true
 }
 
 // validTunnelAuthorization keeps the handler's vocabulary closed here too.

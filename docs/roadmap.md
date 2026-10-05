@@ -104,6 +104,44 @@ It was found by taking the tunnel for the second time, which is the third of ite
 holds the tunnel costs a minute of no tunnel and explains nothing, and seven days
 of ownership would have collected those gaps rather than accounted for them.
 
+`hold-the-tunnel-under-a-grant` closed on 2026-10-05, the third and last of
+item 9's changes, and item 9 with it. The soaked rule has an executor under a
+grant that can be withdrawn, the tunnel was taken a second time and held for 171
+hours, and the runtime it was taken from goes on doing everything else it does.
+
+The rule did not change in becoming performable: what acts is what stood seven
+days without a disagreement. A rebuild stops the tunnel, starts one from the
+signed configuration, puts back the host routes that pointed at the old
+interface, and counts as done only when traffic passes. Over the week three
+causes acted, seven routes were restored by every rebuild that had any to
+restore, and nothing was performed in the 66 cycles the machine was suspended
+for.
+
+Twelve defects were found on the way, nine of them by running it rather than by
+reading it. Three are worth carrying forward. A runtime that reported the
+generation it held without holding it refused the one bundle that would have
+ended the mismatch. The handover's own exchange of the tunnel process was read by
+the next cycle as the loss the rule rebuilds for, so this runtime rebuilt the
+tunnel it had just been given. And the threshold that ends ownership was the same
+number as the one that makes a rebuild's cause: runs of two are ordinary on this
+path and ownership ended three times in two days, where a run of three never
+happened at all.
+
+The last three were one outage, on the morning it closed, and each was found
+because the one before it had been made visible. The process listing outgrew the
+cap on a command's output, so the runtime could neither find its tunnel nor call
+it absent and sat on a dead one holding the claim. A route role with no log event
+ended the daemon on the very plan that appears when there is no tunnel, so it
+could not come back and repair it. And the record of a runtime's own ending had
+been decided by a coin between two ready answers — which is what put
+`invalid_runtime` on the error stream where there used to be an exit code and
+silence.
+
+Telegram is still owed rather than delivered: there is no path from the root
+runtime to an alert at all. The runtime leaves word of a handback in a file the
+operator's own session reads and announces; a Telegram alert needs the cloud to
+open an incident from a host's own event, which is its own change.
+
 `start-when-the-static-authority-moved` closed on 2026-09-26. A daemon whose
 stored active generation was compiled against a different static authority
 refused to start, so installing a rebuilt safety envelope stopped both daemons

@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelclaim"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelexec"
 )
 
 // The command runs.
@@ -326,3 +328,125 @@ func TestCheckingAReleaseAsksAboutBothRuntimesAndTouchesNothing(t *testing.T) {
 		t.Fatal("check-release left a session record")
 	}
 }
+
+// Resuming the executor clears what stopped it and takes nothing.
+//
+// The two halves are separate commands because one is safe at any moment and
+// the other interrupts traffic for as long as an exchange takes.
+func TestResumingTheExecutorClearsTheBoundAndTakesNoTunnel(t *testing.T) {
+	directory := t.TempDir()
+	rebuilds := filepath.Join(directory, "tunnel-rebuilds.json")
+	rate := tunnelexec.Rate{Path: rebuilds, Now: time.Now}
+	for index := 0; index < 3; index++ {
+		if err := rate.Record(time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	claimPath := filepath.Join(directory, "claim.json")
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := Run([]string{
+		"--config", writeExecutorConfig(t, directory, rebuilds),
+		"--claim", claimPath,
+		"resume-executor",
+	}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("resume-executor returned %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "cleared 3 rebuilds") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "not this runtime's") {
+		t.Fatalf("resuming did not say the tunnel is still elsewhere: %q", stdout.String())
+	}
+	performed, err := rate.Performed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(performed) != 0 {
+		t.Fatalf("the bound still holds %d rebuilds", len(performed))
+	}
+	// The claim is untouched: resuming takes no tunnel.
+	if _, err := os.Stat(claimPath); !os.IsNotExist(err) {
+		t.Fatalf("resuming left a claim: %v", err)
+	}
+}
+
+// A host with no executor has nothing to resume, and says so rather than
+// clearing a file it guessed at.
+func TestResumingWithoutAnExecutorIsRefused(t *testing.T) {
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := Run([]string{
+		"--config", writeBareConfig(t, t.TempDir()),
+		"resume-executor",
+	}, stdout, stderr)
+	if code == 0 {
+		t.Fatalf("a host with no executor reported success: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "no executor") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+// writeExecutorConfig writes a root configuration whose executor keeps its
+// rebuild count where the test can read it. Every path is absolute because the
+// configuration refuses anything else.
+func writeExecutorConfig(t *testing.T, directory, rebuilds string) string {
+	t.Helper()
+	path := filepath.Join(directory, "root-observe.json")
+	content := strings.Replace(bareConfig,
+		`"upstream_probe_address": "203.0.113.53",`,
+		`"upstream_probe_address": "203.0.113.53",
+  "tunnel_supervision": {
+    "wake_threshold_seconds": 180,
+    "payload_failures": 3,
+    "link_failures": 2,
+    "payload": {"name": "payload", "url": "http://198.51.100.1/", "timeout_seconds": 4},
+    "execution": {
+      "version_path": "/etc/hexroute/tunnel-version.json",
+      "target_key": "synthetic-node",
+      "content_path": "/etc/hexroute/tunnel-config.json",
+      "sing_box": "/usr/local/bin/sing-box",
+      "handover_binary": "/usr/local/bin/hexroute-handover",
+      "rebuilds_path": "`+rebuilds+`",
+      "bound_seconds": 30,
+      "poll_seconds": 2
+    }
+  },`, 1)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func writeBareConfig(t *testing.T, directory string) string {
+	t.Helper()
+	path := filepath.Join(directory, "root-observe.json")
+	if err := os.WriteFile(path, []byte(bareConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+const bareConfig = `{
+  "schema": "hexroute.root-observe.v1",
+  "mode": "observe-only",
+  "observation_interval_seconds": 60,
+  "operator_uid": 501,
+  "physical_interface": "en7",
+  "managed_tun_address": "198.51.100.1",
+  "upstream_probe_address": "203.0.113.53",
+  "routes": [
+    {"name": "ingress-a", "address": "192.0.2.20", "role": "ingress", "preferred_link": "physical"}
+  ],
+  "endpoints": [
+    {
+      "name": "outer-ready",
+      "purpose": "outer_ready",
+      "transport": "direct_tls",
+      "certificate_policy": "handshake_only",
+      "address": "198.51.100.20:443",
+      "server_name": "outer.invalid",
+      "timeout_seconds": 4
+    }
+  ]
+}`

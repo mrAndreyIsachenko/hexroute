@@ -22,6 +22,8 @@ type answeringAuthority struct {
 // generation and the digest, returned a policy-shaped refusal, and so passed
 // while the runtime sent zero and an empty string — a request the real
 // evaluator rejects before consulting policy.
+func (authority *answeringAuthority) MutationAllowed() bool { return true }
+
 func (authority *answeringAuthority) AuthorizeTunnelOwnership(
 	target string,
 	generation uint64,

@@ -32,6 +32,10 @@ func (cycler fixedCycler) Observe(context.Context) Summary {
 	return cycler.summary
 }
 
+// A fixed cycler observes the same thing every time, so it has no memory of a
+// process to correct.
+func (fixedCycler) Replaced(int) {}
+
 type fixedHeartbeat struct {
 	ticks []control.Tick
 }
@@ -119,6 +123,7 @@ func TestObserveLoopEmitsOnlyRedactedProposals(t *testing.T) {
 		nil,
 		&rootObservations{},
 		nil,
+		executor{},
 	); err != nil {
 		t.Fatalf("observeLoop() error: %v", err)
 	}
@@ -360,7 +365,7 @@ func TestTheDecisionIsRecordedBeforeTheRestOfTheCycle(t *testing.T) {
 		context.Background(), time.Minute, true,
 		func() control.Tick { return 7 }, func() time.Duration { return 0 },
 		cycler, failingHeartbeat{}, controller, nil, nil, logger, reader, nil,
-		&rootObservations{}, nil)
+		&rootObservations{}, nil, executor{})
 	if err == nil {
 		t.Fatal("the heartbeat refused and the loop carried on")
 	}
@@ -419,7 +424,7 @@ func TestASuspendedCycleRecordsThatTheMachineWasDozing(t *testing.T) {
 		context.Background(), time.Minute, true,
 		func() control.Tick { return 7 }, func() time.Duration { return 0 },
 		cycler, &fixedHeartbeat{}, controller, nil, nil, logger, reader, nil,
-		&rootObservations{}, nil); err != nil {
+		&rootObservations{}, nil, executor{}); err != nil {
 		t.Fatalf("observeLoop: %v", err)
 	}
 	archive, err := eventarchive.OpenForReading(archiveRoot)
