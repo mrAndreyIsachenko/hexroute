@@ -47,7 +47,7 @@ cloud_binaries=(
 
 cloud_dependencies='(^|/)internal/(cloudruntime|cloudingest|cloudconnectivity|database|databasemigrate|dashboard|alertdelivery|cloudincident|incidentbundle|retention|slo|silentnode)$|^github\.com/jackc/pgx'
 local_dependencies="$(go list -deps "${local_binaries[@]}")"
-if printf '%s\n' "$local_dependencies" | grep -Eq "$cloud_dependencies"; then
+if grep -Eq "$cloud_dependencies" <<<"$local_dependencies"; then
   printf 'local policy path imports cloud, PostgreSQL, API, or worker authority:\n' >&2
   printf '%s\n' "$local_dependencies" | grep -E "$cloud_dependencies" >&2
   exit 1
@@ -59,7 +59,7 @@ fi
 # nobody on the host reached.
 local_authority='(^|/)internal/(ipc|operator|policycontrol|policystore|actionlease|actionplan|resumeexecutor|resumeplan|rootdaemon|userdaemon|routeplan|pritunlplan|pritunlrescue|credentials|observe|connectivityaccept|connectivityreduce|connectivitycheckpoint|connectivitycollect|connectivityjournal|connectivityruntime)$'
 cloud_runtime_dependencies="$(go list -deps ./cmd/hexroute-ingest)"
-if printf '%s\n' "$cloud_runtime_dependencies" | grep -Eq "$local_authority"; then
+if grep -Eq "$local_authority" <<<"$cloud_runtime_dependencies"; then
   printf 'cloud runtime imports local mutation or activation authority:\n' >&2
   printf '%s\n' "$cloud_runtime_dependencies" | grep -E "$local_authority" >&2
   exit 1
@@ -70,7 +70,7 @@ fi
 # store, and "the cloud renders what the host concluded" would stop being true.
 projection_authority='(^|/)internal/(connectivityaccept|connectivityreduce|connectivitycheckpoint|connectivitycollect|connectivityjournal|connectivityruntime|connectivityview)$'
 projection_dependencies="$(go list -deps ./internal/cloudconnectivity)"
-if printf '%s\n' "$projection_dependencies" | grep -Eq "$projection_authority"; then
+if grep -Eq "$projection_authority" <<<"$projection_dependencies"; then
   printf 'the cloud read model imports local reduction authority:\n' >&2
   printf '%s\n' "$projection_dependencies" | grep -E "$projection_authority" >&2
   exit 1
@@ -81,7 +81,7 @@ fi
 if grep -RniE 'func .*(Enqueue|Dispatch|Request|Command|Execute|Apply|Mutate)[A-Za-z]*\(' \
   --include='*.go' internal/cloudconnectivity \
   | grep -viE '_test\.go' \
-  | grep -q .; then
+  | grep . >/dev/null; then
   printf 'the cloud read model exports something that reads as a control operation:\n' >&2
   grep -RniE 'func .*(Enqueue|Dispatch|Request|Command|Execute|Apply|Mutate)[A-Za-z]*\(' \
     --include='*.go' internal/cloudconnectivity | grep -viE '_test\.go' >&2

@@ -34,7 +34,7 @@ delivery_packages=(
 #    thing it could do with one would be to grow it here.
 cloud_deps="$(go list -deps ./cmd/hexroute-ingest)"
 for package in internal/ingressagent internal/configpublish internal/configprove; do
-  if printf '%s\n' "$cloud_deps" | grep -q "/${package}\$"; then
+  if grep -q "/${package}\$" <<<"$cloud_deps"; then
     fail "the cloud runtime imports ${package}, which is a delivery path"
   fi
 done
@@ -44,7 +44,7 @@ done
 # dispatch, a command, an instruction to apply.
 if grep -RniE 'func .*(Enqueue|Dispatch|Notify|Push|Command|Instruct|Trigger)[A-Za-z]*\(' \
   --include='*.go' internal/configpublish internal/configprove \
-  | grep -viE '_test\.go' | grep -q .; then
+  | grep -viE '_test\.go' | grep . >/dev/null; then
   fail 'the publishing path exports something that reads as an instruction to a host'
   grep -RniE 'func .*(Enqueue|Dispatch|Notify|Push|Command|Instruct|Trigger)[A-Za-z]*\(' \
     --include='*.go' internal/configpublish internal/configprove | grep -viE '_test\.go' >&2
@@ -53,7 +53,7 @@ fi
 # A node that is off during a publish must be left with nothing queued against
 # it. There is no table and no column for that, and this is what keeps it so.
 if grep -RniE 'pending_(instruction|command|action)|node_(commands|instructions)' \
-  --include='*.sql' internal/database/migrations | grep -q .; then
+  --include='*.sql' internal/database/migrations | grep . >/dev/null; then
   fail 'the schema grew somewhere a node instruction could wait'
 fi
 
@@ -62,12 +62,12 @@ fi
 # it once linked a PostgreSQL driver, by way of an object store that imported
 # its own first caller, purely to work out a filename.
 agent_deps="$(go list -deps ./cmd/hexroute-ingress-agent)"
-if printf '%s\n' "$agent_deps" | grep -qE '^github\.com/jackc/pgx'; then
+if grep -qE '^github\.com/jackc/pgx' <<<"$agent_deps"; then
   fail 'the ingress agent links a database driver'
 fi
 for package in internal/configpublish internal/configprove internal/cloudruntime \
   internal/cloudingest internal/incidentbundle internal/database; do
-  if printf '%s\n' "$agent_deps" | grep -q "/${package}\$"; then
+  if grep -q "/${package}\$" <<<"$agent_deps"; then
     fail "the ingress agent imports ${package}"
   fi
 done
@@ -138,7 +138,7 @@ local_packages=(
 )
 local_deps="$(go list -deps "${local_packages[@]}")"
 for package in "${delivery_packages[@]}" internal/objectstore; do
-  if printf '%s\n' "$local_deps" | grep -q "/${package}\$"; then
+  if grep -q "/${package}\$" <<<"$local_deps"; then
     fail "a local daemon imports ${package}"
   fi
 done
@@ -148,11 +148,11 @@ done
 # generation, which is why it is there and why it may not bring anything else
 # with it.
 signer_deps="$(go list -deps ./cmd/hexroute-policy)"
-if ! printf '%s\n' "$signer_deps" | grep -q '/internal/configversion$'; then
+if ! grep -q '/internal/configversion$' <<<"$signer_deps"; then
   fail 'the policy signer cannot sign a configuration version'
 fi
 for package in internal/configpublish internal/configprove internal/ingressagent internal/objectstore; do
-  if printf '%s\n' "$signer_deps" | grep -q "/${package}\$"; then
+  if grep -q "/${package}\$" <<<"$signer_deps"; then
     fail "the policy signer imports ${package}"
   fi
 done
@@ -160,7 +160,7 @@ done
 # The signing path stays offline. A signer that could reach a network could
 # publish, and then the separation between signing and publishing would be a
 # convention rather than a fact.
-if printf '%s\n' "$signer_deps" | grep -qE '^(net/http|github\.com/jackc/pgx)'; then
+if grep -qE '^(net/http|github\.com/jackc/pgx)' <<<"$signer_deps"; then
   fail 'the policy signer gained a network or database dependency'
 fi
 

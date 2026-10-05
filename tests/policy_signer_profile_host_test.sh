@@ -29,7 +29,7 @@ grep -Fq 'profile_authorizes' "$build_script"
 grep -Fq '"${permitted%\*}" != *' "$build_script"
 grep -Fq 'signed policy compiler identity does not match the clean source revision' "$build_script"
 
-if git ls-files | grep -Eq '\.(provisionprofile|mobileprovision|xcconfig)$'; then
+if git ls-files | grep -E '\.(provisionprofile|mobileprovision|xcconfig)$' >/dev/null; then
   printf 'tracked private Apple signing artifact detected\n' >&2
   exit 1
 fi

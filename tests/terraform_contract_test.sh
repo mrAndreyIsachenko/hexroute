@@ -196,7 +196,7 @@ fi
 
 if find "$terraform_root" \
   \( -name '*.tfstate' -o -name '*.tfstate.*' -o -name '*.tfvars' -o -name '.terraform' \) \
-  -print -quit | grep -q .; then
+  -print -quit | grep . >/dev/null; then
   printf 'terraform source tree contains local state or live variable files\n' >&2
   exit 1
 fi

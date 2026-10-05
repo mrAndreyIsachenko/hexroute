@@ -11,7 +11,7 @@ case "$version" in
     exit 64
     ;;
 esac
-printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || {
+grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' <<<"$version" || {
   printf 'error: version must be exact numeric semantic version\n' >&2
   exit 64
 }

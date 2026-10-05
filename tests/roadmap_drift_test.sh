@@ -51,7 +51,7 @@ for item in items:
 
 section=$(sed -n '/^## Active Changes$/,/^## /p' "$roadmap")
 if [ -z "$open_changes" ]; then
-	printf '%s' "$section" | grep -qiE '^None\.|^None$' || {
+	grep -qiE '^None\.|^None$' <<<"$section" || {
 		printf 'no change is open, but the roadmap does not say so.\n' >&2
 		# A gate that refuses without showing what it read makes the reader
 		# guess at a machine they cannot see. This one has already sent a
@@ -64,7 +64,7 @@ if [ -z "$open_changes" ]; then
 else
 	while read -r name; do
 		[ -z "$name" ] && continue
-		printf '%s' "$section" | grep -qF "$name" || {
+		grep -qF "$name" <<<"$section" || {
 			printf 'change %s is open and the roadmap does not name it.\n' \
 				"$name" >&2
 			printf 'the section under "## Active Changes" read:\n' >&2
@@ -83,7 +83,7 @@ unwired=$(sed -n '/^unwired=(/,/^)/p' tests/package_reachability_test.sh \
 
 debt=$(sed -n '/^## Debt$/,$p' "$roadmap")
 for package in $unwired; do
-	printf '%s' "$debt" | grep -qF "\`$package\`" || {
+	grep -qF "\`$package\`" <<<"$debt" || {
 		printf '%s is unwired and the roadmap does not list it as debt\n' \
 			"$package" >&2
 		failed=1
@@ -94,7 +94,7 @@ done
 # lines count: the closing paragraph records what has left, by design.
 bullets=$(printf '%s' "$debt" | grep '^- ')
 for name in $(printf '%s' "$bullets" | grep -oE '`[a-z][a-z0-9]*`' | tr -d '`' | sort -u); do
-	printf '%s\n' "$unwired" | grep -qFx "$name" || {
+	grep -qFx "$name" <<<"$unwired" || {
 		printf '%s is listed as debt and is no longer unwired\n' "$name" >&2
 		failed=1
 	}

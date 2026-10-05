@@ -55,7 +55,7 @@ if grep -Eqi 'route[[:space:]]+(add|change|delete)|kill(all)?|pkill' $root_sourc
   echo "the root runtime contains authority beyond the one named restart" >&2
   exit 1
 fi
-if grep -Ehi 'launchctl' $root_sources | grep -Evqi 'kickstart'; then
+if grep -Ehi 'launchctl' $root_sources | grep -Evi 'kickstart' >/dev/null; then
   echo "the root runtime manages launchd beyond the one named restart" >&2
   exit 1
 fi
