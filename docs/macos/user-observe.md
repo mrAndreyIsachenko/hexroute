@@ -104,6 +104,28 @@ Each install keeps the configuration it replaced beside the installed one as
 `user-observe.json.replaced`. It is one copy, not a history: it answers what was replaced
 just now.
 
+### Reading how it is while it runs
+
+`hexroutectl status` answers with a state, and `hexroutectl diagnostics` adds
+what the state was reached from. This domain's state is the one the recovery
+machine reached through its own transitions, so the counters beside it are
+quantities that machine maintains: `attempts`, `recovering_since`,
+`next_action_at` and `safe_until` are all reported here. The root domain omits
+them, because its path runs no recovery and a budget with nothing spent would
+read the same as a path that keeps none.
+
+**A standing proposal is not ill health.** `pending_operations` is the work this
+runtime proposes and has no authority to apply — one or nothing in this domain,
+whose planner proposes a single act. It is reported beside the state and does
+not decide it.
+
+The distinction matters less here than on the root side only by accident. This
+domain's health was already the machine's, and its extra condition requiring no
+standing act is redundant with the state the machine reaches: an act is produced
+only after recovery is approved, which leaves the machine recovering rather than
+healthy. The root domain wrote its own state from the cycle, which is how a
+condition about outstanding work got into a health at all.
+
 ### Reading why it stopped
 
 A daemon under `KeepAlive` that ends is restarted within seconds, so the question
