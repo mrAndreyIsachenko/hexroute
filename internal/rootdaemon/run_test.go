@@ -452,3 +452,26 @@ func TestASuspendedCycleRecordsThatTheMachineWasDozing(t *testing.T) {
 	}
 	t.Fatal("the suspended cycle recorded no decision")
 }
+
+// A degraded summary with no recorded cause reports none, rather than borrowing
+// one from its state. The combination is not reachable from the cycle — a
+// degraded cycle has failed, and a failure records a cause — but it is what a
+// summary built without the cycle carries, and the mapping must not invent a
+// failure for it.
+func TestADegradedSummaryWithNoCauseBorrowsNone(t *testing.T) {
+	if got := rootOperatorReason(Summary{State: CycleDegraded}); got != control.ReasonNone {
+		t.Fatalf("a cycle that recorded no cause reported %q", got)
+	}
+	// And the two states that have a reason of their own keep it.
+	if got := rootOperatorReason(Summary{State: CycleHealthy}); got != control.ReasonProbeSucceeded {
+		t.Fatalf("a sound cycle reported %q", got)
+	}
+	if got := rootOperatorReason(Summary{State: CycleSuspended}); got != control.ReasonIntentionalSleep {
+		t.Fatalf("a suspended cycle reported %q", got)
+	}
+	// A recorded cause outranks all three.
+	degraded := Summary{State: CycleDegraded, Cause: control.ReasonTunnelAbsent}
+	if got := rootOperatorReason(degraded); got != control.ReasonTunnelAbsent {
+		t.Fatalf("a recorded cause was not published: %q", got)
+	}
+}
