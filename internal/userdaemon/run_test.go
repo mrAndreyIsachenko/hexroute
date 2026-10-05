@@ -300,3 +300,19 @@ func TestUserSocketMustRemainBesidePrivateState(t *testing.T) {
 		}
 	}
 }
+
+// This domain's planner proposes one act or none, so its standing work is one
+// or nothing. It is reported beside the health and does not decide it.
+func TestPendingActsCountsOneActOrNone(t *testing.T) {
+	if got := pendingActs(pritunlplan.ActionNone); got != 0 {
+		t.Fatalf("a plan proposing nothing counted %d", got)
+	}
+	for _, action := range []pritunlplan.Action{
+		pritunlplan.ActionReconnect,
+		pritunlplan.ActionRequestRescue,
+	} {
+		if got := pendingActs(action); got != 1 {
+			t.Fatalf("a plan proposing %q counted %d", action, got)
+		}
+	}
+}

@@ -223,9 +223,37 @@
 
 ## 7. Mutation discipline
 
-- [ ] 7.1 Mutate the health condition, the reason selection and the payload assembly; verified by every survivor closed by a test or recorded with the reason it was left.
+- [x] 7.1 Mutate the health condition, the reason selection and the payload assembly; verified by every survivor closed by a test or recorded with the reason it was left.
 
-      A mutation that does not compile is rewritten, not counted.
+      A mutation that does not compile is rewritten, not counted. Sixteen
+      mutations, none uncompilable, run against `internal/rootdaemon`,
+      `internal/operator`, `internal/ipc` and `internal/userdaemon` with a
+      180-second bound, each file restored and compared byte for byte before the
+      next.
+
+      First run: 13 killed, 3 survived.
+
+      The health condition took four — always sound, sound only on failure,
+      never sound, and the old clause counting the plan — and all four died. So
+      did all three against the cause the cycle keeps: the last failure winning,
+      the cause never recorded, and the counter not incremented. Both payload
+      mutations against which path reports the recovery quantities died, as did
+      both against the all-four-or-none rule.
+
+      The three survivors were all claims made in prose that no test held:
+
+      - a degraded summary with no recorded cause reporting `probe_failed`
+        instead of `none`. Not reachable from the cycle — a degraded cycle has
+        failed, and a failure records a cause — but it is what a summary built
+        without the cycle carries, and the document states the behaviour. Closed
+        by `TestADegradedSummaryWithNoCauseBorrowsNone`, which also holds the
+        two states that have a reason of their own and the precedence of a
+        recorded cause over all three.
+      - the user domain's count always one, and always nothing. Closed by
+        `TestPendingActsCountsOneActOrNone` over both actions the planner can
+        propose and over none.
+
+      Second run: 16 killed, 0 survived.
 
 ## 8. On the machine
 
