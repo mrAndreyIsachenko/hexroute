@@ -539,6 +539,9 @@ func observeLoop(
 		if err := controller.Update(
 			summary.Plan.Snapshot,
 			operatorReason(summary.Plan.Reason),
+			// This domain's plan proposes one act or none, so its standing work
+			// is one or nothing rather than a count of operations.
+			pendingActs(summary.Plan.Action),
 		); err != nil {
 			return logging.ReasonControlStateUnwritable, err
 		}
@@ -992,4 +995,15 @@ func reduced(logger *logging.Logger) int {
 		return 1
 	}
 	return 3
+}
+
+// pendingActs is how much standing work the user domain's plan holds.
+//
+// Its planner proposes a single act, so the quantity is one or nothing. It is
+// reported beside the health and does not decide it.
+func pendingActs(action pritunlplan.Action) uint32 {
+	if action == pritunlplan.ActionNone {
+		return 0
+	}
+	return 1
 }

@@ -89,12 +89,19 @@ type Response struct {
 }
 
 type Status struct {
-	Role       DaemonRole          `json:"role"`
-	Mode       RuntimeMode         `json:"mode"`
-	State      control.State       `json:"state"`
-	Generation uint64              `json:"generation"`
-	SafeMode   bool                `json:"safe_mode"`
-	Policy     *PolicyStatusResult `json:"policy,omitempty"`
+	Role       DaemonRole    `json:"role"`
+	Mode       RuntimeMode   `json:"mode"`
+	State      control.State `json:"state"`
+	Generation uint64        `json:"generation"`
+	SafeMode   bool          `json:"safe_mode"`
+	// PendingOperations is how much work this runtime proposes and has no
+	// authority to apply. It is reported beside the health and does not decide
+	// it: a proposal a runtime may not act on stands for as long as its
+	// condition holds, and counting it as ill health reported the same value
+	// forever. It is current, not carried: nothing about it survives a restart,
+	// which is why it is not in the persisted snapshot.
+	PendingOperations uint32              `json:"pending_operations"`
+	Policy            *PolicyStatusResult `json:"policy,omitempty"`
 }
 
 type Diagnostics struct {

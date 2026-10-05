@@ -668,6 +668,7 @@ func observeLoop(
 		if err := controller.Update(
 			operatorSnapshot,
 			rootOperatorReason(summary),
+			uint32(len(summary.Plan.Operations)),
 		); err != nil {
 			return logging.ReasonControlStateUnwritable, err
 		}

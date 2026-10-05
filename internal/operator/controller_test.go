@@ -253,7 +253,7 @@ func TestControllerRejectsStaleUpdatesAndResumeFailures(t *testing.T) {
 
 	stale := snapshot
 	stale.Generation--
-	if err := controller.Update(stale, control.ReasonProbeFailed); !errors.Is(
+	if err := controller.Update(stale, control.ReasonProbeFailed, 0); !errors.Is(
 		err,
 		control.ErrStaleGeneration,
 	) {
@@ -637,7 +637,7 @@ func TestTheControlGenerationAReaderSeesFollowsTheSnapshot(t *testing.T) {
 	next := snapshot
 	next.Generation = 5
 	next.LastTick = 50
-	if err := controller.Update(next, control.ReasonProbeFailed); err != nil {
+	if err := controller.Update(next, control.ReasonProbeFailed, 0); err != nil {
 		t.Fatal(err)
 	}
 	if generation, err = controller.CurrentGeneration(); err != nil || generation != 5 {
@@ -681,5 +681,79 @@ func TestTheControlGenerationAReaderSeesFollowsTheSnapshot(t *testing.T) {
 	var absent *Controller
 	if _, err := absent.CurrentGeneration(); err == nil {
 		t.Fatal("a nil controller answered with a generation")
+	}
+}
+
+// Standing work is reported beside the health and does not decide it.
+func TestControllerReportsPendingWorkWithoutGradingTheHealth(t *testing.T) {
+	snapshot := control.NewSnapshot(control.StateHealthy)
+	controller, err := NewController(
+		ipc.RoleRoot,
+		ipc.ModeObserveOnly,
+		[]control.Component{control.ComponentRoutes},
+		snapshot,
+		control.ReasonProbeSucceeded,
+		nil,
+		func() control.Tick { return 100 },
+	)
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+
+	next := snapshot
+	next.Generation++
+	next.LastTick = 10
+	if err := controller.Update(next, control.ReasonProbeSucceeded, 2); err != nil {
+		t.Fatalf("Update() error: %v", err)
+	}
+
+	status := controller.Handle(ipc.Request{
+		Version:   ipc.ProtocolVersion,
+		RequestID: "status-pending",
+		Action:    ipc.ActionStatus,
+	})
+	if !status.OK || status.Status == nil {
+		t.Fatalf("status response = %+v", status)
+	}
+	if status.Status.PendingOperations != 2 {
+		t.Fatalf("pending = %d", status.Status.PendingOperations)
+	}
+	// The whole point: two operations standing and the runtime still sound.
+	if status.Status.State != control.StateHealthy {
+		t.Fatalf("standing work graded the health: %q", status.Status.State)
+	}
+
+	diagnostics := controller.Handle(ipc.Request{
+		Version:   ipc.ProtocolVersion,
+		RequestID: "diagnostics-pending",
+		Action:    ipc.ActionExportDiagnostics,
+	})
+	if !diagnostics.OK || diagnostics.Diagnostics == nil {
+		t.Fatalf("diagnostics response = %+v", diagnostics)
+	}
+	if diagnostics.Diagnostics.Status.PendingOperations != 2 {
+		t.Fatalf("diagnostics pending = %d", diagnostics.Diagnostics.Status.PendingOperations)
+	}
+}
+
+// Nothing about the count is carried: the snapshot's schema is untouched, which
+// is what keeps both the install and its rollback able to start.
+func TestPendingWorkIsNotPersistedInTheSnapshot(t *testing.T) {
+	if control.SnapshotSchemaVersion != 1 {
+		t.Fatalf("the persisted schema moved to %d", control.SnapshotSchemaVersion)
+	}
+	// A snapshot as it was written before this change still loads and validates.
+	written := []byte(`{"schema_version":1,"generation":7,"state":"DEGRADED",` +
+		`"consecutive_failures":3,"attempts":1,"last_tick":42,` +
+		`"recovering_since":0,"next_action_at":50,"safe_until":0}`)
+	var restored control.Snapshot
+	if err := json.Unmarshal(written, &restored); err != nil {
+		t.Fatalf("a snapshot written before this change did not decode: %v", err)
+	}
+	if !validSnapshot(restored) {
+		t.Fatalf("a snapshot written before this change did not validate: %+v", restored)
+	}
+	if restored.Generation != 7 || restored.ConsecutiveFailures != 3 {
+		t.Fatalf("restored = %+v", restored)
 	}
 }
