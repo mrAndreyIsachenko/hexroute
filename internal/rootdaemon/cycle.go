@@ -9,12 +9,25 @@ import (
 	"time"
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivityhost"
+	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/routeplan"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelclaim"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelplan"
 )
+
+// fail records one failure and keeps the cause of the first.
+//
+// The cycle observes in configuration order, so the first cause kept is the one
+// configuration order leaves — the same rule the cycle already follows for which
+// failure it reports when more than one occurs.
+func (summary *Summary) fail(cause control.Reason) {
+	summary.Failures++
+	if summary.Cause == control.Reason("") {
+		summary.Cause = cause
+	}
+}
 
 type CycleState string
 
@@ -60,7 +73,12 @@ type Summary struct {
 	OwnerConfig string
 	OuterReady  bool
 	Failures    uint32
-	Plan        routeplan.Plan
+	// Cause is what the first failure of this cycle was. The health beside it
+	// has to name what failed, and before this the reason was derived from the
+	// health itself: every degraded cycle reported a failed probe, including the
+	// ones where no probe ran. Empty when nothing failed.
+	Cause control.Reason
+	Plan  routeplan.Plan
 	// Observed carries the raw observations this cycle already made, so a
 	// reader can build facts from them without probing the host a second
 	// time. The cycle gathers all of it either way; keeping it was the only
@@ -211,7 +229,7 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 
 	power, err := cycle.network.Power(ctx)
 	if err != nil {
-		summary.Failures++
+		summary.fail(control.ReasonPowerUnreadable)
 		return summary
 	}
 	// A dark wake or a closed lid suspends what this cycle proposes for the
@@ -239,12 +257,12 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 	summary.OwnerConfig = configPath
 	summary.Observed.Process, summary.Observed.ProcessError = process, processErr
 	if processErr != nil {
-		summary.Failures++
+		summary.fail(control.ReasonProcessUnreadable)
 	} else {
 		summary.ProcessObserved = true
 		summary.SingBoxRunning = process.Running
 		if !process.Running {
-			summary.Failures++
+			summary.fail(control.ReasonTunnelAbsent)
 		}
 	}
 
@@ -253,7 +271,7 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 	summary.Observed.Physical, summary.Observed.PhysicalError = physical, err
 	summary.Observed.ConfiguredRoutes = uint16(len(cycle.config.Targets))
 	if err != nil || !physical.Ready() {
-		summary.Failures++
+		summary.fail(control.ReasonPhysicalNetworkUnready)
 		summary.State = CycleSuspended
 		return summary
 	}
@@ -261,14 +279,14 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 	tunInterfaces, err := cycle.network.TUNInterfaces(ctx)
 	summary.Observed.TUNs, summary.Observed.TUNError = tunInterfaces, err
 	if err != nil {
-		summary.Failures++
+		summary.fail(control.ReasonTUNUnreadable)
 		return summary
 	}
 	managedTUN, err := observe.FindTUNByAddress(tunInterfaces, cycle.config.ManagedTUNAddress)
 	summary.Observed.ManagedTUN = managedTUN
 	if err != nil {
 		summary.Observed.TUNError = err
-		summary.Failures++
+		summary.fail(control.ReasonManagedTUNAbsent)
 		return summary
 	}
 
@@ -276,7 +294,7 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 	if cycle.config.UpstreamProbeAddress.IsValid() {
 		observation, routeErr := cycle.network.Route(ctx, cycle.config.UpstreamProbeAddress)
 		if routeErr != nil {
-			summary.Failures++
+			summary.fail(control.ReasonRouteUnreadable)
 			return summary
 		}
 		summary.Carried = append(summary.Carried, tunnelplan.CarriedDestination{
@@ -307,7 +325,7 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 		}
 		if routeErr != nil {
 			summary.Observed.RouteError = routeErr
-			summary.Failures++
+			summary.fail(control.ReasonRouteUnreadable)
 			return summary
 		}
 		current[target.Destination] = routeplan.ObservedRoute{
@@ -357,7 +375,7 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 		observation, endpointErr := probes[index].observation, probes[index].err
 		if endpointErr != nil {
 			summary.Observed.ReadinessError = endpointErr
-			summary.Failures++
+			summary.fail(control.ReasonEndpointUnreadable)
 			continue
 		}
 		if configuredEndpoint.Purpose == PurposeOuterReady {
@@ -377,7 +395,7 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 	}
 	summary.OuterReady = outerCount == 0 || outerReady > 0
 	if !summary.OuterReady {
-		summary.Failures++
+		summary.fail(control.ReasonProbeFailed)
 	}
 
 	plan, err := routeplan.Build(routeplan.Input{
@@ -396,11 +414,19 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 		Codex:   codex,
 	})
 	if err != nil {
-		summary.Failures++
+		summary.fail(control.ReasonPlanRefused)
 		return summary
 	}
 	summary.Plan = plan
-	if summary.Failures == 0 && len(plan.Operations) == 0 {
+	// Health answers whether this cycle is sound, not whether it has work
+	// outstanding. A proposal this runtime may not apply stands for as long as
+	// the condition holds, so counting it reported the same value forever and
+	// reported nothing by it: measured 2026-10-05, seven unbroken hours of
+	// degraded with no failure of any kind, which is how a real one would have
+	// read too. The plan is published as its own quantity instead.
+	// This stays right after cutover. A runtime permitted to apply its plan and
+	// failing to records the failure, and the failure is what makes it unsound.
+	if summary.Failures == 0 {
 		summary.State = CycleHealthy
 	}
 	summary.Complete = true

@@ -30,11 +30,14 @@ Three claims the report cannot back:
   combination its transitions cannot produce, which is what made the state look
   like a defect in the reporter rather than a true reading.
 
-The same conflation is written into the user daemon, which requires
-`ActionNone` for `ResultOK` and is healthy today only because it holds no
-standing proposal. The principle is already stated a few lines below it, for
-the journal and not for the state: a standing proposal is one proposal,
-reported when it appears, not once a minute for as long as it holds.
+The user daemon does **not** have this defect, and the difference says what
+the root one is missing. Its health comes from the transitions of the machine
+in `internal/control`, and its extra clause requiring no standing action is
+redundant with that: a plan carries an action only after recovery was approved,
+which leaves the machine recovering rather than healthy. Every observed case
+pairs a healthy state with no action and none pairs it with one. The root
+daemon's state is synthesized from the cycle instead, which is how a condition
+about workload got into it.
 
 ## What Changes
 
@@ -77,7 +80,9 @@ None.
   vocabulary of cycle states.
 - `internal/rootdaemon/run.go` — `nextRootOperatorSnapshot`,
   `rootOperatorReason`, `emitSummary`.
-- `internal/userdaemon/run.go` — `emitSummary` and the `ActionNone` clause.
+- `internal/userdaemon/run.go` — unchanged. Its `ActionNone` clause is redundant
+  rather than wrong, and removing a clause no test fails without is not this
+  change's work.
 - `internal/control` — whether the published snapshot keeps fields the
   transitions did not produce.
 - `docs/macos/root-observe.md`, `docs/macos/user-observe.md` — the operator's

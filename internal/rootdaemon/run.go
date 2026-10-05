@@ -667,7 +667,7 @@ func observeLoop(
 		observations.record(operatorSnapshot.Generation, summary.OuterReady)
 		if err := controller.Update(
 			operatorSnapshot,
-			rootOperatorReason(summary.State),
+			rootOperatorReason(summary),
 		); err != nil {
 			return logging.ReasonControlStateUnwritable, err
 		}
@@ -751,14 +751,27 @@ func nextRootOperatorSnapshot(
 	return next
 }
 
-func rootOperatorReason(state CycleState) control.Reason {
-	switch state {
+// rootOperatorReason is the reason published beside a cycle's health.
+//
+// A cause the cycle recorded is reported in preference to anything the state
+// implies. Deriving it from the state instead said "probe_failed" for all
+// eleven ways a cycle can fail, which is a field that cannot be wrong and
+// therefore says nothing: measured 2026-10-05, it sent a reader after a probe
+// that had not run while the tunnel, its link and its payload were all sound.
+// It also called a physical network it could not read an intentional sleep.
+//
+// A degraded cycle with no recorded cause reports none, rather than borrowing
+// one. That combination is not reachable from the cycle, only from a summary
+// built without it.
+func rootOperatorReason(summary Summary) control.Reason {
+	if summary.Cause != control.Reason("") {
+		return summary.Cause
+	}
+	switch summary.State {
 	case CycleHealthy:
 		return control.ReasonProbeSucceeded
 	case CycleSuspended:
 		return control.ReasonIntentionalSleep
-	case CycleDegraded:
-		return control.ReasonProbeFailed
 	default:
 		return control.ReasonNone
 	}

@@ -65,6 +65,23 @@ const (
 	ReasonOperatorResume       Reason = "operator_resume"
 )
 
+// An observation cycle's own causes. A reason beside a health result has to
+// name what failed, and the eleven places a root cycle can fail are not probes:
+// reporting them all as a failed probe sent a reader looking for one that had
+// not run. These names are what the cycle kept, not what its state implies.
+const (
+	ReasonPowerUnreadable        Reason = "power_unreadable"
+	ReasonProcessUnreadable      Reason = "process_unreadable"
+	ReasonTunnelAbsent           Reason = "tunnel_absent"
+	ReasonPhysicalNetworkUnready Reason = "physical_network_unready"
+	ReasonTUNUnreadable          Reason = "tun_unreadable"
+	ReasonManagedTUNAbsent       Reason = "managed_tun_absent"
+	ReasonRouteUnreadable        Reason = "route_unreadable"
+	ReasonEndpointUnreadable     Reason = "endpoint_unreadable"
+	ReasonOuterPathAbsent        Reason = "outer_path_absent"
+	ReasonPlanRefused            Reason = "plan_refused"
+)
+
 func (reason Reason) Valid() bool {
 	switch reason {
 	case ReasonNone,
@@ -78,7 +95,16 @@ func (reason Reason) Valid() bool {
 		ReasonDependenciesReady,
 		ReasonDependenciesNotReady,
 		ReasonIntentionalSleep,
-		ReasonOperatorResume:
+		ReasonOperatorResume,
+		ReasonPowerUnreadable,
+		ReasonProcessUnreadable,
+		ReasonTunnelAbsent,
+		ReasonPhysicalNetworkUnready,
+		ReasonTUNUnreadable,
+		ReasonManagedTUNAbsent,
+		ReasonRouteUnreadable,
+		ReasonEndpointUnreadable,
+		ReasonPlanRefused:
 		return true
 	default:
 		return false
