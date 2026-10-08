@@ -105,7 +105,26 @@ reasoned rather than measured, and the task says so.
 
 Nothing is installed by this change and no runtime restarts; the next install
 carries it. No persisted schema changes: the payload gains a field, and the read
-model's checkpoints are rebuilt from the spool rather than migrated.
+model's checkpoints are rebuilt rather than migrated.
+
+That rebuild has a surface this plan did not name, and it is named here because
+it looks like corruption and is not. `Checkpoint.Validate` recomputes
+`Snapshot.Digest()` and compares it with the stored `SnapshotDigest`. The digest
+attests to the serialization, so a new payload field changes it for **every**
+stored record: the decoded snapshot re-serializes with the new key and no longer
+matches. `Store.Load` fails, and the resume reports
+`recovered_ancestor` / `record_invalid` — not `digest_mismatch`, which is
+reserved for the index disagreeing with the record.
+
+Measured on the install: 5650 stored checkpoints, 5648 of the old shape, and the
+watcher moved from `resume: latest, reason: none` to `recovered_ancestor,
+record_invalid`. The read model walked back, proved nothing within its depth,
+recorded a `lineage_break` and began a new lineage. Only the derived checkpoints
+are affected; the spool and the archive are the evidence and are untouched.
+
+`omitempty` would avoid it for a zero value and is not used: it would make
+absent and zero the same claim — the thing the previous change was spent
+separating — and would only postpone the break to the first non-zero.
 
 Rollback is **not** clean, and the design said this had to be verified rather
 than assumed. Verified 2026-10-09: it does not hold. `connectivity.Decode`
