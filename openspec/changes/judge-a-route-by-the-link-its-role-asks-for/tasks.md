@@ -118,21 +118,92 @@
 
 ## 5. What an operator reads
 
-- [ ] 5.1 Say in the connectivity read-model document what each of the four quantities means, when `conflicting` narrowed and what it counted before; verified by the documentation gate.
+- [x] 5.1 Say in the connectivity read-model reference what each of the four quantities means, when `conflicting` narrowed and what it counted before; verified by reading, because the gate cannot check this.
 
-- [ ] 5.2 Record that two routes on the wrong links are the tunnel owner's arrangement and not this runtime's to correct, so a reader does not take the remaining 2 for a new fault.
+      The verification in this task was wrong and is corrected rather than
+      weakened quietly. `tests/connectivity_documentation_test.sh` checks
+      component names, component states, authorization values, diff
+      classifications, diff reasons, proposal classes, sources and installed
+      arguments. It does not check payload field names, so a new quantity can be
+      added without the document following — the same hole this change is about,
+      one level up.
+
+      Extending it is not this change's work, because **20 of the 31 payload
+      fields are explained in neither document**: `has_carrier`, `link_up`,
+      `path_class`, `reachable`, `sessions` and fifteen more. That is a debt of
+      its own, recorded in 7.5.
+
+      And a naive extension would be a weak gate. The check is `grep -qF` for a
+      backtick-quoted word anywhere in the document, and vocabularies collide:
+      `missing` already appears as a **diff reason** — "policy asks for it and
+      it is not there" — so a payload field named `missing` would have passed
+      for the wrong reason. I measured it passing that way before noticing.
+
+      The reference now carries a `### The scoped routes payload` section with
+      the four fields, the ready condition, what changed on 2026-10-09 and what
+      `conflicting` counted before it, and that a reader comparing across that
+      date is comparing two different measurements.
+
+- [x] 5.2 Record that two routes on the wrong links are the tunnel owner's arrangement and not this runtime's to correct, so a reader does not take the remaining 2 for a new fault.
+
+      In the same section: a residue of 2 is expected, it is the arrangement the
+      runtime that owns the tunnel enforces, read on 2026-09-25 and unchanged
+      since.
 
 ## 6. Mutation discipline
 
-- [ ] 6.1 Mutate the four counts and the ready condition; verified by every survivor closed by a test or recorded with the reason it was left.
+- [x] 6.1 Mutate the four counts, the classification and the ready condition; verified by every survivor closed by a test or recorded with the reason it was left.
 
-      A mutation that does not compile is rewritten, not counted.
+      Fifteen mutations over `internal/routeplace` and the fact's mapper, run
+      against six packages with a 180-second bound, each file restored and
+      compared byte for byte before the next. **15 killed, 0 survived.**
+
+      Five over the classification: a route asked for nowhere reading as
+      installed, an owned unwanted route going unnoticed, the link not compared
+      at all, misplaced reading as absent, and absent reading as misplaced. The
+      last two matter most — they are the pair the fourth quantity exists to
+      keep apart.
+
+      Five over the counting: an unasked route counted installed, an unwanted
+      one not counted, absent ones not counted, the ambiguity check dropped and
+      the inputs not validated.
+
+      Five over the fact: the ready condition back to requiring every declared
+      route, ready ignoring absent routes, ready ignoring misplaced ones, an
+      unjudged cycle reading as a clean result, and the absent count not
+      published.
+
+      One did not compile and was rewritten rather than counted: adding
+      `StateUnasked` to the installed case left the later case duplicated. As
+      one edit over the whole switch it compiles, and it dies.
 
 ## 7. Close
 
 - [ ] 7.1 Run the full gate and report any gate that did not run and why; verified by the gate's exit status, not by reading its output.
 
-- [ ] 7.2 Prove the rollback: the previous binary reads a payload carrying the new field; verified by running it against one, since the payload has a validator and this cannot be assumed.
+- [x] 7.2 Prove the rollback: the previous binary reads a payload carrying the new field; verified by running it against one, since the payload has a validator and this cannot be assumed.
+
+      It does not read it. Measured 2026-10-09 by encoding a fact with
+      `missing: 1` from this branch and decoding it with `origin/main`'s own
+      `connectivity.Decode` in a worktree:
+
+      ```
+      REFUSED: connectivity fact encoding is invalid: json: unknown field "missing"
+      ```
+
+      That is by design, not by accident: the decoder refuses unknown fields
+      because two encodings of one fact would carry two digests, and the digest
+      is the identity the aggregate deduplicates on. On the archive's read path
+      such a record becomes `ErrInvalidField`.
+
+      So rollback leaves records written after this change unreadable to the
+      previous binary. They are not lost, and roll-forward reads them again. The
+      cross-domain publication path is untouched: `scoped_routes` is root-owned
+      and the user daemon never emits it.
+
+      A fact schema version was considered and not taken; design.md records why,
+      including that it would make the refusal less informative than the field
+      name already is.
 
 - [ ] 7.3 Read the fact on the machine after an install; verified by a reading that gives all four quantities and the lifecycle.
 

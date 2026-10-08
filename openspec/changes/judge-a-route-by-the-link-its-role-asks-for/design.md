@@ -107,9 +107,26 @@ Nothing is installed by this change and no runtime restarts; the next install
 carries it. No persisted schema changes: the payload gains a field, and the read
 model's checkpoints are rebuilt from the spool rather than migrated.
 
-Rollback is the previous binary, which reads the same facts and ignores a field
-it does not know — to be verified, not assumed, since the payload has a
-validator.
+Rollback is **not** clean, and the design said this had to be verified rather
+than assumed. Verified 2026-10-09: it does not hold. `connectivity.Decode`
+refuses an unknown field by design — two encodings of one fact would carry two
+digests, and the digest is the identity the aggregate deduplicates on — so the
+previous release's decoder, given a fact written by this one, answers
+`connectivity fact encoding is invalid: json: unknown field "missing"`. On the
+archive's read path such a record becomes `ErrInvalidField`.
+
+So after this change is installed, records carrying the fourth quantity are
+unreadable to the previous binary. They are not lost: they stay on disk and are
+readable again on rolling forward, and the cross-domain publication path is
+untouched because `scoped_routes` is root-owned and the user daemon never emits
+it.
+
+The alternative was a fact schema version — `hexroute.connectivity-fact.v2` —
+so the refusal would name a version rather than a field. It is not taken, for
+two reasons. It would touch every reader keyed on the schema, for an
+incompatibility that exists either way. And it would make the refusal *less*
+informative: `unknown field "missing"` says what and why, where `unknown
+schema` says only that the two disagree.
 
 ## Open Questions
 
