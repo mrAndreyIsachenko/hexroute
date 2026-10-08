@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/routeplace"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
 )
 
@@ -268,5 +269,70 @@ func TestBuildRejectsTwilightTUNAsUpstreamCarrier(t *testing.T) {
 	_, err := Build(input)
 	if !errors.Is(err, safety.ErrIngressSelfRoute) {
 		t.Fatalf("Build() error = %v, want %v", err, safety.ErrIngressSelfRoute)
+	}
+}
+
+// The plan and the scoped-routes fact read the same states, so they cannot
+// disagree about what the host is doing. This holds the correspondence: every
+// state the decision calls conflicting or missing has an operation, and every
+// state it calls installed or unasked has none.
+func TestThePlanAndTheDecisionAgreeStateForState(t *testing.T) {
+	// testInput already spreads the roles, and one target is moved to a link
+	// its role does not ask for and another removed outright, so the fixture
+	// produces installed, conflicting, missing and unasked states together.
+	input := testInput()
+	ingress := netip.MustParseAddr("192.0.2.20")
+	input.Current[ingress] = ObservedRoute{
+		Destination: ingress,
+		Interface:   input.TUN.Interface,
+	}
+	delete(input.Current, netip.MustParseAddr("198.51.100.11"))
+
+	decisions, err := routeplace.Decide(input)
+	if err != nil {
+		t.Fatalf("Decide: %v", err)
+	}
+	plan, err := Build(input)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	proposed := map[string]Operation{}
+	for _, operation := range plan.Operations {
+		proposed[operation.Target] = operation
+	}
+
+	counted := map[routeplace.State]int{}
+	for _, decision := range decisions {
+		counted[decision.State]++
+		operation, has := proposed[decision.Target.Name]
+		switch decision.State {
+		case routeplace.StateInstalled, routeplace.StateUnasked:
+			if has {
+				t.Fatalf("%s is %q and the plan proposes %q",
+					decision.Target.Name, decision.State, operation.Kind)
+			}
+		case routeplace.StateConflicting, routeplace.StateMissing:
+			if !has {
+				t.Fatalf("%s is %q and the plan proposes nothing",
+					decision.Target.Name, decision.State)
+			}
+			if operation.Kind != OperationEnsureHostRoute {
+				t.Fatalf("%s is %q and the plan proposes %q",
+					decision.Target.Name, decision.State, operation.Kind)
+			}
+		case routeplace.StateUnwanted:
+			if !has || operation.Kind != OperationRemoveOwnedHostRoute {
+				t.Fatalf("%s is unwanted and the plan proposes %v", decision.Target.Name, operation.Kind)
+			}
+		}
+	}
+	// A fixture that produced only one state would pass this by having nothing
+	// to compare.
+	if len(counted) < 3 {
+		t.Fatalf("the fixture produced %d states, which proves little: %v", len(counted), counted)
+	}
+	if len(plan.Operations) != len(proposed) {
+		t.Fatalf("two operations named one target")
 	}
 }

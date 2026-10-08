@@ -29,17 +29,32 @@ interface; explaining `open_gaps`.
 
 ## Decisions
 
-### The counts come from the plan, not from a second rule
+### The rule is exported, and the read model applies it to the same evidence
 
-The fact is derived from the plan's operations, by reason. `desiredPath` stays
-the only statement of where a route belongs, and the collector counts its
-output.
+This was decided twice. The first decision was to derive the fact from the
+plan's operations by reason, so the collector would count the planner's output
+and never hold the rule.
 
-The alternative is to give the collector the targets and the links and let it
-decide — rejected. That is a second statement of the rule, and two statements of
-a rule drifting apart is the defect this repository has now paid for twice: once
-in the configuration the repository did not record, once in the health a label
-did not match.
+`Evidence` forbids it, in its own words: *"Nothing here is derived. The daemon's
+own conclusions stay with the daemon; this is what it saw before drawing them,
+so the read model reaches its own conclusions from the same evidence rather than
+from a second look at the host."* A plan verdict is the daemon's conclusion, and
+carrying it to the read model is the one thing that type exists to prevent.
+
+The invariant states the same worry inverted, and resolves it better: the read
+model should reach the judgement itself, from the same readings. Then the rule
+has one statement not because its output is passed around, but because both
+callers **call the same function**. So `desiredPath` is exported, the planner and
+the collector both use it, and `Evidence` gains the configuration the judgement
+needs — the targets with their roles and preferred links — which is
+configuration and not a conclusion. `ConfiguredRoutes` is already there on
+exactly that footing.
+
+Alternatives rejected: a second statement of the role-to-link rule beside the
+collector, which is the defect this repository has paid for twice, once in the
+configuration it did not record and once in the health a label did not match;
+and passing the plan or a count of it, which the type forbids for a reason that
+survives this change.
 
 ### `configured` keeps its meaning and `ready` stops depending on it
 
@@ -101,3 +116,9 @@ validator.
 - Whether `connectivity-watch.json`'s aggregate needs anything beyond this. It
   reports `degraded` on this component alone, so it should follow; if it does
   not, that is its own reading and not a reason to change this fact.
+- Whether exporting the rule should carry the counting with it —
+  `routeplan.Placement(targets, input, observed)` returning the three
+  quantities — or only the per-target decision, leaving the counting to the
+  collector. The first keeps the arithmetic beside the rule; the second keeps
+  `routeplan` free of a shape only the read model wants. Answered when the
+  function is written, and it changes no requirement either way.

@@ -3,6 +3,7 @@ package connectivitycollect
 import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/connectivity"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
+	"github.com/mrAndreyIsachenko/hexroute/internal/routeplace"
 )
 
 // The mappers below are pure functions from an observation the root daemon
@@ -95,47 +96,43 @@ func MapDefaultPath(
 
 // MapScopedRoutes counts how many of the configured scoped routes are present
 // on the interface policy expects, and how many landed somewhere else.
-func MapScopedRoutes(
-	configured uint16,
-	routes []observe.RouteObservation,
-	expectedInterface string,
-	err error,
-) Observation {
+// MapScopedRoutes describes the scoped routes against what the configuration
+// asks of them.
+//
+// It is given a judgement the read model reached by calling the one rule that
+// decides where a route belongs, rather than comparing every route against a
+// single interface. Doing the latter counted a route correctly on another link
+// as a conflict, and made ready unreachable for any configuration whose roles
+// span more than one link: read 2026-10-08, 14 of 21 conflicting and all 14
+// where their role asks them to be.
+func MapScopedRoutes(placement routeplace.Placement, err error) Observation {
 	observation := Observation{Component: connectivity.ComponentScopedRoutes}
-	payload := connectivity.ScopedRoutesPayload{Configured: configured}
+	payload := connectivity.ScopedRoutesPayload{Configured: placement.Configured}
 	if err != nil {
+		// Nothing was judged. A count of zero here would read as "nothing
+		// diverges", which is the opposite of "nothing was measured".
 		observation.Lifecycle = connectivity.LifecycleUnknown
 		observation.Reason = connectivity.ReasonProbeFailed
 		observation.Payload = connectivity.Payload{ScopedRoutes: &payload}
 		return observation
 	}
-	if configured == 0 {
+	if placement.Configured == 0 {
 		observation.Lifecycle = connectivity.LifecycleNotApplicable
 		observation.Reason = connectivity.ReasonNotConfigured
 		observation.Payload = connectivity.Payload{ScopedRoutes: &payload}
 		return observation
 	}
-	for _, route := range routes {
-		switch {
-		case route.Interface == "":
-			continue
-		case expectedInterface != "" && route.Interface != expectedInterface:
-			payload.Conflicting++
-		default:
-			payload.Installed++
-		}
-	}
-	if payload.Installed > configured {
-		payload.Installed = configured
-	}
-	if payload.Conflicting > configured {
-		payload.Conflicting = configured
-	}
+	payload.Installed = placement.Installed
+	payload.Conflicting = placement.Conflicting
+	payload.Missing = placement.Missing
 	switch {
-	case payload.Installed == configured && payload.Conflicting == 0:
+	// Ready does not require every declared route to be present: the
+	// configuration asks for none of the fallback routes while normal Codex is
+	// reachable, and a condition requiring them could never hold.
+	case placement.Conflicting == 0 && placement.Missing == 0:
 		observation.Lifecycle = connectivity.LifecycleReady
 		observation.Reason = connectivity.ReasonProbeSucceeded
-	case payload.Installed == 0:
+	case placement.Installed == 0:
 		observation.Lifecycle = connectivity.LifecycleFailed
 		observation.Reason = connectivity.ReasonProbeFailed
 	default:

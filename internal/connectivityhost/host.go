@@ -36,6 +36,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policyclock"
+	"github.com/mrAndreyIsachenko/hexroute/internal/routeplace"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
 )
 
@@ -73,12 +74,24 @@ type Evidence struct {
 	RouteError       error
 	ConfiguredRoutes uint16
 
+	// Routing is the configuration and the readings this cycle assembled for
+	// the rule that decides where a route belongs — the targets with their
+	// roles and preferred links, the links themselves, the routes the host has,
+	// and the two Codex probe results. It is not a conclusion: the read model
+	// calls routeplace.Place on it and reaches its own, which is what this type
+	// requires of it. ConfiguredRoutes is configuration on the same footing.
+	Routing routeplace.Input
+
 	Readiness      []observe.ReadinessObservation
 	ReadinessError error
 }
 
 // ErrStore reports that the read model could not be opened.
 var ErrStore = errors.New("connectivity read model store unavailable")
+
+// ErrNotJudged is a cycle that did not get far enough to be judged against its
+// configuration. It is distinct from a judgement finding nothing wrong.
+var ErrNotJudged = errors.New("connectivity read model: the cycle reached no judgement")
 
 // readModelClock is the read model's view of time.
 //
@@ -517,6 +530,25 @@ func (reader *Reader) detectSleep() *connectivityreduce.Wake {
 const sleepFloor = 60 * time.Second
 
 // facts maps one cycle's evidence onto the components this daemon owns.
+// placement judges the host's routes by the one rule that decides where each
+// belongs. The judgement is the read model's own, reached from the cycle's
+// evidence rather than inherited from the cycle's plan.
+//
+// A cycle that failed before it could assemble the inputs leaves them zero,
+// which is a configuration declaring nothing rather than a host with nothing
+// diverging. That is reported as a failure to judge, not as a clean result.
+func (reader *Reader) placement(
+	observed Evidence,
+) (routeplace.Placement, error) {
+	if observed.RouteError != nil {
+		return routeplace.Placement{}, observed.RouteError
+	}
+	if !observed.Reached {
+		return routeplace.Placement{}, ErrNotJudged
+	}
+	return routeplace.Place(observed.Routing)
+}
+
 func (reader *Reader) facts(
 	observed Evidence,
 ) ([]connectivity.Fact, error) {
@@ -526,8 +558,7 @@ func (reader *Reader) facts(
 		connectivity.ComponentDefaultPath: connectivitycollect.MapDefaultPath(
 			observed.Physical, observed.TUNs, observed.TUNError),
 		connectivity.ComponentScopedRoutes: connectivitycollect.MapScopedRoutes(
-			observed.ConfiguredRoutes, observed.Routes,
-			observed.ManagedTUN.Name, observed.RouteError),
+			reader.placement(observed)),
 		connectivity.ComponentTransports: connectivitycollect.MapTransports(
 			1, observed.Process, observed.ProcessError),
 		connectivity.ComponentRelays: connectivitycollect.MapRelays(
