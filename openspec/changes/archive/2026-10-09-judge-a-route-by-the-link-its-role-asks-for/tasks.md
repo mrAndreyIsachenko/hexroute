@@ -35,13 +35,31 @@
 
 ## 2. The quantity
 
-- [ ] 2.1 Add `missing` to the payload and narrow `conflicting` to a route on the wrong link; verified by a test over a plan holding one of each.
+- [x] 2.1 Add `missing` to the payload and narrow `conflicting` to a route on the wrong link; verified by a test over a plan holding one of each.
 
-- [ ] 2.2 Keep `configured` meaning the routes the configuration declares; verified by a test that it is unchanged while the other three move.
+      `ScopedRoutesPayload` carries four quantities. `TestAbsentIsCountedApartFromMisplaced`
+      holds one of each at once: one asked for and on the wrong link, one asked
+      for and where it belongs, seven asked for and absent.
 
-- [ ] 2.3 Count a route the configuration does not ask for as neither present nor diverging; verified by a test with twelve such routes and a payload that counts none of them.
+- [x] 2.2 Keep `configured` meaning the routes the configuration declares; verified by a test that it is unchanged while the other three move.
 
-- [ ] 2.4 Count a route pending withdrawal as conflicting; verified by a test over `remove_owned_host_route`.
+      Every test in `internal/routeplace` asserts `Configured` is 21 across
+      placements with installed 9/7/1/0, so a reader comparing the quantity
+      across this change is handed no redefinition. The mapper's table asserts
+      the payload's `configured` equals the placement's in all seven cases.
+
+- [x] 2.3 Count a route the configuration does not ask for as neither present nor diverging; verified by a test with twelve such routes and a payload that counts none of them.
+
+      `TestARouteAskedForNowhereIsCountedAsNeither`: twelve fallback routes
+      present on the host while normal Codex is reachable, and none of the three
+      judged quantities counts one of them.
+
+- [x] 2.4 Count a route pending withdrawal as conflicting; verified by a test over a route this runtime owns and the configuration no longer asks for.
+
+      `TestAnUnwantedOwnedRouteIsCountedAsConflicting`. The other eleven
+      fallback routes in the same fixture are not ours and are not counted,
+      which is what separates "present and unwanted" from "present and none of
+      our business".
 
       Reasoned rather than measured: it does not occur on this machine. The live
       plan holds two operations, both `ensure_host_route` with `wrong_path`, and
@@ -50,11 +68,27 @@
 
 ## 3. Ready is reachable
 
-- [ ] 3.1 Make the ready condition `conflicting == 0 && missing == 0`; verified by a test over a configuration whose roles span three links and whose routes are all where they belong.
+- [x] 3.1 Make the ready condition `conflicting == 0 && missing == 0`; verified by a test over a configuration whose roles span three links and whose routes are all where they belong.
 
-- [ ] 3.2 Prove the live arrangement still reads degraded, for two routes and not fourteen; verified by a test built from this machine's role counts.
+      `TestReadyIsReachableWhenEveryAskedRouteIsWhereItBelongs`: nine routes
+      across the physical interface, the upstream VPN and the tunnel, twelve
+      asked for nowhere, and the placement is installed 9 with nothing else. The
+      mapper's table carries the same shape as "ready while most routes are
+      asked for nowhere", which the old condition could never reach.
 
-- [ ] 3.3 Report `unknown` rather than a count of zero when the cycle reached no plan; verified by a test over a cycle that failed before planning.
+- [x] 3.2 Prove the live arrangement still reads degraded, for two routes and not fourteen; verified by a test built from this machine's role counts.
+
+      `TestTheLiveArrangementCountsTwoConflictsAndNotFourteen`, over the
+      machine's shape with the two ingress routes on each other's links and the
+      twelve fallback routes present. Conflicting 2, installed 7, missing 0.
+      Confirmed on the machine in 7.3 to the same three numbers.
+
+- [x] 3.3 Report `unknown` rather than a count of zero when the cycle reached no plan; verified by a test over a cycle that failed before planning.
+
+      `Reader.placement` returns `ErrNotJudged` when the cycle never reached its
+      inputs, and the mapper's table asserts that an unjudged cycle reads
+      `unknown` with all three judged quantities absent — "nothing was measured"
+      rather than "nothing diverges".
 
       A count of zero would read as "nothing diverges", which is the opposite of
       "nothing was measured".
@@ -179,7 +213,18 @@
 
 ## 7. Close
 
-- [ ] 7.1 Run the full gate and report any gate that did not run and why; verified by the gate's exit status, not by reading its output.
+- [x] 7.1 Run the full gate and report any gate that did not run and why; verified by the gate's exit status, not by reading its output.
+
+      `make check` returned 0.
+
+      Four gates did not run and none is applicable to this diff, which touches
+      `internal/routeplace`, `internal/routeplan`, the collector, the read
+      model, the payload, one document and one roles gate: `postgres-test`,
+      `container-build` and `container-test`, `terraform-test` and
+      `terraform-state-test`. The `policy-qualification` commands did run for
+      7.3's install and reported complete on 2026-10-05; nothing in this change
+      touches launchd, and the plist was not reinstalled with a changed
+      argument.
 
 - [x] 7.2 Prove the rollback: the previous binary reads a payload carrying the new field; verified by running it against one, since the payload has a validator and this cannot be assumed.
 
@@ -205,8 +250,76 @@
       including that it would make the refusal less informative than the field
       name already is.
 
-- [ ] 7.3 Read the fact on the machine after an install; verified by a reading that gives all four quantities and the lifecycle.
+- [x] 7.3 Read the fact on the machine after an install; verified by a reading that gives all four quantities and the lifecycle.
 
-- [ ] 7.4 Sync the delta into the baseline, validate and archive; verified by the drift gate.
+      Installed 2026-10-08T22:43Z, the live configuration left in place. Read at
+      22:47:14Z:
 
-- [ ] 7.5 Record what this leaves open.
+      ```
+      scoped_routes  degraded  probe_failed  {configured: 21, installed: 7, conflicting: 2, missing: 0}
+      ```
+
+      Two instead of fourteen, and **still degraded**. That is the point: the
+      two are the ingress routes standing on each other's links, which is the
+      tunnel owner's arrangement. A `ready` here would have meant the
+      measurement was switched off rather than fixed, which 3.2 demanded be
+      shown in advance. The other six components all read `ready`.
+
+      One thing changed that this change's plan had not named, and chasing it
+      cost three wrong guesses. `connectivity-watch.json` moved from
+      `resume: latest, reason: none` to `recovered_ancestor, record_invalid`.
+
+      Not a strict decoder refusing an unknown field: the old record carries
+      *fewer* fields and decodes. Not the size bound: the record is 80 KiB
+      against 192 KiB. Not the new sum rule: a scan of all 5650 stored
+      checkpoints found it refuses none of them.
+
+      It is the digest. `Checkpoint.Validate` recomputes `Snapshot.Digest()` and
+      compares it with the stored one, and the digest attests to the
+      serialization — so a new payload field invalidates every stored record.
+      The read model walked back, proved nothing within its depth, recorded a
+      `lineage_break` and resumed from a recovered ancestor. The designed
+      bounded recovery, which published itself; the spool and the archive are
+      untouched.
+
+      5650 records, 5648 of the old shape. design.md now names this in the
+      migration plan, because it reads as corruption and is not.
+
+- [x] 7.4 Sync the delta into the baseline, validate and archive; verified by the drift gate.
+
+      One requirement added to `observable-connectivity-state-machine`, in the
+      baseline. Archived as `2026-10-09-judge-a-route-by-the-link-its-role-asks-for`.
+
+      Archived once with nine tasks still unticked, which is the thing I had
+      said I would not do. The work behind all nine was done and tested; the
+      ticks and their evidence were missing, and are written above.
+
+- [x] 7.5 Record what this leaves open.
+
+      **20 of 31 payload fields are explained in neither document.**
+      `has_carrier`, `link_up`, `path_class`, `reachable`, `sessions`,
+      `selected_class`, `resolver_class` and thirteen more. The documentation
+      gate does not check payload field names, so nothing holds them. Extending
+      it needs care: the check is a bare backtick match and vocabularies
+      collide — `missing` exists as a diff reason, and a payload field of that
+      name passes for the wrong reason. Its own change.
+
+      **A payload field voids every stored checkpoint.** Established here and
+      recorded in design.md. Whether the read model should carry a payload
+      shape version, so the refusal names a shape rather than a digest, is
+      untouched. The recovery works and publishes itself, so this is about what
+      a reader is told, not about correctness.
+
+      **`open_gaps` read 0 on 2026-10-05 and 2 from 2026-10-08.** Unexplained
+      before this change and unexplained by it. Recorded in the proposal so it
+      is not mistaken for a consequence.
+
+      **The two ingress routes stay where they are.** They are the tunnel
+      owner's arrangement, read 2026-09-25. Correcting them needs the authority
+      an earlier change established and a decision to use it.
+
+      **Carried, untouched:** nine of the ten causes a root cycle can name have
+      not been seen on this machine; HEX-11's remaining question; HEX-19;
+      `readmodel/checkpoints` bounded by nothing — 5650 records now, up from
+      4290 on 2026-10-05; and there is still no path from a host event to an
+      alert.

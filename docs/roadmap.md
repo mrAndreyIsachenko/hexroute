@@ -77,18 +77,47 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`judge-a-route-by-the-link-its-role-asks-for` is open. The `scoped_routes` fact
-counts a route as conflicting whenever it is not on the managed tunnel, while
-the configuration assigns routes to three links by role and two of its roles
-must never be on the tunnel. Read 2026-10-08T21:25:13Z: `configured 21,
-conflicting 14, installed 7`, with every other component `ready`. The 7 are
-exactly the routes whose role asks for the tunnel and the 14 exactly those whose
-role asks for something else, so the quantity measures how the roles are
-distributed and is published under a name that reads as a fault. `ready` requires
-`installed == configured`, so a configuration with any non-tunnel role can never
-reach it: the component has reported `degraded` in every cycle it has run. The
-change judges a route against the link its own role asks for. It moves no
-route.
+None.
+
+`judge-a-route-by-the-link-its-role-asks-for` closed on 2026-10-09. The
+`scoped_routes` fact counted a route as conflicting whenever it was not on the
+managed tunnel, while the configuration assigns routes to three links by role
+and two of its roles must never be on the tunnel. Read 2026-10-08:
+`conflicting` was 14 of 21 and all 14 were exactly where their role asks them to
+be. `ready` required all 21 on one link, so the component had read `degraded` in
+every cycle it ever ran, including the cycles the runtime reported as sound.
+
+The rule that decides where a route belongs now lives in
+`internal/routeplace`, below the line the boundary guard draws: `routeplan` can
+change the host and nothing holding a reconciliation proposal may import one,
+but deciding where a route belongs is not the authority to put it there. The
+planner and the read model read the same decision, so the plan and the fact
+cannot disagree, and the planner's whole existing suite passed unchanged.
+
+The payload gained a fourth quantity. `missing` is asked for and absent;
+`conflicting` narrowed to asked for and somewhere else, or present and asked for
+nowhere; a route the configuration asks for nowhere is counted as neither; and
+`ready` became reachable for a configuration spanning several links. Read on the
+machine after the install: `degraded` with `configured 21, installed 7,
+conflicting 2, missing 0` — two instead of fourteen, and still degraded, which
+is the point. The two are the tunnel owner's arrangement and not this runtime's
+to clear.
+
+Two costs were measured rather than assumed. The previous binary cannot read a
+fact carrying the new field — unknown fields are refused so one fact has one
+digest — so records written after this change are unreadable on rollback and
+readable again on rolling forward. And a payload field voids every stored
+checkpoint, because `Checkpoint.Validate` recomputes the snapshot digest from
+the decoded snapshot: 5650 records, 5648 of the old shape, and the read model
+recorded a lineage break and resumed from a recovered ancestor. Three wrong
+guesses preceded that answer, and the design now names it so the next reader
+does not read it as corruption.
+
+Fifteen mutations, all killed. The task claiming the documentation gate would
+verify the new quantities was corrected rather than weakened: that gate does not
+check payload field names, 20 of 31 fields are explained in neither document,
+and a naive extension would have passed `missing` for the wrong reason because
+it already exists as a diff reason.
 
 `record-the-shape-a-runtime-reads` closed on 2026-10-09. The repository held no
 record of the configuration its daemons run on. The root example carried 21 of
