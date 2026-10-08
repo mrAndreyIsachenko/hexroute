@@ -77,17 +77,42 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`record-the-shape-a-runtime-reads` is open. The repository holds no record of
-the configuration its daemons run on. Measured 2026-10-08: the public example
-carries 46 settings against the machine's 112, with no `tunnel_supervision` and
-no `policy_control` at all, so ten settings — the whole of the tunnel executor
-`hold-the-tunnel-under-a-grant` built — exist only on one machine. The working
-copy had fallen behind the same way, and an install from it would have removed
-them. The comparison that would have said so exists and is already required, but
-it is reached only when an install is attempted and nothing requires the example
-to keep up. The change makes the example the record of the shape and adds a gate
-that refuses a setting the decoder accepts and the example omits. Values stay
-out: the gate asserts keys and placeholders, never a value.
+None.
+
+`record-the-shape-a-runtime-reads` closed on 2026-10-09. The repository held no
+record of the configuration its daemons run on. The root example carried 21 of
+the 57 settings its decoder accepts and the user example 23 of 44, neither
+carried `policy_control` and root's carried no `tunnel_supervision`, so the
+whole tunnel executor built by `hold-the-tunnel-under-a-grant` was recorded
+nowhere but on one machine. The working copy had drifted the same way and an
+install from it would have removed ten settings.
+
+The comparison that would have said so already existed and was already
+required — `--check --config X --installed Y` refuses a candidate that drops a
+setting and names it — but it is reached only once an install is under way, and
+nothing required the example to keep up. So each example is now the record of
+its decoder's shape, and `internal/configshapeguard` takes the settings from the
+wire types by reflection and refuses an example that omits one or carries one
+the decoder does not accept. The only thing written down is three type names,
+one per runtime: a list of settings beside the decoder is what was not updated.
+
+Trust material is recorded as an empty value. The first design gave the pinned
+key a zero value with its own true digest, which the decoder accepts because it
+checks one against the other, and `repositoryguard` refused the file: those
+settings must be empty in a tracked artifact whatever the value would be. The
+example holds the key and nothing else, and the four gates needing a loadable
+copy supply the material themselves.
+
+A complete example broke the gates that had relied on the old one's gaps.
+`install_reduction_guard_test.sh` built a reduced candidate by using the example
+as it stood; its fixtures now remove what they mean to remove. Twelve mutations,
+all killed; both survivors of the first run were untested behaviour, one of them
+an expression unreachable from its own producer.
+
+What it does not do is run the comparison. A gate cannot read a root-only file,
+so the reading still has to be asked for — but it now has a record to be
+compared against, and a setting can no longer enter a runtime without entering
+the repository.
 
 `tell-pending-work-from-a-fault` closed on 2026-10-05. The root daemon had
 reported `DEGRADED` for seven unbroken hours with nothing wrong: zero failures,

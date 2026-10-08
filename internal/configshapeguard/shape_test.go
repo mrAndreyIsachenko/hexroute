@@ -347,3 +347,54 @@ func replaceValues(node any) any {
 		return node
 	}
 }
+
+// A field the decoder is told to ignore is not a setting. No wire type has one
+// today, which is why a mutation that counted them survived the first run.
+type withIgnored struct {
+	Kept    string `json:"kept"`
+	Ignored string `json:"-"`
+	Nested  struct {
+		Also    string `json:"also"`
+		Skipped string `json:"-"`
+	} `json:"nested"`
+}
+
+func TestAFieldTheDecoderIgnoresIsNotASetting(t *testing.T) {
+	settings, err := configshapeguard.Settings(reflect.TypeOf(withIgnored{}))
+	if err != nil {
+		t.Fatalf("Settings: %v", err)
+	}
+	wanted := []string{"kept", "nested", "nested.also"}
+	if len(settings) != len(wanted) {
+		t.Fatalf("settings = %v, wanted %v", settings, wanted)
+	}
+	for index, setting := range wanted {
+		if settings[index] != setting {
+			t.Fatalf("settings = %v, wanted %v", settings, wanted)
+		}
+	}
+	for _, setting := range settings {
+		if strings.Contains(setting, "-") || strings.HasSuffix(setting, ".") {
+			t.Fatalf("an ignored field became a setting: %q", setting)
+		}
+	}
+}
+
+// Compare takes a key with a list index as the path without it. Its own
+// producer never emits one, so nothing else reaches this.
+func TestComparisonTakesAnIndexedKeyAsItsPath(t *testing.T) {
+	settings := []string{"routes", "routes.name", "routes.role"}
+	indexed := []string{"routes", "routes[0].name", "routes[1].name", "routes[0].role"}
+	missing, extra := configshapeguard.Compare(settings, indexed)
+	if len(missing) != 0 || len(extra) != 0 {
+		t.Fatalf("indexed keys were not taken as their paths: missing=%v extra=%v", missing, extra)
+	}
+	// And a genuinely unknown indexed key is still reported, as its path.
+	missing, extra = configshapeguard.Compare(settings, append(indexed, "routes[0].nothing"))
+	if len(missing) != 0 {
+		t.Fatalf("missing = %v", missing)
+	}
+	if len(extra) != 1 || extra[0] != "routes.nothing" {
+		t.Fatalf("extra = %v", extra)
+	}
+}
