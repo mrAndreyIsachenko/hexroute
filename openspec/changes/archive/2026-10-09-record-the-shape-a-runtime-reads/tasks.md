@@ -64,19 +64,36 @@
       two files are byte-identical. The previous version is kept beside the
       backup with its digest recorded.
 
-- [ ] 2.2 Bring the root domain's working copy up to the machine, under the same refusal; verified by a byte comparison after it.
+- [x] 2.2 Bring the root domain's working copy up to the machine, under the same refusal; verified by a byte comparison after it.
 
-      This one needs a privileged read, so it is handed to the operator as a
+      This one needs a privileged read, so it was handed to the operator as a
       command. The comparison it runs first is the same shape as 2.1's: it
       refuses rather than overwrites when the working copy carries a setting the
       machine does not.
 
-- [ ] 2.3 Record that this is a reading and not a guarantee; verified by the task saying what cannot be held true.
+      Carried forward 2026-10-09. The working copy held 112 keys against the
+      machine's 122 and nothing of its own, so the copy lost nothing: ten keys
+      gained, none lost, and the two files are byte-identical afterwards. The
+      ten are `tunnel_supervision.execution` entire and a second trusted
+      compiler digest. `wake_threshold_seconds` went from 90 to 180, which is
+      the machine's value and the one the tunnel soak ran under; the working
+      copy's 90 was never anything but drift.
+
+      Checked independently of the script's own report: the file is 0600 and
+      owned by the operator, the execution block carries its nine settings, and
+      the previous version is beside it as `root-observe.json.before-carry-forward`.
+
+- [x] 2.3 Record that this is a reading and not a guarantee; verified by the task saying what cannot be held true.
 
       `private/` is not in the repository, so nothing in this change can keep
       these two files in step with the machine. What the change can hold is that
       the *shape* is recorded, which is what makes a divergence visible without
       reading the host.
+
+      Nor does it stop the drift recurring: the comparison still has to be run.
+      What changed is that running it now has a record to compare against, and
+      that a setting cannot enter a runtime without entering the repository —
+      which is the half that had no gate at all.
 
 ## 3. The record
 
@@ -159,16 +176,96 @@
 
 ## 6. Mutation discipline
 
-- [ ] 6.1 Mutate the walk and both refusals; verified by every survivor closed by a test or recorded with the reason it was left.
+- [x] 6.1 Mutate the walk and both refusals; verified by every survivor closed by a test or recorded with the reason it was left.
 
-      A mutation that does not compile is rewritten, not counted.
+      A mutation that does not compile is rewritten, not counted. Twelve
+      mutations, none uncompilable: reaching through pointers and through lists,
+      descending into a nested struct, recording the block as well as its
+      leaves, skipping an unresolvable field, allowing a cycle, honouring a
+      `json:"-"` field, accepting an empty list, descending into an object, and
+      three over the comparison.
+
+      First run: 10 killed, 2 survived. Both survivors were untested behaviour
+      rather than wrong behaviour:
+
+      - **`json:"-"` was never exercised.** No wire type has such a field today,
+        so counting one as a setting changed nothing. Closed by
+        `TestAFieldTheDecoderIgnoresIsNotASetting` over a local type with one at
+        two depths.
+      - **The list-index stripping in `Compare` is unreachable from its own
+        producer.** `DocumentKeys` files every element of a list under the same
+        path and emits no index, so the expression never had anything to strip.
+        It is kept, not deleted: `Compare` is exported, and one that reported
+        every indexed path as unknown would be a worse trap than a line its
+        producer never needs. The contract is now in the doc comment and held by
+        `TestComparisonTakesAnIndexedKeyAsItsPath`.
+
+      Second run: 12 killed, 0 survived.
 
 ## 7. Close
 
-- [ ] 7.1 Run the full gate and report any gate that did not run and why; verified by the gate's exit status, not by reading its output.
+- [x] 7.1 Run the full gate and report any gate that did not run and why; verified by the gate's exit status, not by reading its output.
 
-- [ ] 7.2 Prove no live value entered the repository; verified by `secret-test` and by reading the two examples by hand.
+      `make check` returned 0.
+
+      Four gates did not run and none is applicable to this diff, which touches
+      two example configurations, two documents, one new guard package and five
+      tests: `postgres-test` (no migration or persistence change),
+      `container-build` and `container-test` (no Dockerfile or ingest change),
+      `terraform-test` and `terraform-state-test` (no module or fixture change),
+      and the `policy-qualification` commands (nothing was installed and no
+      runtime was restarted by this change). Docker and the Terraform CLI are
+      both present, so the first three were skipped for scope, not
+      availability.
+
+- [x] 7.2 Prove no live value entered the repository; verified by `secret-test` and by reading the two examples by hand.
+
+      `secretguard` and `repositoryguard` both pass, and the gate itself
+      compares names only, which `TestTheComparisonIgnoresEveryValue` holds.
+
+      Read by hand, not only by gate. Addresses are RFC 5737 documentation
+      ranges and `.invalid` names; `physical_interface` is `en7` where this
+      machine runs `en0`; the payload probe points at `example.invalid` where
+      the machine points at a real host; the target key is an all-zero UUID;
+      `static_sha256` and the compiler digest are all-zero hex; the pinned key,
+      its fingerprint and `current_payload_sha256` are empty. The user domain's
+      recovery block is synthetic throughout, which its own guard requires of
+      `profile_id`.
+
+      One thing in it is **not** a placeholder, and saying so is the point of
+      reading by hand: the paths under `tunnel_supervision.execution` are the
+      real installed paths. They are the same on every install, are already
+      published in the documents and in the launchd plist, and name no host — so
+      they are not deployment state. But they are real, and a reader should know
+      that rather than assume everything here is invented.
 
 - [ ] 7.3 Sync the delta into the baseline, validate and archive; verified by the drift gate.
 
-- [ ] 7.4 Record what this leaves open.
+- [x] 7.4 Record what this leaves open.
+
+      **The comparison still has to be run.** Nothing here runs it: a gate
+      cannot read the installed configuration, which only root may read, and
+      `make check` runs as the operator. What changed is that the comparison now
+      has a record to compare against, and that a setting cannot enter a runtime
+      without entering the repository. Whether the reading should happen on a
+      schedule, as the weekly archive review does, is its own question and was
+      not answered here.
+
+      **The private files are still only on this machine.** Both are carried
+      forward as of 2026-10-09 and nothing holds them there.
+
+      **Carried from the previous change, unchanged:** the read model's
+      `scoped_routes` component reports `degraded` in every cycle including the
+      sound ones, which is the same conflation one level down; nine of the ten
+      causes a root cycle can name have not been seen on this machine; HEX-11's
+      remaining question.
+
+      **Found while reading the machine's state, not yet proposed:**
+      `state/connectivity/readmodel/checkpoints` is bounded by nothing — 4290
+      files and 336 MiB as of 2026-10-05, oldest 2026-08-31 — while both spools
+      are held at 100 MiB each, so eviction runs on the spools and not on the
+      checkpoints. That is distinct from HEX-19, which is the cost of eviction
+      rather than its absence.
+
+      **Older debts, untouched:** HEX-19, and there is still no path from a host
+      event to an alert.

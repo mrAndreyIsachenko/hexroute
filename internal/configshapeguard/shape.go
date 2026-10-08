@@ -149,6 +149,13 @@ func keys(node any, prefix string, found map[string]struct{}) error {
 // Compare answers what the example omits and what it carries beyond the type.
 // It compares names only and never a value, so it cannot become a reason to
 // write a live one into the repository.
+//
+// A key may arrive with a list index — `routes[0].name` — and is compared as
+// the path without it, because one element stands for the list's shape.
+// DocumentKeys does not produce indices, so this matters only to a caller that
+// collected its keys another way; an exported comparison that silently reported
+// every indexed path as unknown would be worse than a line its own producer
+// never needs.
 func Compare(settings, documentKeys []string) (missing, extra []string) {
 	accepted := map[string]struct{}{}
 	for _, setting := range settings {
