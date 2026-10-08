@@ -77,6 +77,37 @@ other is the most likely mistake here. `observed: ready` with `state: stale`
 does not mean the component is ready; it means it was, and nothing has said so
 recently enough to still count.
 
+### The scoped routes payload
+
+| Field | What it says |
+| --- | --- |
+| `configured` | every route the configuration declares, whether or not it asks for one under the present conditions |
+| `installed` | asked for, and on the link its role asks for |
+| `conflicting` | asked for and somewhere else, or present and asked for nowhere |
+| `missing` | asked for and not there |
+
+The three judged quantities count only the routes the configuration asks for,
+so `configured` minus the three is the number it asks for nowhere — twelve of
+twenty-one on the host this was written from, because it asks for no fallback
+route while normal Codex is reachable.
+
+`ready` is `conflicting == 0 && missing == 0`. It does not require every
+declared route to be installed, because a configuration that asks for nothing
+of a role could never satisfy that.
+
+**This changed on 2026-10-09, and a reader comparing across that date is
+comparing two different measurements.** Before it, `conflicting` meant "not on
+the managed tunnel" and there was no `missing`. The configuration assigns routes
+to three links by role and two of its roles must never be on the tunnel, so
+every route correctly on another link was counted as a conflict: read
+2026-10-08, `conflicting` was 14 of 21 and all 14 were exactly where their role
+asks them to be. `ready` required all 21 on one interface and could not be
+reached, so the component had reported `degraded` in every cycle it ever ran.
+
+A residue of 2 is expected and is not this runtime's to clear: the host's two
+ingress routes stand on each other's links, which is the arrangement the
+runtime that owns the tunnel enforces, read on 2026-09-25 and unchanged since.
+
 ### Component states
 
 | State | What it means |
