@@ -1,85 +1,55 @@
+// Package routeplan turns a decision about where routes belong into the
+// operations that would put them there.
+//
+// Where a route belongs is internal/routeplace's answer, not this package's.
+// This one can change the host, so the boundary guard in
+// internal/connectivityreduce forbids anything holding a reconciliation
+// proposal from importing it — and the read model holds proposals. Both read
+// the decision from routeplace, so the plan and the scoped-routes fact cannot
+// disagree about what the host is doing.
 package routeplan
 
 import (
-	"errors"
-	"fmt"
 	"net/netip"
-	"regexp"
 	"sort"
-	"strings"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/routeplace"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
 )
 
-type Role string
-
-const (
-	RoleIngress       Role = "ingress"
-	RoleCorporate     Role = "corporate"
-	RoleGitLabHTTPS   Role = "gitlab_https"
-	RoleCodexFallback Role = "codex_fallback"
-	// RoleInherited is a destination the previous owner of the tunnel routed
-	// through it, whose purpose is not recorded anywhere.
-	//
-	// Five exist on this machine. They are in the supervisor's environment and
-	// in no repository's history, no variable of its own names them, none
-	// resolves from one, and four of the five are CDN anycast — one service
-	// behind four edge addresses, which cannot be attributed from a host
-	// because that address serves every customer the CDN has.
-	//
-	// The name says what is known and no more. Calling them corporate would
-	// have been a guess written into every record that mentions them, and the
-	// point of carrying them across a handover is that the handover changes who
-	// owns the tunnel and nothing about what it carries.
-	RoleInherited Role = "inherited"
+// The decision's vocabulary, so this package's callers need not name two.
+type (
+	Role                 = routeplace.Role
+	Target               = routeplace.Target
+	Path                 = routeplace.Path
+	ObservedRoute        = routeplace.ObservedRoute
+	CodexState           = routeplace.CodexState
+	Input                = routeplace.Input
+	GitLabSSHObservation = routeplace.GitLabSSHObservation
+	PolicyStatus         = routeplace.PolicyStatus
+	Placement            = routeplace.Placement
 )
 
-type Target struct {
-	Name        string
-	Destination netip.Addr
-	Role        Role
-	Preferred   safety.LinkClass
-}
-
-type Path struct {
-	Link      safety.LinkClass
-	Interface string
-	Gateway   netip.Addr
-}
-
-type ObservedRoute struct {
-	Destination netip.Addr
-	Interface   string
-	Gateway     netip.Addr
-	Owned       bool
-}
-
-type CodexState struct {
-	NormalReady   bool
-	TwilightReady bool
-}
-
-type GitLabSSHObservation struct {
-	BindInterface     string
-	PhysicalInterface string
-}
-
-type PolicyStatus string
-
 const (
-	PolicyUnknown   PolicyStatus = "unknown"
-	PolicyCompliant PolicyStatus = "compliant"
-	PolicyDegraded  PolicyStatus = "degraded"
+	RoleIngress       = routeplace.RoleIngress
+	RoleCorporate     = routeplace.RoleCorporate
+	RoleGitLabHTTPS   = routeplace.RoleGitLabHTTPS
+	RoleCodexFallback = routeplace.RoleCodexFallback
+	RoleInherited     = routeplace.RoleInherited
+
+	PolicyUnknown   = routeplace.PolicyUnknown
+	PolicyCompliant = routeplace.PolicyCompliant
+	PolicyDegraded  = routeplace.PolicyDegraded
 )
 
-type Input struct {
-	Targets   []Target
-	Physical  Path
-	Upstream  *Path
-	TUN       Path
-	Current   map[netip.Addr]ObservedRoute
-	Codex     CodexState
-	GitLabSSH *GitLabSSHObservation
+var (
+	ErrInvalidInput       = routeplace.ErrInvalidInput
+	ErrAmbiguousOwnership = routeplace.ErrAmbiguousOwnership
+)
+
+// EvaluateGitLabSSH is the decision's, re-exported where its one caller is.
+func EvaluateGitLabSSH(observation GitLabSSHObservation) (PolicyStatus, error) {
+	return routeplace.EvaluateGitLabSSH(observation)
 }
 
 type OperationKind string
@@ -113,72 +83,27 @@ type Plan struct {
 	GitLabSSH   PolicyStatus
 }
 
-var (
-	ErrInvalidInput       = errors.New("invalid route planner input")
-	ErrAmbiguousOwnership = errors.New("ambiguous route ownership")
-	targetNamePattern     = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
-	interfaceNamePattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$`)
-)
-
+// Build proposes the operations that would put every route where its role asks
+// for it. It performs none of them.
 func Build(input Input) (Plan, error) {
-	if input.Physical.Link == safety.LinkTwilightTUN ||
-		(input.Physical.Interface != "" && input.Physical.Interface == input.TUN.Interface) {
-		return Plan{}, safety.ErrIngressSelfRoute
-	}
-	if err := validatePath(input.Physical, false); err != nil {
+	decisions, err := routeplace.Decide(input)
+	if err != nil {
 		return Plan{}, err
-	}
-	if err := validatePath(input.TUN, true); err != nil {
-		return Plan{}, err
-	}
-	if input.Upstream != nil {
-		if input.Upstream.Interface == input.TUN.Interface {
-			return Plan{}, safety.ErrIngressSelfRoute
-		}
-		if err := validatePath(*input.Upstream, false); err != nil ||
-			input.Upstream.Link != safety.LinkUpstreamVPN {
-			return Plan{}, ErrInvalidInput
-		}
 	}
 
-	type desiredRoute struct {
-		target Target
-		path   Path
-		active bool
-	}
-	desired := make([]desiredRoute, 0, len(input.Targets))
-	byDestination := make(map[netip.Addr]desiredRoute)
 	safetyPlan := safety.RoutePlan{}
-
-	for _, target := range input.Targets {
-		if err := validateTarget(target); err != nil {
-			return Plan{}, err
+	for _, decision := range decisions {
+		if !decision.Active {
+			continue
 		}
-		path, active, err := desiredPath(target, input)
-		if err != nil {
-			return Plan{}, err
+		safetyRole := safety.RouteScoped
+		if decision.Target.Role == RoleIngress {
+			safetyRole = safety.RouteIngress
 		}
-		candidate := desiredRoute{target: target, path: path, active: active}
-		if _, exists := byDestination[target.Destination]; exists {
-			return Plan{}, fmt.Errorf(
-				"%w: destination=%s",
-				ErrAmbiguousOwnership,
-				target.Destination,
-			)
-		}
-		byDestination[target.Destination] = candidate
-		desired = append(desired, candidate)
-
-		if active {
-			safetyRole := safety.RouteScoped
-			if target.Role == RoleIngress {
-				safetyRole = safety.RouteIngress
-			}
-			safetyPlan.Routes = append(safetyPlan.Routes, safety.Route{
-				Role: safetyRole,
-				Link: path.Link,
-			})
-		}
+		safetyPlan.Routes = append(safetyPlan.Routes, safety.Route{
+			Role: safetyRole,
+			Link: decision.Path.Link,
+		})
 	}
 	if err := safety.ValidateRoutePlan(safetyPlan); err != nil {
 		return Plan{}, err
@@ -195,39 +120,40 @@ func Build(input Input) (Plan, error) {
 		}
 		plan.GitLabSSH = status
 	}
-	for _, route := range desired {
-		current, present := input.Current[route.target.Destination]
-		if !route.active {
-			if route.target.Role == RoleCodexFallback && present && current.Owned {
-				plan.Operations = append(plan.Operations, Operation{
-					Kind:        OperationRemoveOwnedHostRoute,
-					Target:      route.target.Name,
-					Role:        route.target.Role,
-					Destination: route.target.Destination,
-					Reason:      ReasonFallbackRestored,
-				})
-			}
-			continue
-		}
-		if present && routeMatches(current, route.path) {
-			continue
-		}
 
-		reason := ReasonMissingRoute
-		if present {
-			reason = ReasonWrongPath
+	// What to do about a state, and what to call it, is this package's. The
+	// state itself is routeplace's, and the read model counts the same ones.
+	for _, decision := range decisions {
+		switch decision.State {
+		case routeplace.StateUnasked, routeplace.StateInstalled:
+			continue
+		case routeplace.StateUnwanted:
+			plan.Operations = append(plan.Operations, Operation{
+				Kind:        OperationRemoveOwnedHostRoute,
+				Target:      decision.Target.Name,
+				Role:        decision.Target.Role,
+				Destination: decision.Target.Destination,
+				Reason:      ReasonFallbackRestored,
+			})
+		case routeplace.StateConflicting, routeplace.StateMissing:
+			// A fallback route names its own cause either way: the reason it is
+			// wanted is the fallback, not where it happens to be standing.
+			reason := ReasonMissingRoute
+			if decision.Present {
+				reason = ReasonWrongPath
+			}
+			if decision.Target.Role == RoleCodexFallback {
+				reason = ReasonFallbackRequired
+			}
+			plan.Operations = append(plan.Operations, Operation{
+				Kind:        OperationEnsureHostRoute,
+				Target:      decision.Target.Name,
+				Role:        decision.Target.Role,
+				Destination: decision.Target.Destination,
+				Path:        decision.Path,
+				Reason:      reason,
+			})
 		}
-		if route.target.Role == RoleCodexFallback {
-			reason = ReasonFallbackRequired
-		}
-		plan.Operations = append(plan.Operations, Operation{
-			Kind:        OperationEnsureHostRoute,
-			Target:      route.target.Name,
-			Role:        route.target.Role,
-			Destination: route.target.Destination,
-			Path:        route.path,
-			Reason:      reason,
-		})
 	}
 
 	sort.Slice(plan.Operations, func(left, right int) bool {
@@ -239,97 +165,4 @@ func Build(input Input) (Plan, error) {
 		return plan.Operations[left].Target < plan.Operations[right].Target
 	})
 	return plan, nil
-}
-
-func desiredPath(target Target, input Input) (Path, bool, error) {
-	switch target.Role {
-	case RoleIngress:
-		switch target.Preferred {
-		case "", safety.LinkPhysical:
-			return input.Physical, true, nil
-		case safety.LinkUpstreamVPN:
-			if input.Upstream != nil {
-				return *input.Upstream, true, nil
-			}
-			return input.Physical, true, nil
-		case safety.LinkTwilightTUN:
-			return Path{}, false, safety.ErrIngressSelfRoute
-		default:
-			return Path{}, false, ErrInvalidInput
-		}
-	case RoleCorporate, RoleGitLabHTTPS, RoleInherited:
-		return input.TUN, true, nil
-	case RoleCodexFallback:
-		if input.Codex.NormalReady {
-			return Path{}, false, nil
-		}
-		if input.Codex.TwilightReady {
-			return input.TUN, true, nil
-		}
-		return Path{}, false, nil
-	default:
-		return Path{}, false, ErrInvalidInput
-	}
-}
-
-func validateTarget(target Target) error {
-	if !targetNamePattern.MatchString(target.Name) ||
-		!target.Destination.IsValid() ||
-		!target.Destination.Is4() {
-		return ErrInvalidInput
-	}
-	switch target.Role {
-	case RoleIngress:
-		return nil
-	case RoleCorporate, RoleGitLabHTTPS, RoleCodexFallback, RoleInherited:
-		if target.Preferred != "" {
-			return ErrInvalidInput
-		}
-		return nil
-	default:
-		return ErrInvalidInput
-	}
-}
-
-func EvaluateGitLabSSH(observation GitLabSSHObservation) (PolicyStatus, error) {
-	if !interfaceNamePattern.MatchString(observation.PhysicalInterface) ||
-		strings.HasPrefix(observation.PhysicalInterface, "utun") {
-		return PolicyUnknown, ErrInvalidInput
-	}
-	if observation.BindInterface == "" {
-		return PolicyDegraded, nil
-	}
-	if !interfaceNamePattern.MatchString(observation.BindInterface) {
-		return PolicyUnknown, ErrInvalidInput
-	}
-	if observation.BindInterface != observation.PhysicalInterface {
-		return PolicyDegraded, nil
-	}
-	return PolicyCompliant, nil
-}
-
-func validatePath(path Path, tun bool) error {
-	if !interfaceNamePattern.MatchString(path.Interface) {
-		return ErrInvalidInput
-	}
-	if tun {
-		if path.Link != safety.LinkTwilightTUN {
-			return ErrInvalidInput
-		}
-		return nil
-	}
-	if path.Link != safety.LinkPhysical && path.Link != safety.LinkUpstreamVPN {
-		return ErrInvalidInput
-	}
-	if path.Link == safety.LinkPhysical && !path.Gateway.IsValid() {
-		return ErrInvalidInput
-	}
-	return nil
-}
-
-func routeMatches(route ObservedRoute, path Path) bool {
-	if route.Interface != path.Interface {
-		return false
-	}
-	return !path.Gateway.IsValid() || route.Gateway == path.Gateway
 }

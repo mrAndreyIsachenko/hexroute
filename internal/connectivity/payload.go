@@ -133,19 +133,42 @@ func (payload DNSPayload) validate() error {
 	return nil
 }
 
+// ScopedRoutesPayload is how the host's scoped routes stand against what the
+// configuration asks of them.
+//
+// Configured counts every route the configuration declares. The other three
+// count only the routes it asks for under the present conditions, so
+// Configured - Installed - Conflicting - Missing is the number it asks for
+// nowhere — twelve of twenty-one on this host while normal Codex is reachable.
+//
+// Missing is apart from Conflicting because a route the host lacks and a route
+// the host has in the wrong place are different states with different remedies.
+// Until 2026-10-09 there were three quantities and Conflicting meant "not on
+// the managed tunnel", which counted every route correctly on another link: 14
+// of 21, all of them where their role asks them to be.
 type ScopedRoutesPayload struct {
 	Configured  uint16 `json:"configured"`
 	Installed   uint16 `json:"installed"`
 	Conflicting uint16 `json:"conflicting"`
+	Missing     uint16 `json:"missing"`
 }
 
 func (payload ScopedRoutesPayload) validate() error {
 	if payload.Configured > MaxComponentCount ||
 		payload.Installed > MaxComponentCount ||
-		payload.Conflicting > MaxComponentCount {
+		payload.Conflicting > MaxComponentCount ||
+		payload.Missing > MaxComponentCount {
 		return ErrInvalidPayload
 	}
-	if payload.Installed > payload.Configured || payload.Conflicting > payload.Configured {
+	if payload.Installed > payload.Configured ||
+		payload.Conflicting > payload.Configured ||
+		payload.Missing > payload.Configured {
+		return ErrInvalidPayload
+	}
+	// The three judged quantities count routes the configuration asks for, so
+	// together they cannot exceed what it declares.
+	if uint32(payload.Installed)+uint32(payload.Conflicting)+
+		uint32(payload.Missing) > uint32(payload.Configured) {
 		return ErrInvalidPayload
 	}
 	return nil

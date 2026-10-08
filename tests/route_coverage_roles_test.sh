@@ -14,7 +14,10 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-planner=internal/routeplan/planner.go
+# The roles moved to internal/routeplace on 2026-10-09, when deciding where a
+# route belongs was split from the authority to put it there: the read model
+# needs the decision and may not import a package that can change the host.
+planner=internal/routeplace/place.go
 comparison=scripts/ops/tunnel-route-coverage.py
 
 for file in "$planner" "$comparison"; do

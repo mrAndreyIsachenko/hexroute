@@ -61,9 +61,60 @@
 
 ## 4. Carrying the plan
 
-- [ ] 4.1 Carry the plan's per-route verdicts to the read model instead of two booleans; verified by a test that the counts reach the fact.
+- [x] 4.1 Put the role-to-link rule where both the planner and the read model may read it; verified by the planner's whole existing suite passing unchanged and by a test holding the two in correspondence.
 
-- [ ] 4.2 Prove `desiredPath` is not restated: the collector takes the plan's output and decides nothing about where a route belongs; verified by the collector having no access to a role, a link or a target.
+      Rewritten twice, each time by an invariant already in the repository.
+
+      It first said to carry the plan's per-route verdicts to the read model.
+      `Evidence` forbids that in its own words: nothing in it is derived,
+      because the read model is meant to reach its own conclusions from the same
+      readings rather than inherit the daemon's.
+
+      It then said to export the rule from `routeplan`. The boundary guard in
+      `internal/connectivityreduce` forbids that: `routeplan` is a mutation
+      package — one that "can actually change the host or mint the authority to
+      do so" — and nothing holding a reconciliation proposal may import one. The
+      read model holds proposals. The guard's own comment says it becomes
+      load-bearing when the daemon integration lands, which is now.
+
+      So the decision moved below that line, into `internal/routeplace`:
+      **deciding where a route belongs is not the authority to put it there.**
+      `routeplan` imports it, keeps type aliases so its four callers in
+      `rootdaemon` are untouched, and `Build` consumes `routeplace.Decide`. The
+      read model imports `routeplace` and nothing that can change the host.
+
+      Behaviour is unchanged: the planner's whole test suite passes as written,
+      and `TestThePlanAndTheDecisionAgreeStateForState` holds the
+      correspondence — every state the decision calls conflicting or missing has
+      an operation, every state it calls installed or unasked has none, over a
+      fixture producing four states at once.
+
+      `tests/route_coverage_roles_test.sh` read the roles from the moved file
+      and refused with "this gate is not looking at anything" rather than
+      passing on an empty read. It now points at `routeplace`.
+
+- [x] 4.2 Give `Evidence` the configuration the judgement needs; verified by the read model reaching its own judgement from it.
+
+      `Evidence.Routing` carries the inputs the cycle assembled for the rule:
+      the targets with their roles and preferred links, the three links, the
+      routes the host has, and the two Codex probe results. Configuration and
+      readings, not a conclusion — `ConfiguredRoutes` was already there on that
+      footing. The cycle keeps the value it planned against, so the fact and the
+      plan judge the same inputs rather than two cycles' worth.
+
+      `Reader.placement` calls `routeplace.Place` on it. A cycle that did not
+      reach the inputs yields `ErrNotJudged` rather than an empty judgement.
+
+- [x] 4.3 Prove the rule is not restated: the collector holds no role-to-link decision of its own; verified by its signature.
+
+      `MapScopedRoutes(placement, err)` is given a judgement and no route, no
+      interface, no role and no target. It decides a lifecycle and a reason from
+      the counts and can decide nothing about where a route belongs.
+
+      `TestEachRoleIsSentToTheLinkItAsksFor` holds the rule itself: every role
+      goes to the link its configuration names, the ingress roles never to the
+      tunnel, and nine of this machine's twenty-one targets are asked for at
+      all.
 
 ## 5. What an operator reads
 

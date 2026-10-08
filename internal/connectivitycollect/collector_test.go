@@ -16,6 +16,7 @@ import (
 	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/policy"
+	"github.com/mrAndreyIsachenko/hexroute/internal/routeplace"
 	"github.com/mrAndreyIsachenko/hexroute/internal/safety"
 	"github.com/mrAndreyIsachenko/hexroute/internal/userobserve"
 )
@@ -72,7 +73,7 @@ func TestEmittedFactsAreValidAndOwned(t *testing.T) {
 // is, not one layer later at the acceptor.
 func TestCollectorRefusesAComponentItDoesNotOwn(t *testing.T) {
 	collector := newCollector(t, "root.network", policy.DomainRoot)
-	_, err := collector.Emit(MapScopedRoutes(2, nil, "utun7", nil))
+	_, err := collector.Emit(MapScopedRoutes(routeplace.Placement{Configured: 2}, nil))
 	if !errors.Is(err, ErrNotOwned) {
 		t.Fatalf("got %v, want %v", err, ErrNotOwned)
 	}
@@ -135,34 +136,97 @@ func TestPhysicalNetworkMapping(t *testing.T) {
 }
 
 func TestScopedRouteMapping(t *testing.T) {
-	onTunnel := observe.RouteObservation{Interface: "utun7"}
-	elsewhere := observe.RouteObservation{Interface: "en0"}
+	// The mapper is given a judgement, not routes to compare against one
+	// interface. Until 2026-10-09 it compared every route against the managed
+	// tunnel, which counted a route correctly on another link as a conflict and
+	// made ready unreachable for any configuration whose roles span more than
+	// one link.
 	tests := []struct {
-		name        string
-		configured  uint16
-		routes      []observe.RouteObservation
-		lifecycle   connectivity.Lifecycle
-		installed   uint16
-		conflicting uint16
+		name      string
+		placement routeplace.Placement
+		err       error
+		lifecycle connectivity.Lifecycle
+		reason    connectivity.Reason
 	}{
-		{"all installed", 2, []observe.RouteObservation{onTunnel, onTunnel},
-			connectivity.LifecycleReady, 2, 0},
-		{"partially installed", 2, []observe.RouteObservation{onTunnel},
-			connectivity.LifecycleDegraded, 1, 0},
-		{"landed elsewhere", 2, []observe.RouteObservation{elsewhere, elsewhere},
-			connectivity.LifecycleFailed, 0, 2},
-		{"none configured", 0, nil, connectivity.LifecycleNotApplicable, 0, 0},
+		{
+			name:      "everything asked for is where it belongs",
+			placement: routeplace.Placement{Configured: 2, Installed: 2},
+			lifecycle: connectivity.LifecycleReady,
+			reason:    connectivity.ReasonProbeSucceeded,
+		},
+		{
+			name: "ready while most routes are asked for nowhere",
+			// This machine's shape: 21 declared, 9 asked for, 12 asked for
+			// nowhere while normal Codex is reachable. The old ready condition
+			// required all 21 installed and could never hold.
+			placement: routeplace.Placement{Configured: 21, Installed: 9},
+			lifecycle: connectivity.LifecycleReady,
+			reason:    connectivity.ReasonProbeSucceeded,
+		},
+		{
+			name:      "two routes on the wrong link",
+			placement: routeplace.Placement{Configured: 21, Installed: 7, Conflicting: 2},
+			lifecycle: connectivity.LifecycleDegraded,
+			reason:    connectivity.ReasonProbeFailed,
+		},
+		{
+			name:      "one route asked for and absent",
+			placement: routeplace.Placement{Configured: 2, Installed: 1, Missing: 1},
+			lifecycle: connectivity.LifecycleDegraded,
+			reason:    connectivity.ReasonProbeFailed,
+		},
+		{
+			name:      "nothing asked for is anywhere",
+			placement: routeplace.Placement{Configured: 2, Missing: 2},
+			lifecycle: connectivity.LifecycleFailed,
+			reason:    connectivity.ReasonProbeFailed,
+		},
+		{
+			name:      "none configured",
+			placement: routeplace.Placement{},
+			lifecycle: connectivity.LifecycleNotApplicable,
+			reason:    connectivity.ReasonNotConfigured,
+		},
+		{
+			name:      "nothing was judged",
+			placement: routeplace.Placement{},
+			err:       errors.New("the cycle reached no judgement"),
+			lifecycle: connectivity.LifecycleUnknown,
+			reason:    connectivity.ReasonProbeFailed,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			observation := MapScopedRoutes(test.configured, test.routes, "utun7", nil)
-			payload := observation.Payload.ScopedRoutes
+			observation := MapScopedRoutes(test.placement, test.err)
 			if observation.Lifecycle != test.lifecycle {
 				t.Fatalf("lifecycle %q, want %q", observation.Lifecycle, test.lifecycle)
 			}
-			if payload.Installed != test.installed || payload.Conflicting != test.conflicting {
-				t.Fatalf("installed=%d conflicting=%d, want %d/%d",
-					payload.Installed, payload.Conflicting, test.installed, test.conflicting)
+			if observation.Reason != test.reason {
+				t.Fatalf("reason %q, want %q", observation.Reason, test.reason)
+			}
+			payload := observation.Payload.ScopedRoutes
+			if payload == nil {
+				t.Fatal("no payload")
+			}
+			if payload.Configured != test.placement.Configured {
+				t.Fatalf("configured = %d, want %d",
+					payload.Configured, test.placement.Configured)
+			}
+			if test.err != nil {
+				// Nothing judged: the three judged quantities say nothing
+				// rather than reading as a clean result.
+				if payload.Installed != 0 || payload.Conflicting != 0 || payload.Missing != 0 {
+					t.Fatalf("an unjudged cycle reported counts: %+v", payload)
+				}
+				return
+			}
+			if payload.Installed != test.placement.Installed ||
+				payload.Conflicting != test.placement.Conflicting ||
+				payload.Missing != test.placement.Missing {
+				t.Fatalf("installed=%d conflicting=%d missing=%d, want %d/%d/%d",
+					payload.Installed, payload.Conflicting, payload.Missing,
+					test.placement.Installed, test.placement.Conflicting,
+					test.placement.Missing)
 			}
 		})
 	}

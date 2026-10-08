@@ -398,7 +398,11 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 		summary.fail(control.ReasonProbeFailed)
 	}
 
-	plan, err := routeplan.Build(routeplan.Input{
+	// Assembled once and kept, so the read model judges the host against the
+	// same inputs this cycle planned against. It is what the cycle saw and what
+	// its configuration says, not what it concluded: the read model calls the
+	// rule itself.
+	routing := routeplan.Input{
 		Targets: cycle.config.Targets,
 		Physical: routeplan.Path{
 			Link:      safety.LinkPhysical,
@@ -412,7 +416,10 @@ func (cycle *Cycle) observe(ctx context.Context) Summary {
 		},
 		Current: current,
 		Codex:   codex,
-	})
+	}
+	summary.Observed.Routing = routing
+
+	plan, err := routeplan.Build(routing)
 	if err != nil {
 		summary.fail(control.ReasonPlanRefused)
 		return summary
