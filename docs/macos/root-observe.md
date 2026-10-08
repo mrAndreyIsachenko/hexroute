@@ -98,6 +98,30 @@ Each install keeps the configuration it replaced beside the installed one as
 `root-observe.json.replaced`. It is one copy, not a history: it answers what was replaced
 just now.
 
+**The repository holds the shape; the machine holds the values.**
+`deploy/macos/root-observe.example.json` carries every setting this runtime's
+decoder accepts, and a gate refuses one it omits — so a setting cannot enter the
+runtime without being recorded here. Its values are placeholders chosen so the
+file decodes, not so it runs: the pinned key is a zero key with its own true
+digest, which satisfies the decoder's cross-check and is no one's key.
+
+That record is what makes a stale working copy visible before an install rather
+than during one. The refusal above is reached only once an install is under way,
+which is after the binary has been replaced. Compare first:
+
+```sh
+sudo "/Library/Application Support/Hexroute/observe-root/bin/hexrouted" \
+  --check \
+  --config private/root-observe.json \
+  --installed "/Library/Application Support/Hexroute/observe-root/config/root-observe.json"
+```
+
+Measured 2026-10-08, before the example was completed: it carried 21 of the 57
+settings the decoder accepts, with no `tunnel_supervision` and no
+`policy_control` at all, so the whole tunnel executor existed on one machine and
+nowhere else. The working copy had drifted the same way, and ten settings would
+have been lost by an install from it.
+
 ### Reading how it is while it runs
 
 `hexroutectl status` answers with a state, and `hexroutectl diagnostics` adds

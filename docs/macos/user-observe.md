@@ -104,6 +104,26 @@ Each install keeps the configuration it replaced beside the installed one as
 `user-observe.json.replaced`. It is one copy, not a history: it answers what was replaced
 just now.
 
+
+**The repository holds the shape; the machine holds the values.**
+`deploy/macos/user-observe.example.json` carries every setting this runtime's
+decoder accepts, and a gate refuses one it omits. Its values are placeholders
+chosen so the file decodes, not so it runs.
+
+Compare a prepared configuration against the installed one before installing,
+not during:
+
+```sh
+"$HOME/Library/Application Support/Hexroute/observe-user/bin/hexroute-userd" \
+  --check \
+  --config private/user-observe.json \
+  --installed "$HOME/Library/Application Support/Hexroute/observe-user/config/user-observe.json"
+```
+
+Measured 2026-10-08: the example carried 23 of the 44 settings the decoder
+accepts, missing `policy_control` and the whole `recovery` section. The working
+copy was one digest behind the machine and was carried forward the same day.
+
 ### Reading how it is while it runs
 
 `hexroutectl status` answers with a state, and `hexroutectl diagnostics` adds

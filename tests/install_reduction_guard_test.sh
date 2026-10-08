@@ -66,14 +66,26 @@ def write(name, value):
     json.dump(value, open(os.path.join(work, name), "w"), indent=2)
 
 example = json.load(open(os.path.join(root, "deploy/macos/root-observe.example.json")))
+
+# The example records every setting the decoder accepts, so each fixture here
+# says what it means by removing from it rather than by relying on it to lack
+# something. It lacked policy_control until 2026-10-08, and this test read that
+# absence as a stale working copy; the absence is gone and the meaning stays.
 installed = dict(example)
 installed["policy_control"] = control("root")
 installed["pritunl_service_label"] = "com.example.service"
+del installed["expected_sing_box_parent_pid"]
 write("installed.json", installed)
 
 # The stale working copy: valid on its own, carrying neither authority.
-write("stale.json", example)
+stale = dict(example)
+del stale["policy_control"]
+del stale["pritunl_service_label"]
+del stale["expected_sing_box_parent_pid"]
+write("stale.json", stale)
 
+# A candidate that only adds. The setting it adds is one the installed
+# configuration above was built without, because the example carries them all.
 richer = dict(installed)
 richer["expected_sing_box_parent_pid"] = 1
 write("richer.json", richer)
@@ -86,7 +98,10 @@ user_example = json.load(open(os.path.join(root, "deploy/macos/user-observe.exam
 user_installed = dict(user_example)
 user_installed["policy_control"] = control("user")
 write("user-installed.json", user_installed)
-write("user-stale.json", user_example)
+
+user_stale = dict(user_example)
+del user_stale["policy_control"]
+write("user-stale.json", user_stale)
 FIXTURES
 
 check() {

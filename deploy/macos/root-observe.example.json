@@ -64,5 +64,48 @@
       "server_name": "fallback.example.invalid",
       "timeout_seconds": 4
     }
-  ]
+  ],
+  "pritunl_service_label": "com.pritunl.service",
+  "expected_sing_box_parent_pid": 1,
+  "tunnel_supervision": {
+    "wake_threshold_seconds": 180,
+    "payload_failures": 2,
+    "link_failures": 2,
+    "payload": {
+      "name": "payload-probe",
+      "url": "https://example.invalid/",
+      "proxy_address": "127.0.0.1:1080",
+      "insecure_skip_verify": false,
+      "timeout_seconds": 8
+    },
+    "execution": {
+      "sing_box": "/opt/homebrew/bin/sing-box",
+      "handover_binary": "/Library/Application Support/Hexroute/observe-root/bin/hexroute-handover",
+      "content_path": "/Library/Application Support/Hexroute/observe-root/state/tunnel-config.json",
+      "rebuilds_path": "/Library/Application Support/Hexroute/observe-root/state/tunnel-rebuilds.json",
+      "version_path": "/Library/Application Support/Hexroute/observe-root/config/tunnel-version.json",
+      "target_key": "00000000-0000-0000-0000-000000000000",
+      "bound_seconds": 30,
+      "poll_seconds": 2,
+      "handback_payload_failures": 3
+    }
+  },
+  "policy_control": {
+    "schema": "hexroute.policy-daemon-static.v1",
+    "installed": {
+      "domain": "root",
+      "minimum_policy_schema": 1,
+      "maximum_policy_schema": 1,
+      "current_policy_schema": 1,
+      "current_bundle_generation": 0,
+      "current_policy_generation": 0,
+      "current_payload_sha256": "",
+      "static_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "trusted_compiler_sha256": [
+        "0000000000000000000000000000000000000000000000000000000000000000"
+      ]
+    },
+    "pinned_public_key": "",
+    "signer_fingerprint": ""
+  }
 }

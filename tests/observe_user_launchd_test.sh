@@ -124,7 +124,12 @@ if grep -Eqi '"[a-z0-9-]*(pritunl|hexroute)[a-z0-9-]*-(pin|totp|otp)"' \
   exit 1
 fi
 
-"$ROOT/bin/hexroute-userd" --check --config "$CONFIG" >/dev/null
+# The example records the shape and holds no trust material, so the check runs
+# against a copy with that material supplied. See tests/example-with-trust.py.
+filled="$(mktemp "${TMPDIR:-/tmp}/hexroute-example.XXXXXX")"
+trap 'rm -f "$filled"' EXIT
+python3 "$ROOT/tests/example-with-trust.py" "$CONFIG" "$filled"
+"$ROOT/bin/hexroute-userd" --check --config "$filled" >/dev/null
 
 # The cutover has a written transaction and a written rollback, and the
 # rollback is written before it is needed: one discovered during an incident is

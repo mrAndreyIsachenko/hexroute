@@ -70,16 +70,40 @@ example rather than by leaving a setting out.
 Where the decoder accepts a list, the example carries at least one element, and
 the gate walks the element type. An empty list records a key and no shape.
 
-### Key material is a zero value with its own true digest
+### Trust material is an empty value, and the decode test supplies it
 
-The placeholder for `pinned_public_key` is a zero ed25519 key, and
-`signer_fingerprint` is its genuine SHA-256. That satisfies the decoder's
-cross-check, is unmistakably not live, and reveals nothing. Digests that stand
-alone — `static_sha256`, `trusted_compiler_sha256` — are all-zero hex.
+This was decided twice. The first decision was a zero ed25519 key with its own
+true SHA-256 as the fingerprint, which the decoder accepts because it checks one
+against the other. `internal/repositoryguard` then refused the example outright:
+`pinned_public_key` and `signer_fingerprint` must be **empty** in any tracked
+artifact, whatever the value would have been. That boundary is older, deliberate
+and stricter than the placeholder rule — a key-shaped string in the repository
+is the leak whether or not it opens anything — so the design follows it.
 
-Alternative: leaving `policy_control` out of the example because it carries key
-material — rejected. That is how it went missing, and it is the block whose
-absence hid a whole control plane.
+The example therefore carries both settings with empty values, and anything
+needing a configuration a runtime will load supplies the material itself. The
+repository already held that convention: `tests/install_reduction_guard_test.sh`
+builds a key from thirty-two fixed bytes with the comment that a real pinned key
+in a fixture would be the leak this repository guards. `tests/example-with-trust.py`
+is the same convention in one place, for the three gates that need a loadable
+copy of an example.
+
+Digests that stand alone — `static_sha256`, `trusted_compiler_sha256` — are
+all-zero hex, which the boundary permits because they are not keyed on anything.
+
+Alternative: leaving `policy_control` out of the example because it carries
+trust material — rejected. That is how it went missing, and it is the block
+whose absence hid a whole control plane.
+
+### The examples' consumers change with them
+
+Four gates read an example as a configuration a daemon will load, and a complete
+example no longer is one. They supply the trust material first.
+`tests/install_reduction_guard_test.sh` needed more than that: it built its
+fixtures by relying on the example to *lack* `policy_control` and
+`pritunl_service_label`, and a reduced candidate can no longer be the example
+as it stands. Its fixtures now remove what they mean to remove, which is what
+they always meant.
 
 ## Risks / Trade-offs
 
