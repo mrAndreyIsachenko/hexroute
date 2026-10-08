@@ -15,11 +15,17 @@ beside it, because a list is the thing that was not updated: measured
 configuration held, with no `tunnel_supervision` and no `policy_control` at all,
 so ten settings — the whole tunnel executor — existed only on one machine.
 
-The example SHALL be accepted by the same decoder the runtime uses, so that the
-record is a template and not an inventory. It SHALL hold placeholder values and
-no live ones; where a setting is key material, the placeholder SHALL be
-self-consistent rather than live — a zero key with its own true digest satisfies
-a decoder that checks one against the other, and reveals nothing.
+The example SHALL hold placeholder values and no live ones, and SHALL be
+accepted by the same decoder the runtime uses once the trust material a
+deployment supplies has been supplied, so that the record is a template and not
+an inventory.
+
+The repository SHALL NOT hold trust material at all, not even a placeholder:
+that boundary is already drawn and is stricter than a placeholder rule, because
+a key-shaped string in a tracked artifact is the leak whether or not it opens
+anything. So the example SHALL carry such a setting as a key with an empty
+value — the shape, recorded, and nothing else — and whatever needs a
+configuration a runtime will load SHALL supply the material itself.
 
 This is the boundary stated from the side that was missing. The requirement that
 the public repository hold no live deployment state says what may not be there;
@@ -37,13 +43,18 @@ this says what must: the shape, never the values.
 
 #### Scenario: The example is read by the decoder
 
-- **WHEN** the runtime's own decoder is given the example
+- **WHEN** the runtime's own decoder is given the example with the trust material a deployment supplies supplied
 - **THEN** it accepts it, because the record is the same kind of thing as the file it stands for
 
-#### Scenario: A setting is key material
+#### Scenario: A setting is trust material
 
-- **WHEN** the example must carry a key, a fingerprint or a digest
-- **THEN** it carries a placeholder consistent with itself and with no live material, so the decoder's own cross-check passes and nothing is revealed
+- **WHEN** the example must record a key or a fingerprint
+- **THEN** it carries the setting with an empty value, so the shape is recorded and the repository holds no key-shaped string at all
+
+#### Scenario: A domain has no trust material to record
+
+- **WHEN** a decoder accepts no trust setting
+- **THEN** its example carries none either, and the absence is checked rather than passed over
 
 #### Scenario: The comparison before an install has a record
 

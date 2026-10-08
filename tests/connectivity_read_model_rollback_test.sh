@@ -38,7 +38,12 @@ if grep -nE 'hexroute-connectivity-(replay|qualify)' "$doc" |
 fi
 
 # The daemon accepts the argument set the rollback leaves behind.
-"$binary" --check --config "$config" >/dev/null
+# The example records the shape and holds no trust material, so the check runs
+# against a copy with that material supplied. See tests/example-with-trust.py.
+filled="$(mktemp "${TMPDIR:-/tmp}/hexroute-example.XXXXXX")"
+trap 'rm -f "$filled"' EXIT
+python3 "$repo_root/tests/example-with-trust.py" "$config" "$filled"
+"$binary" --check --config "$filled" >/dev/null
 
 temporary="$(mktemp -d "${TMPDIR:-/tmp}/hexroute-readmodel-rollback.XXXXXX")"
 trap 'rm -rf "$temporary"' EXIT

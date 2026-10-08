@@ -65,7 +65,12 @@ if grep -Eqi 'route[[:space:]]+(add|change|delete)|kill(all)?|pkill|launchctl[[:
   exit 1
 fi
 
-"$ROOT/bin/hexrouted" --check --config "$CONFIG" >/dev/null
+# The example records the shape and holds no trust material, so the check runs
+# against a copy with that material supplied. See tests/example-with-trust.py.
+filled="$(mktemp "${TMPDIR:-/tmp}/hexroute-example.XXXXXX")"
+trap 'rm -f "$filled"' EXIT
+python3 "$ROOT/tests/example-with-trust.py" "$CONFIG" "$filled"
+"$ROOT/bin/hexrouted" --check --config "$filled" >/dev/null
 
 # The soak observer is optional and its session is never committed: a session
 # identity in a versioned plist would be shared by every install, and a chain

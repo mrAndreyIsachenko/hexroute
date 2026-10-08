@@ -23,5 +23,31 @@
     "connecting_grace_seconds": 120,
     "otp_period_seconds": 30,
     "otp_min_valid_seconds": 8
+  },
+  "recovery": {
+    "client_path": "/usr/local/bin/pritunl-client",
+    "profile_id": "synthetic-profile",
+    "mode": "observe-only",
+    "keychain_account": "synthetic-account",
+    "keychain_pin_service": "hexroute.example.pin",
+    "keychain_totp_service": "hexroute.example.totp"
+  },
+  "policy_control": {
+    "schema": "hexroute.policy-daemon-static.v1",
+    "installed": {
+      "domain": "user",
+      "minimum_policy_schema": 1,
+      "maximum_policy_schema": 1,
+      "current_policy_schema": 1,
+      "current_bundle_generation": 0,
+      "current_policy_generation": 0,
+      "current_payload_sha256": "",
+      "static_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "trusted_compiler_sha256": [
+        "0000000000000000000000000000000000000000000000000000000000000000"
+      ]
+    },
+    "pinned_public_key": "",
+    "signer_fingerprint": ""
   }
 }
