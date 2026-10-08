@@ -77,7 +77,17 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`record-the-shape-a-runtime-reads` is open. The repository holds no record of
+the configuration its daemons run on. Measured 2026-10-08: the public example
+carries 46 settings against the machine's 112, with no `tunnel_supervision` and
+no `policy_control` at all, so ten settings — the whole of the tunnel executor
+`hold-the-tunnel-under-a-grant` built — exist only on one machine. The working
+copy had fallen behind the same way, and an install from it would have removed
+them. The comparison that would have said so exists and is already required, but
+it is reached only when an install is attempted and nothing requires the example
+to keep up. The change makes the example the record of the shape and adds a gate
+that refuses a setting the decoder accepts and the example omits. Values stay
+out: the gate asserts keys and placeholders, never a value.
 
 `tell-pending-work-from-a-fault` closed on 2026-10-05. The root daemon had
 reported `DEGRADED` for seven unbroken hours with nothing wrong: zero failures,
