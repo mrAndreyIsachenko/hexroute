@@ -77,7 +77,19 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`explain-every-quantity-a-component-reports` is open. The connectivity
+reference explains one of the eight component payloads. Measured 2026-10-09: 25
+fields between them and only `ScopedRoutesPayload` has every field in a table
+row, documented last week by the change that added one. The documentation gate
+holds component names, states, reasons, sources and arguments, and no payload
+field, so twenty quantities a reader meets in a status answer are explained
+nowhere. The obvious extension would be a gate that lies: the check is a
+backtick-quoted word anywhere in the document, and `configured` appears in three
+payloads, `ready` and `degraded` are both transport counts and component states,
+and `missing` is both a quantity and a diff reason. A flat check reported
+`TransportsPayload` fully explained because its three words matched rows about
+other things. The change explains each payload under its own component and keys
+the gate on the payload type.
 
 `judge-a-route-by-the-link-its-role-asks-for` closed on 2026-10-09. The
 `scoped_routes` fact counted a route as conflicting whenever it was not on the
