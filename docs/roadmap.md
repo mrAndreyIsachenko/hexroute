@@ -77,7 +77,18 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`judge-a-route-by-the-link-its-role-asks-for` is open. The `scoped_routes` fact
+counts a route as conflicting whenever it is not on the managed tunnel, while
+the configuration assigns routes to three links by role and two of its roles
+must never be on the tunnel. Read 2026-10-08T21:25:13Z: `configured 21,
+conflicting 14, installed 7`, with every other component `ready`. The 7 are
+exactly the routes whose role asks for the tunnel and the 14 exactly those whose
+role asks for something else, so the quantity measures how the roles are
+distributed and is published under a name that reads as a fault. `ready` requires
+`installed == configured`, so a configuration with any non-tunnel role can never
+reach it: the component has reported `degraded` in every cycle it has run. The
+change judges a route against the link its own role asks for. It moves no
+route.
 
 `record-the-shape-a-runtime-reads` closed on 2026-10-09. The repository held no
 record of the configuration its daemons run on. The root example carried 21 of
