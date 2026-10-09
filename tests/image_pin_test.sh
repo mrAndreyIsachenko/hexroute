@@ -95,12 +95,37 @@ for place in dockerfile arg compose script; do
   refuses "$root" "an unpinned reference in a $place"
 done
 
-# The reference the repository actually carried before this change, refused by
-# the gate that did not exist then.
+# The reference this repository carried before the change, in the file that
+# carried it: the real script with the pinned sources taken back out, so the
+# reader meets the bare tag among that file's own heredocs, pipes and six other
+# docker commands rather than on a line of its own.
+#
+# It is built by transforming the file rather than read from `git show HEAD:`,
+# which is what this fixture did first. HEAD is the commit under test, so the
+# moment the fix was committed HEAD held the pinned file, the gate rightly
+# accepted it and the fixture failed — on CI, after a local run that had passed
+# against an earlier HEAD. A fixture whose meaning depends on which commit is
+# checked out is not a fixture.
 parent="$work/parent"
 new_fixture "$parent"
-git show HEAD:tests/postgres_migrations_test.sh \
-  >"$parent/tests/postgres_migrations_test.sh"
+python3 - "$repo_root/tests/postgres_migrations_test.sh" \
+  "$parent/tests/postgres_migrations_test.sh" <<'FIXUP'
+import sys
+
+source = open(sys.argv[1]).read()
+opening = "# postgres:17-alpine, named by the digest"
+closing = "\nresolve_image\n"
+start = source.index(opening)
+end = source.index(closing) + len(closing)
+unpinned = source[:start] + source[end:]
+unpinned = unpinned.replace('  "$image" >/dev/null', "  postgres:17-alpine >/dev/null")
+# The transform must have done both halves of its job. A fixture that quietly
+# stops being unpinned passes this gate for the wrong reason.
+assert "postgres:17-alpine >/dev/null" in unpinned, "the run was not unpinned"
+assert "@sha256:" not in unpinned, "a pinned source survived the transform"
+assert "resolve_image" not in unpinned, "the pull loop survived the transform"
+open(sys.argv[2], "w").write(unpinned)
+FIXUP
 refuses "$parent" "the reference this repository carried before the change"
 
 # --- Reading the wrong token ------------------------------------------------
