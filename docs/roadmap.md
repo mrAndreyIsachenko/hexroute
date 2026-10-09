@@ -77,19 +77,40 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`explain-every-quantity-a-component-reports` is open. The connectivity
-reference explains one of the eight component payloads. Measured 2026-10-09: 25
-fields between them and only `ScopedRoutesPayload` has every field in a table
-row, documented last week by the change that added one. The documentation gate
-holds component names, states, reasons, sources and arguments, and no payload
-field, so twenty quantities a reader meets in a status answer are explained
-nowhere. The obvious extension would be a gate that lies: the check is a
-backtick-quoted word anywhere in the document, and `configured` appears in three
-payloads, `ready` and `degraded` are both transport counts and component states,
-and `missing` is both a quantity and a diff reason. A flat check reported
-`TransportsPayload` fully explained because its three words matched rows about
-other things. The change explains each payload under its own component and keys
-the gate on the payload type.
+None.
+
+`explain-every-quantity-a-component-reports` closed on 2026-10-09. The
+connectivity reference explained one of the eight component payloads, and the
+documentation gate held no payload field at all, so twenty quantities a reader
+meets in a status answer were explained nowhere.
+
+The obvious extension would have been a gate that lies. Its check is a
+backtick-quoted word anywhere in the document, and the vocabularies overlap:
+`configured` names routes, transports and relays with a different subject in
+each, `ready` and `degraded` are both transport counts and component states, and
+`missing` is both a quantity and a diff reason. A flat check called the
+`managed_transports` payload fully explained because its three words matched
+rows about other things. A gate that passes for the wrong reason is worse than
+the absent gate it replaces.
+
+So a field is looked for only between its component's heading and the next, and
+the gate holds no list: the `Payload` struct's json tags are the component names
+and they name each payload type, so one declaration gives the whole mapping. It
+refuses four ways, is required to accept a fully explained fixture, prints what
+it held — 8 payloads, 25 fields — and exits 1 on the parent commit.
+
+Reading the mappers changed what the sections say. Six quantities say something
+other than their names: `has_carrier` is set from the gateway being valid rather
+than from a carrier, `link_class` reads `wired` for any link that is up,
+`gateway_present` claims different things under the two path classes,
+`managed_transports.configured` is a literal 1 and its `degraded` is never set,
+and two of the four relay quantities are the call site's constants. An
+explanation that paraphrased the field name would have been false in six places
+out of twenty-five.
+
+What it leaves open is recorded in its tasks: the gate's other checks still
+match a bare word, and the vocabularies are wider than what any mapper produces
+— `link_class` declares three values nothing emits and `expiry_class` two.
 
 `judge-a-route-by-the-link-its-role-asks-for` closed on 2026-10-09. The
 `scoped_routes` fact counted a route as conflicting whenever it was not on the

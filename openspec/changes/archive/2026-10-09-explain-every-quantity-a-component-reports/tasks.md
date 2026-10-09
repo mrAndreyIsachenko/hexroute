@@ -103,8 +103,55 @@
 
 ## 4. Close
 
-- [ ] 4.1 Run the full gate and report any gate that did not run and why; verified by the gate's exit status, not by reading its output.
+- [x] 4.1 Run the full gate and report any gate that did not run and why; verified by the gate's exit status, not by reading its output.
 
-- [ ] 4.2 Sync the delta into the baseline, validate and archive; verified by the drift gate.
+      `make check` returned 0, with both documentation lines passing: the
+      payload check at `8 payloads, 25 fields` and the vocabulary check it sits
+      beside.
 
-- [ ] 4.3 Record what this leaves open, including whether the gate's other checks share the flat-match weakness.
+      Four gates did not run and none is applicable to this diff, which touches
+      one reference document, one gate and one stale comment in a mapper:
+      `postgres-test`, `container-build` and `container-test`, `terraform-test`
+      and `terraform-state-test`, and the `policy-qualification` commands —
+      nothing was installed and no runtime was restarted by this change. Docker
+      and the Terraform CLI are both present, so the first three were skipped
+      for scope rather than availability.
+
+- [x] 4.2 Sync the delta into the baseline, validate and archive; verified by the drift gate.
+
+      One requirement added to `observable-connectivity-state-machine`. Every
+      task above was ticked before archiving, which the previous change was not:
+      it archived with nine open and the record had to be written into the
+      archive afterwards.
+
+- [x] 4.3 Record what this leaves open, including whether the gate's other checks share the flat-match weakness.
+
+      **The gate's other checks still match a bare word.** Component names,
+      component states, authorization values, diff classifications, diff
+      reasons, proposal classes and sources are each required to appear as a
+      backtick-quoted word anywhere in the reference. Any of them can be
+      satisfied by a row belonging to another vocabulary, which is what the
+      payload check was fixed for. Not audited here, and the payload check is
+      the pattern a fix would follow: key on the section, derive the vocabulary
+      from the code.
+
+      **The vocabularies are wider than what is produced.** `link_class`
+      declares `wireless`, `cellular` and `virtual` and nothing emits them;
+      `expiry_class` declares `expiring` and `expired` and nothing emits those;
+      `managed_transports.degraded` is never set; `relay_ingress.reserve` and
+      `selected_class` are the call site's constants. The reference now says so
+      for each, but nothing holds it true — a value could become reachable, or
+      stay unreachable after its collector arrives, and no gate would notice.
+      Whether a vocabulary should be held to having a producer is its own
+      question, and it is the same shape as the unwired-package list this
+      repository already keeps.
+
+      **`dns` has no collector at all.** Recorded by an earlier change and
+      restated in the reference. Its four quantities describe a shape, not a
+      reading.
+
+      **Carried, untouched:** `readmodel/checkpoints` bounded by nothing;
+      HEX-19; HEX-11; no path from a host event to an alert; nine of the ten
+      causes a root cycle can name unseen on this machine; and the two ingress
+      routes still on each other's links, which needs a decision rather than a
+      change.
