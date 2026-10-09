@@ -77,19 +77,40 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`hold-a-value-to-having-a-producer` is open. The read model publishes 88 values
-across sixteen vocabularies and fourteen are emitted by nothing in the running
-system — twelve by nothing at all, two only by a synthetic fixture. The reference
-says so for each, because the previous change read the mappers to write the
-explanations, but nothing keeps that true: a value could gain a producer, or keep
-none after the collector meant to use it arrives. The argument for a gate is how
-easily the question answers wrongly — this measurement took four attempts, each
-caught by a hand check. Counting a vocabulary's own validity switch said 88 of 88
-were produced; excluding the declaring file hid the values its own functions
-return; and a bare constant name matched `internal/policy`'s own `ReasonExpired`
-while nothing references `connectivity.ReasonExpired`. The change holds each
-value to having a producer or to being written down as having none, and fails in
-both directions.
+None.
+
+`hold-a-value-to-having-a-producer` closed on 2026-10-10. The read model
+publishes 88 values across sixteen vocabularies; 74 are emitted by something in
+the running system and fourteen by nothing — twelve by nothing at all, two only
+by a synthetic fixture. The reference already said so for each, because the
+previous change read the mappers to write the explanations, but nothing kept it
+true. `tests/value_producers.py` now does: every value either has a producer
+outside the file that declares it, or is written down as having none with the
+reason, and the gate refuses in both directions — an unwritten value with no
+producer, and a written value that has gained one.
+
+The measurement is the part worth recording, because it answered wrongly four
+times and each wrong answer looked clean. Counting the declaring file whole said
+88 of 88 were produced, because a vocabulary's own `Valid()` switch names every
+value it has. Excluding the declaring file whole said 11 of 12 reasons were
+unproduced, because the file also holds the functions that return them. Cutting
+only the constants and the switch said `expired` was produced — and the match was
+`internal/policy`'s own `ReasonExpired`, which nothing in the read model
+references. The gate therefore requires a qualified reference outside the
+declaring package and a bare one inside it, strips declarations from the
+declaring file only, and refuses a vocabulary whose every value is unproduced,
+which is what a search looking in the wrong place produces.
+
+With the written list emptied the gate exits 1 and names all fourteen, which is
+the state the repository was in before this change. Ten mutations, all killed.
+
+What it leaves open is recorded in its tasks: the same fact is now stated twice,
+in the reference's prose and in the gate's list, with nothing holding the two in
+step; the vocabularies outside these sixteen — the control machine's, the
+planner's, the policy's — are unheld, and extending the gate to them is an
+argument in the Makefile; and whether a value nothing will ever emit should be
+deleted rather than written down is a judgement about collectors that do not
+exist yet.
 
 `pin-the-images-the-gates-pull` closed on 2026-10-10. The schema gate could
 not start: `make postgres-test` failed twice in fourteen minutes on 2026-10-09,

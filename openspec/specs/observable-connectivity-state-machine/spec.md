@@ -429,6 +429,24 @@ words a reader gets wrong are exactly the shared ones. Each SHALL be explained
 in its own right, and a gate satisfied by the containing vocabulary's rows is
 keyed on the word again, one level further in.
 
+A published value SHALL either have something that emits it or be written down
+as having none, with the reason. A vocabulary fixed before the collectors that
+will use it is a deliberate choice and not a defect, but which of its values are
+not yet reachable SHALL be a recorded fact rather than something a reader works
+out from the code.
+
+A gate holding this SHALL fail in both directions: a value that gains an emitter
+while still recorded as having none, and a value that loses its last emitter
+without being recorded.
+
+Such a gate SHALL search by the qualified name outside the declaring package,
+and SHALL exclude the vocabulary's own declaration and its validity switch.
+Those are the three ways this measurement goes wrong, and it went wrong all
+three ways before it was written down: counting a validity switch made every
+value look produced, excluding a declaring file whole hid the values its own
+functions return, and a bare name matched a different package's constant of the
+same name.
+
 #### Scenario: A payload gains a quantity
 
 - **WHEN** a component payload gains a field and the reference does not explain it under that component
@@ -483,3 +501,23 @@ keyed on the word again, one level further in.
 
 - **WHEN** one section explains more than one vocabulary
 - **THEN** each is explained in its own right there, and the gate holds each separately
+
+#### Scenario: A value has nothing that emits it
+
+- **WHEN** a published value is emitted by nothing in the running system and is not recorded as having no producer
+- **THEN** the gate refuses and names the vocabulary and the value
+
+#### Scenario: A value recorded as unproduced gains a producer
+
+- **WHEN** something begins emitting a value that is recorded as having no producer
+- **THEN** the gate refuses, so the record cannot outlive what it describes
+
+#### Scenario: Only a fixture emits a value
+
+- **WHEN** the only thing emitting a value is a synthetic fixture
+- **THEN** it counts as having no producer, because a fixture is not the running system
+
+#### Scenario: A vocabulary names its own values to validate them
+
+- **WHEN** a vocabulary's validity switch names every one of its values
+- **THEN** that does not count as emitting any of them
