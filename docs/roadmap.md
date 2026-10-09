@@ -77,7 +77,19 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`hold-a-value-to-having-a-producer` is open. The read model publishes 88 values
+across sixteen vocabularies and fourteen are emitted by nothing in the running
+system — twelve by nothing at all, two only by a synthetic fixture. The reference
+says so for each, because the previous change read the mappers to write the
+explanations, but nothing keeps that true: a value could gain a producer, or keep
+none after the collector meant to use it arrives. The argument for a gate is how
+easily the question answers wrongly — this measurement took four attempts, each
+caught by a hand check. Counting a vocabulary's own validity switch said 88 of 88
+were produced; excluding the declaring file hid the values its own functions
+return; and a bare constant name matched `internal/policy`'s own `ReasonExpired`
+while nothing references `connectivity.ReasonExpired`. The change holds each
+value to having a producer or to being written down as having none, and fails in
+both directions.
 
 `hold-the-ten-unheld-vocabularies` closed on 2026-10-09. Sixteen string
 vocabularies are published by the connectivity packages and the gate held six;
