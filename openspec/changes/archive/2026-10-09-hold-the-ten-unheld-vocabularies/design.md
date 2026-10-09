@@ -47,17 +47,35 @@ where the field was introduced. Twelve rows, read from the mappers rather than
 paraphrased from the names, which is how the payload sections were written and
 which turned up six quantities that say something other than their names.
 
-### The subset case is a gate, not a convention
+### The subset case needed no new gate
 
-A vocabulary that is a subset of another is the case this change found by
-measurement. The gate holds it: given two vocabularies and a place, it refuses
-when one's values are satisfied only by rows belonging to the other. That is a
-small addition to the reader, and it is what stops this recurring the next time
-a vocabulary is added inside another's range.
+This decision was reversed by measurement. It said the reader would gain a
+subset check: given two vocabularies and a place, refuse when one's values are
+satisfied only by rows belonging to the other.
 
-Alternative: rely on the subheading keying alone. Rejected — it works only while
-someone remembers to key the subheading, and the whole point of the last two
-changes is that the gate should not depend on remembering.
+It already refuses. Once each of the three is keyed to its own subheading with
+exactly its own values, the **reverse check that was already there** is the
+subset gate: merging the derived state's rows back into the collector's table
+makes `stale` and `conflict` rows that are not values of `Lifecycle`, and the
+check refuses. Demonstrated by doing exactly that merge and reading the refusal.
+
+So the reader gained nothing, and the rejected alternative — "rely on the
+subheading keying alone" — was rejected for a reason that does not hold: the
+keying does not depend on anyone remembering, because a subheading that is
+renamed or merged away makes its check refuse.
+
+### Subheadings had to become part of the reader
+
+Keying to `#### ` exposed a defect in the reader written last change: it bounded
+a section at the next `## ` or `### ` and knew nothing of `#### `, so the
+collector's subsection swallowed the derived table and the check failed on a
+correct document. The payload reader had the same hole.
+
+Both now end a section at the next heading of any level. Neither shape occurs in
+the reference today — nothing divides a `## ` section with a `### `, and no
+payload section is followed by a `#### ` — so a mutation run found both bounds
+unheld and the gate gained fixtures for them. The document's shape is not the
+reader's contract.
 
 ### The seven already-explained vocabularies get a check and nothing else
 

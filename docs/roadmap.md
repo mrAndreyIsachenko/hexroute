@@ -77,18 +77,43 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`hold-the-ten-unheld-vocabularies` is open. Sixteen string vocabularies are
-published by the connectivity packages and the gate holds six. Seven of the ten
-unheld are already explained where they are owned and need a check and nothing
-else. Three do not, and two of those would pass a section-keyed check for the
-wrong reason: `Lifecycle` and `AggregateState` are strict subsets of
-`ComponentState`, whose seven values are exactly the rows of
-`### Component states`, so a check keyed to that section is satisfied by rows
-about the derived state — a third thing. `Reason` has no place at all and ten of
-its twelve values appear nowhere, including the `probe_failed` an operator reads
-in every degraded fact. The change gives the three sharing vocabularies their own
-tables under one heading, gives `Reason` a section after the component row, and
-teaches the gate the subset case.
+None.
+
+`hold-the-ten-unheld-vocabularies` closed on 2026-10-09. Sixteen string
+vocabularies are published by the connectivity packages and the gate held six;
+all sixteen are held now, confirmed by reading the code rather than counting the
+gate's calls.
+
+The ten were not alike, and the audit is what sized the work. Seven were already
+explained where they are owned and needed a check and nothing else. Two would
+have passed a section-keyed check for the wrong reason: `Lifecycle` and
+`AggregateState` are strict subsets of `ComponentState`, whose seven values were
+exactly the rows of the component-states section, so a check keyed there is
+satisfied by rows about the derived state. And `Reason` had no place at all, with
+ten of its twelve values appearing nowhere.
+
+The three that share words now have three tables under one heading — what a
+collector asserted, what the model derived, what the summary says of the host —
+each exactly its own vocabulary, with the comparison in prose rather than by
+mixing a word into a table that does not contain it. `Reason` has a section where
+its field was already named.
+
+Two things the design got wrong were corrected by measurement. The subset case
+needed no new gate: once each vocabulary is keyed to its own subheading, the
+reverse check already refuses a merged table, demonstrated by merging one. And
+keying to a subheading exposed a defect in the reader written the day before — it
+bounded a section at the next `##` or `###` and knew nothing of `####`, as did
+the payload reader.
+
+Reading the vocabularies for their explanations turned up what they hide. Five of
+the twelve reasons are emitted by nothing and a sixth only by a fixture. The
+aggregate is degraded by the integrity of the streams on its own, so the host can
+read `degraded` with every component `ready` — which corrects a note from the
+previous change attributing it to one component. Sixteen deletions, one per
+vocabulary, all refused; five mutations, all killed.
+
+What it leaves open is recorded in its tasks, and the largest is now that nothing
+holds a value to having a producer.
 
 `key-every-check-to-its-section` closed on 2026-10-09. The documentation gate's
 seven remaining checks required their values to appear as a backtick-quoted word
