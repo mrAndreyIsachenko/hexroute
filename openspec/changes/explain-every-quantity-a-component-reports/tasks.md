@@ -20,43 +20,86 @@
       specific word. That is the finding the change is built on, not a detail of
       how it was measured.
 
-- [ ] 1.2 Read each payload's mapper, so an explanation says what the quantity counts rather than what its name suggests; verified by each section naming the mapper's own condition.
+- [x] 1.2 Read each payload's mapper, so an explanation says what the quantity counts rather than what its name suggests; verified by each section naming the mapper's own condition.
+
+      Six quantities turned out to say something other than their names, and
+      the sections say so rather than paraphrasing the field:
+
+      - `physical_network.has_carrier` is set from the **gateway being valid**,
+        not from a link-layer carrier.
+      - `physical_network.link_class` reads `wired` for any link that is up. The
+        mapper's own comment says the observer cannot tell wired from wireless;
+        the value still says `wired`, and `wireless`, `cellular` and `virtual`
+        are in the vocabulary with nothing emitting them.
+      - `default_path.gateway_present` means a gateway was observed under
+        `tunneled` and is set to true with the class under `direct`, so the two
+        classes do not make the same claim with it.
+      - `managed_transports.configured` is the literal **1** the root cycle
+        passes, and `degraded` is **never set** by any mapper.
+      - `relay_ingress.reserve` and `selected_class` are the call site's
+        constants — zero and `primary` — not observations.
+      - `session_expiry.sessions` is one or zero and has never been anything
+        else, and `expiry_class` never reaches `expiring` or `expired`.
+
+      Found while reading: the doc comment above `MapScopedRoutes` still carried
+      two lines of the comment the previous change replaced, describing the
+      behaviour that change removed. Deleted here.
 
 ## 2. The record
 
-- [ ] 2.1 Rename the scoped-routes section to the component's own spelling, so the heading can be derived from the constant; verified by the gate finding it.
+- [x] 2.1 Rename the scoped-routes section to the component's own spelling, so the heading can be derived from the constant; verified by the gate finding it.
 
-- [ ] 2.2 Explain `physical_network`: `link_class`, `link_up`, `has_carrier`.
+      `### The scoped routes payload` became ``### The `scoped_routes` payload``.
 
-- [ ] 2.3 Explain `default_path`: `path_class`, `gateway_present`.
+- [x] 2.2 Explain `physical_network`: `link_class`, `link_up`, `has_carrier`.
 
-- [ ] 2.4 Explain `dns`: `resolver_class`, `responding`, `scoped_domains`, `failing_domains`.
+- [x] 2.3 Explain `default_path`: `path_class`, `gateway_present`.
 
-      This component has no collector — an earlier change recorded that no
-      mapper can emit one — so its payload is explained as what it would report,
-      and the section says the component is not yet produced.
+- [x] 2.4 Explain `dns`: `resolver_class`, `responding`, `scoped_domains`, `failing_domains`.
 
-- [ ] 2.5 Explain `managed_transports`: `configured`, `ready`, `degraded`, with the subject each counts here rather than the one the same words carry elsewhere.
+      The section says plainly that nothing produces this component, that a test
+      asserts no mapper can, and that the fields describe what the payload is
+      shaped to carry rather than anything a reader will meet today.
 
-- [ ] 2.6 Explain `relay_ingress`: `configured`, `reachable`, `reserve`, `selected_class`.
+- [x] 2.5 Explain `managed_transports`: `configured`, `ready`, `degraded`, with the subject each counts here rather than the one the same words carry elsewhere.
 
-- [ ] 2.7 Explain `user_access`: `profile_class`, `connected`, `authenticated`.
+      And the section names the collision itself: these three words are also a
+      route count, a relay count and two component states.
 
-- [ ] 2.8 Explain `session_expiry`: `expiry_class`, `sessions`.
+- [x] 2.6 Explain `relay_ingress`: `configured`, `reachable`, `reserve`, `selected_class` — two of the four being the call site's constants.
+
+- [x] 2.7 Explain `user_access`: `profile_class`, `connected`, `authenticated` — the last being inferred rather than checked.
+
+- [x] 2.8 Explain `session_expiry`: `expiry_class`, `sessions`.
 
 ## 3. The gate
 
-- [ ] 3.1 Read the payload types and their `json` tags from the code, with no list of payloads in the gate; verified by a test that a payload added to the code is required without the gate being edited.
+- [x] 3.1 Read the payload types and their `json` tags from the code, with no list of payloads in the gate; verified by the gate's own fixture declaring a payload it has never heard of and being required to explain it.
 
-- [ ] 3.2 Look for each field only between its component's heading and the next; verified by a test that a row under another component does not satisfy it.
+      Better than planned. The `Payload` struct's own json tags **are** the
+      component names and they name each payload type, so the gate derives the
+      whole mapping from one declaration and holds no list at all — not of
+      payloads, not of components, not of fields. Its fixture declares an
+      `ExamplePayload` under a component called `example`, and the gate demands
+      an explanation for it.
 
-- [ ] 3.3 Refuse an explained field no payload carries; verified by a test over a row for a field that does not exist.
+- [x] 3.2 Look for each field only between its component's heading and the next; verified by a fixture whose rows sit under another component's heading and are refused.
 
-- [ ] 3.4 Refuse rather than pass when it finds no payloads to check; verified by a test that points it at a file declaring none.
+- [x] 3.3 Refuse an explained field no payload carries; verified by a fixture with a row for `removed`.
 
-- [ ] 3.5 Say how many payloads and fields were held; verified by the line it prints.
+- [x] 3.4 Refuse rather than pass when it finds no payloads to check; verified by a fixture declaring none.
 
-- [ ] 3.6 Prove it fails on the parent commit; verified by its exit status before and after.
+      Two refusals, not one: no `Payload` struct at all, and a `Payload` struct
+      naming nothing. A fully explained fixture is also required to pass, so the
+      refusals are about what is missing rather than the gate refusing
+      everything.
+
+- [x] 3.5 Say how many payloads and fields were held; verified by the line it prints: `8 payloads, 25 fields`.
+
+- [x] 3.6 Prove it fails on the parent commit; verified by its exit status before and after.
+
+      With the reference's new sections stashed it exits **1** and names every
+      component with no section; with them, **0**.
 
 ## 4. Close
 

@@ -94,8 +94,6 @@ func MapDefaultPath(
 	return observation
 }
 
-// MapScopedRoutes counts how many of the configured scoped routes are present
-// on the interface policy expects, and how many landed somewhere else.
 // MapScopedRoutes describes the scoped routes against what the configuration
 // asks of them.
 //
