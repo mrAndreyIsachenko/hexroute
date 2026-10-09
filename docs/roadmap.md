@@ -77,7 +77,18 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`key-every-check-to-its-section` is open. The documentation gate's seven
+remaining checks require their vocabulary's values to appear as a
+backtick-quoted word anywhere in the reference, and the vocabularies overlap, so
+the row that explains a value can be deleted while the gate keeps passing on a
+row about something else. Demonstrated 2026-10-09 rather than argued: the row
+explaining the component state `degraded` was deleted from its own section and
+the gate exited 0, because the word survives where it counts degraded
+transports. Nothing is currently undocumented — every value is explained in its
+own section, and the gate passes for the right reason by luck. The change keys
+each check to the section that owns its vocabulary, refuses when that section is
+absent rather than widening, and refuses a value explained there that the code no
+longer declares.
 
 `explain-every-quantity-a-component-reports` closed on 2026-10-09. The
 connectivity reference explained one of the eight component payloads, and the
