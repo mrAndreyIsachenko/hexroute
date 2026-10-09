@@ -183,7 +183,70 @@ exist for a fleet that selects a reserve, and nothing selects one yet.
 | `expiry_class` | `valid` while a session is active, `none` otherwise. The vocabulary also holds `expiring` and `expired`, and no mapper emits either |
 | `sessions` | one while a session is active, zero otherwise. It is a count that has never been anything else |
 
+### The reasons a collector gives
+
+The `reason` on a fact, named in the component row above. It is the collector's
+own account of why it asserted what it did, from a closed vocabulary of twelve.
+
+Each row says what emits it, read from the mapper rather than from the name —
+which matters, because half of this vocabulary is emitted by nothing.
+
+| Reason | What emits it |
+| --- | --- |
+| `probe_succeeded` | a collector that observed its component working |
+| `probe_failed` | a probe that ran and failed, or an observation that returned an error. It is the reason on every `unknown` lifecycle, so it covers both "it answered badly" and "it could not be asked" |
+| `link_changed` | the physical and default-path collectors: an interface that is absent, one that is down, one that is up with no gateway, and a default route that leaves without a tunnel |
+| `not_configured` | nothing is configured for the collector to observe — no routes, no profile, no session |
+| `owner_unavailable` | the user-access collector, when the service beneath the session is not running |
+| `none` | the reducer, clearing the reason on a record it is no longer attributing |
+| `baseline` | **nothing in the running system.** Only `internal/connectivity/fixture.go` emits it, which is synthetic |
+| `policy_applied` | nothing |
+| `wake_rebaseline` | nothing |
+| `boot_rebaseline` | nothing |
+| `expiry_approaching` | nothing |
+| `expired` | nothing |
+
+**Five of the twelve are emitted by nothing, and a sixth only by a fixture.**
+The vocabulary was fixed before the collectors that would use it: a wake or a
+boot does set `rebaseline_required` on a component row, but no fact carries
+`wake_rebaseline` or `boot_rebaseline` as its reason, and
+`session_expiry` reports `expiry_class` rather than an `expiry_approaching`
+reason. Reading one of those five in a fact would mean something new started
+emitting it.
+
+Nothing holds that true. A value here could become reachable, or stay
+unreachable after the collector that was meant to use it arrives, and no gate
+would notice.
+
 ### Component states
+
+Three vocabularies share these words and mean different things: what a
+collector asserted about its own component, what the read model derived from
+that, and what the summary says of the whole host. The word a reader is most
+likely to get wrong is one of the shared ones — `degraded` is three claims, and
+which one is in play depends on which of the three you are reading.
+
+#### What a collector asserted
+
+The lifecycle on a fact. It is the owner's own account of its component, before
+the model has done anything with it, and `observed` in a component row is where
+a reader meets it.
+
+| Lifecycle | What the collector is saying |
+| --- | --- |
+| `ready` | it observed its component working |
+| `degraded` | it observed partial function — a link up with no gateway, routes some of which are misplaced, relays some of which answer |
+| `failed` | it observed the component not working at all |
+| `unknown` | it could not observe. The probe did not run, or the observation returned an error, and the payload carries no count it can stand behind |
+| `not_applicable` | nothing is configured for it to observe |
+
+A collector never asserts `stale` or `conflict`. Those two belong to the model,
+which is why they are in the next table and not this one.
+
+#### What the model derived
+
+The state on a component row. It is the lifecycle judged against freshness,
+baselines and ownership, so it can say things no collector can.
 
 | State | What it means |
 | --- | --- |
@@ -198,6 +261,28 @@ exist for a fleet that selects a reserve, and nothing selects one yet.
 `unknown`, `stale` and `conflict` are the three ways of saying *no current
 answer*, and they are kept apart because they call for different actions:
 nothing was ever said, what was said has expired, and two things were said.
+
+#### What the summary says of the host
+
+The aggregate. It is deliberately pessimistic — it cannot report better than its
+worst component — and it is **also degraded by the integrity of the streams
+themselves**, which is the part a reader is most likely to miss.
+
+| Aggregate | When it is reported |
+| --- | --- |
+| `failed` | any component failed |
+| `degraded` | any component is degraded, stale or conflicted, **or** the evidence has a hole in it: an open gap, an evicted gap, a source still owing a baseline, or a source with conflicts |
+| `unknown` | nothing is worse than unknown, and at least one component is unknown |
+| `ready` | every component is ready and no stream has a hole in it |
+
+The integrity clause is why the host can read `degraded` with every component
+`ready`. Every surviving component can be fresh and ready precisely because the
+facts that would have said otherwise are the ones that went missing, so a hole
+degrades the summary on its own rather than only through the components that
+happen to have been observed. Measured 2026-10-08: the watcher reported
+`aggregate: degraded` with `open_gaps: 2`, and a note written at the time
+attributed it to one degraded component alone — the integrity clause was
+degrading it too.
 
 ### The summary
 

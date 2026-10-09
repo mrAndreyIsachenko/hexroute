@@ -48,8 +48,35 @@ vocabulary() {
 
 vocabulary "component" "## Who owns what" \
   internal/connectivity/model.go Component --rows
-vocabulary "component state" "### Component states" \
+# Three vocabularies share the component-states section and the same words —
+# what a collector asserted, what the model derived, what the summary says of
+# the host — so each is keyed to its own subheading there. Keyed to the section
+# instead, the first two would be satisfied by the third's rows, which was
+# measured before these checks were written.
+vocabulary "collector lifecycle" "#### What a collector asserted" \
+  internal/connectivity/model.go Lifecycle --rows
+vocabulary "component state" "#### What the model derived" \
   internal/connectivityreduce/snapshot.go ComponentState --rows
+vocabulary "host aggregate" "#### What the summary says of the host" \
+  internal/connectivityreduce/snapshot.go AggregateState --rows
+vocabulary "collector reason" "### The reasons a collector gives" \
+  internal/connectivity/model.go Reason --rows
+vocabulary "authorization reason" "## Authorization" \
+  internal/connectivityreduce/snapshot.go AuthorizationReason --rows
+# The payload classes are explained inside their own field's rows, where a
+# reader of that field is, so the forward direction only.
+vocabulary "link class" "### The \`physical_network\` payload" \
+  internal/connectivity/payload.go LinkClass
+vocabulary "path class" "### The \`default_path\` payload" \
+  internal/connectivity/payload.go PathClass
+vocabulary "resolver class" "### The \`dns\` payload" \
+  internal/connectivity/payload.go ResolverClass
+vocabulary "selected class" "### The \`relay_ingress\` payload" \
+  internal/connectivity/payload.go SelectedClass
+vocabulary "profile class" "### The \`user_access\` payload" \
+  internal/connectivity/payload.go ProfileClass
+vocabulary "expiry class" "### The \`session_expiry\` payload" \
+  internal/connectivity/payload.go ExpiryClass
 vocabulary "diff classification" "## The diff" \
   internal/connectivityreduce/diff.go Classification --rows
 vocabulary "proposal class" "## The proposals" \
@@ -245,6 +272,53 @@ DOC
 if ! python3 tests/reference_documentation.py payloads "$payload_fixture/payload.go" \
   "$payload_fixture/whole.md" >/dev/null 2>&1; then
   printf 'the payload gate refused a fully explained payload\n' >&2
+  status=1
+fi
+
+# A section ends at the next heading of any level. Neither of these shapes
+# occurs in the reference today, so a mutation run found both bounds unheld:
+# nothing divides a ## section with a ###, and no payload section is followed by
+# a ####. The fixtures hold them anyway, because the document's shape is not the
+# reader's contract.
+cat >"$vocabulary_fixture/nested.md" <<'DOC'
+## The things
+
+| Value | What it says |
+| --- | --- |
+| `first` | the first one |
+| `second` | the second one |
+
+### A subsection of it
+
+| Value | What it says |
+| --- | --- |
+| `a_value_nothing_declares` | a row belonging to something else |
+DOC
+# The stray row is in the subsection, so a reader that stops at the nested
+# heading passes and one that reads past it refuses.
+if ! reader thing "## The things" "$vocabulary_fixture/source.go" Thing \
+  "$vocabulary_fixture/nested.md" --rows; then
+  printf 'the vocabulary reader read past a nested heading into its subsection\n' >&2
+  status=1
+fi
+
+cat >"$payload_fixture/nested.md" <<'DOC'
+### The `example` payload
+
+| Field | What it says |
+| --- | --- |
+| `counted` | what it counts |
+| `other` | the other one |
+
+#### A subsection of it
+
+| Field | What it says |
+| --- | --- |
+| `a_field_nothing_carries` | a row belonging to something else |
+DOC
+if ! python3 tests/reference_documentation.py payloads "$payload_fixture/payload.go" \
+  "$payload_fixture/nested.md" >/dev/null 2>&1; then
+  printf 'the payload reader read past a nested heading into its subsection\n' >&2
   status=1
 fi
 

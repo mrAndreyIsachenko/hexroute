@@ -421,6 +421,14 @@ A gate SHALL refuse rather than widen when the place it is keyed to is absent,
 and SHALL refuse a value explained in that place which the code no longer
 declares, so the reference cannot describe a vocabulary that has been narrowed.
 
+A vocabulary whose values are a subset of another's SHALL NOT be treated as
+explained by that other's rows. Three vocabularies here share their words and
+mean different things — a collector's own account of what it asserted, the state
+the read model derived from it, and what the summary says of the host — and the
+words a reader gets wrong are exactly the shared ones. Each SHALL be explained
+in its own right, and a gate satisfied by the containing vocabulary's rows is
+keyed on the word again, one level further in.
+
 #### Scenario: A payload gains a quantity
 
 - **WHEN** a component payload gains a field and the reference does not explain it under that component
@@ -465,3 +473,13 @@ declares, so the reference cannot describe a vocabulary that has been narrowed.
 
 - **WHEN** every value of every published vocabulary is explained in the section that owns it
 - **THEN** the gate passes, and says how many sections and values it checked
+
+#### Scenario: A vocabulary's values are a subset of another's
+
+- **WHEN** every value of one published vocabulary is also a value of another, and only the other is explained
+- **THEN** the gate refuses, because rows about the containing vocabulary are about a different thing
+
+#### Scenario: Several vocabularies share a place
+
+- **WHEN** one section explains more than one vocabulary
+- **THEN** each is explained in its own right there, and the gate holds each separately

@@ -51,8 +51,10 @@ def sections(reference: str, component: str) -> str | None:
     if start < 0:
         return None
     start += len(heading)
-    end = reference.find("\n### ", start)
-    return reference[start:] if end < 0 else reference[start:end]
+    ends = [index for index in (reference.find("\n## ", start),
+                                reference.find("\n### ", start),
+                                reference.find("\n#### ", start)) if index > 0]
+    return reference[start:min(ends)] if ends else reference[start:]
 
 
 def vocabulary(
@@ -85,8 +87,12 @@ def vocabulary(
         print(f"{label}: the section {heading!r} is not in {reference_path}", file=sys.stderr)
         return 1
     start += len(heading)
+    # A section ends at the next heading of any level. Bounding only on ## and
+    # ### let a #### subsection swallow the next one's table, which is exactly
+    # the mixing this keying exists to prevent.
     ends = [index for index in (reference.find("\n## ", start),
-                                reference.find("\n### ", start)) if index > 0]
+                                reference.find("\n### ", start),
+                                reference.find("\n#### ", start)) if index > 0]
     section = reference[start:min(ends)] if ends else reference[start:]
 
     status = 0
