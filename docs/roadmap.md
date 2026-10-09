@@ -77,7 +77,18 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`hold-the-ten-unheld-vocabularies` is open. Sixteen string vocabularies are
+published by the connectivity packages and the gate holds six. Seven of the ten
+unheld are already explained where they are owned and need a check and nothing
+else. Three do not, and two of those would pass a section-keyed check for the
+wrong reason: `Lifecycle` and `AggregateState` are strict subsets of
+`ComponentState`, whose seven values are exactly the rows of
+`### Component states`, so a check keyed to that section is satisfied by rows
+about the derived state — a third thing. `Reason` has no place at all and ten of
+its twelve values appear nowhere, including the `probe_failed` an operator reads
+in every degraded fact. The change gives the three sharing vocabularies their own
+tables under one heading, gives `Reason` a section after the component row, and
+teaches the gate the subset case.
 
 `key-every-check-to-its-section` closed on 2026-10-09. The documentation gate's
 seven remaining checks required their values to appear as a backtick-quoted word
