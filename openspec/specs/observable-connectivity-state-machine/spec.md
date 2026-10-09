@@ -388,33 +388,58 @@ statement of it beside the collector.
 - **WHEN** a fact needs to know where a part belongs
 - **THEN** it takes the answer from the one rule that decides it, so the two cannot disagree
 
-### Requirement: What a component reports is explained under that component
+### Requirement: What the read model publishes is explained where it is owned
 
-Every quantity a component's payload carries SHALL be explained in the
-reference under that component, so a reader meeting it in a status answer can
-tell which component it belongs to and what it counts there.
+Every value and every quantity the read model publishes SHALL be explained in
+the reference in the place that owns it: a component's payload under that
+component, and a vocabulary under the section that vocabulary belongs to. A
+reader meeting a word in a status answer SHALL be able to tell which of its
+meanings is in play.
 
-A word SHALL be explained once per payload that uses it. The same word carries
-different subjects in different payloads — `configured` counts declared routes
-in one, configured transports in another and configured relays in a third — and
-one explanation cannot serve all of them.
+A word SHALL be explained once per place that uses it. The same word carries
+different subjects in different places — `configured` counts declared routes in
+one payload, configured transports in another and configured relays in a third;
+`ready` and `degraded` are both transport counts and component states;
+`missing` is both a scoped-routes quantity and a diff classification; `none` is
+a diff reason and a value of six payload classes — and one explanation cannot
+serve all of them.
 
-A gate holding this SHALL be keyed on the payload and the component, not on the
-word. A check that accepts the word anywhere in the document can be satisfied by
-a row belonging to another vocabulary, and these vocabularies overlap: `ready`
-and `degraded` are both transport counts and component states, and `missing` is
-both a scoped-routes quantity and a diff reason.
+A gate holding this SHALL be keyed on the place, not on the word. A check that
+accepts the word anywhere in the document can be satisfied by a row belonging to
+another vocabulary, which means it cannot notice the explanation it exists to
+require being removed.
 
-Measured 2026-10-09: a flat check reported `TransportsPayload` fully explained
-because `configured` matched a row about routes and `ready` and `degraded`
-matched rows about component states, and reported the same of `missing` before
-its own row existed. A gate that passes for the wrong reason is worse than the
-absent gate it replaces, because it turns a missing guarantee into a false one.
+Measured 2026-10-09, twice. A flat check reported `TransportsPayload` fully
+explained because `configured` matched a row about routes and `ready` and
+`degraded` matched rows about component states. And the row explaining the
+component state `degraded` was deleted from its own section while the gate still
+passed, because the word survives where it counts transports. A gate that passes
+for the wrong reason is worse than the absent gate it replaces, because it turns
+a missing guarantee into a false one.
+
+A gate SHALL refuse rather than widen when the place it is keyed to is absent,
+and SHALL refuse a value explained in that place which the code no longer
+declares, so the reference cannot describe a vocabulary that has been narrowed.
 
 #### Scenario: A payload gains a quantity
 
 - **WHEN** a component payload gains a field and the reference does not explain it under that component
 - **THEN** the gate refuses and names the payload and the field
+
+#### Scenario: A vocabulary gains a value
+
+- **WHEN** a published vocabulary gains a value and the section that owns it does not explain it
+- **THEN** the gate refuses and names the vocabulary and the value
+
+#### Scenario: An explanation is removed
+
+- **WHEN** the row explaining a value is deleted from the place that owns it, and the word remains elsewhere in the document
+- **THEN** the gate refuses, which is what a check keyed on the word cannot do
+
+#### Scenario: The place is missing
+
+- **WHEN** the section a check is keyed to is absent from the reference
+- **THEN** the check refuses rather than searching the whole document
 
 #### Scenario: A word is explained for another payload
 
@@ -426,7 +451,17 @@ absent gate it replaces, because it turns a missing guarantee into a false one.
 - **WHEN** a field leaves a payload and its explanation stays
 - **THEN** the gate refuses, so the reference cannot describe a quantity nothing reports
 
+#### Scenario: A vocabulary is narrowed
+
+- **WHEN** a value leaves a published vocabulary and its explanation stays in the place that owned it
+- **THEN** the gate refuses, for the same reason and in the same way
+
 #### Scenario: Every payload is explained
 
 - **WHEN** every field of every payload is explained under its own component
 - **THEN** the gate passes, and says how many payloads and fields it checked
+
+#### Scenario: Every vocabulary is explained where it is owned
+
+- **WHEN** every value of every published vocabulary is explained in the section that owns it
+- **THEN** the gate passes, and says how many sections and values it checked

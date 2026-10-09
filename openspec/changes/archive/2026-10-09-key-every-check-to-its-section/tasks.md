@@ -150,22 +150,75 @@
 
 ## 6. Close
 
-- [ ] 6.1 Run the full gate and report any gate that did not run and why; verified by the gate's exit status, not by reading its output.
+- [x] 6.1 Run the full gate and report any gate that did not run and why; verified by the gate's exit status, not by reading its output.
 
-- [ ] 6.2 Confirm the rename reached the baseline as a rename and not as a second requirement; verified by reading the baseline after archiving.
+      `make check` returned 0, with all seven vocabulary lines and the payload
+      line passing.
+
+      Four gates did not run and none is applicable to this diff, which touches
+      one gate, one reader and this change: `postgres-test`, `container-build`
+      and `container-test`, `terraform-test` and `terraform-state-test`, and the
+      `policy-qualification` commands — nothing was installed and no runtime
+      restarted. Docker and the Terraform CLI are both present, so the first
+      three were skipped for scope rather than availability.
+
+- [x] 6.2 Confirm the rename reached the baseline as a rename and not as a second requirement; verified by reading the baseline after archiving.
+
+      It did. The old name is gone from the baseline, the new one appears once,
+      the capability holds 13 requirements rather than 14, and the renamed
+      requirement carries nine scenarios — the four the previous change wrote
+      and the five this one added.
 
       The delta renames the requirement added last change and replaces its
       content. A `MODIFIED` block replaces the whole requirement, and the
-      validator already refused a first attempt that silently dropped three
-      scenarios the current spec holds.
+      validator refused a first attempt that silently dropped three scenarios
+      the current spec held, naming each: "a MODIFIED requirement replaces the
+      whole block, so archive refuses to drop them". That refusal is why this
+      task existed, and it did the work the task was written to double-check.
 
-- [ ] 6.3 Sync the delta into the baseline, validate and archive, with every task above ticked first; verified by the drift gate.
+      This tick and 6.3's are written after the archive, because both describe
+      the act of archiving and cannot be true before it. That is different from
+      the previous change, which archived with nine tasks simply unticked.
 
-- [ ] 6.4 Record what this leaves open, including the ten vocabularies with no check at all.
+- [x] 6.3 Sync the delta into the baseline, validate and archive, with every task above ticked first; verified by the drift gate.
 
-      Found by this change's audit and larger than what it fixes: sixteen string
-      vocabularies are published and the gate holds six. `Reason`, `Lifecycle`,
-      `LinkClass`, `AuthorizationReason`, `AggregateState`, `ExpiryClass`,
-      `ResolverClass`, `PathClass`, `SelectedClass` and `ProfileClass` are
-      unheld — 47 values, six of them mentioned in prose in the payload sections
-      and held by nothing.
+      One requirement renamed and replaced in
+      `observable-connectivity-state-machine`. Every task but 6.2 was ticked
+      before archiving, and 6.2 could not be: it reads the result of the
+      archive.
+
+- [x] 6.4 Record what this leaves open, including the ten vocabularies with no check at all.
+
+      **Ten published vocabularies have no check at all.** Found by this
+      change's audit and larger than what it fixes: sixteen string vocabularies
+      are published by these packages and the gate holds six. `Reason` (12
+      values), `Lifecycle` (5), `LinkClass` (5), `AuthorizationReason` (5),
+      `AggregateState` (4), `ExpiryClass` (4), `ResolverClass` (4), `PathClass`
+      (3), `SelectedClass` (3) and `ProfileClass` (2) are unheld — 47 values,
+      six of them mentioned in prose in the payload sections and held by
+      nothing. Several have no owning section yet: nothing in the reference is
+      about where a `Lifecycle` or a `Reason` is explained, so that change
+      decides document structure as well as adding checks.
+
+      **Three sections cannot take the reverse check as they stand.**
+      `## Authorization` tabulates the authorization reasons, `## The diff`
+      tabulates the classifications, and the declared sources sit in a second
+      column. Giving those three the reverse direction means restructuring the
+      document, which is a tightening with its own justification and not this
+      one.
+
+      **A vocabulary is not held to having a producer.** `link_class` declares
+      three values nothing emits, `expiry_class` two,
+      `managed_transports.degraded` is never set. The reference says so and
+      nothing holds it true. The same shape as the unwired-package list this
+      repository keeps.
+
+      **`### A component row`'s fields are not held either.** They are a
+      vocabulary in the same sense — the fields of a published record — and the
+      payload reader already holds the payloads' own.
+
+      **Carried, untouched:** `readmodel/checkpoints` bounded by nothing;
+      HEX-19; HEX-11; no path from a host event to an alert; nine of the ten
+      causes a root cycle can name unseen on this machine; and the two ingress
+      routes on each other's links, which needs a decision rather than a
+      change.

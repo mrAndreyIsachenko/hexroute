@@ -77,18 +77,39 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-`key-every-check-to-its-section` is open. The documentation gate's seven
-remaining checks require their vocabulary's values to appear as a
-backtick-quoted word anywhere in the reference, and the vocabularies overlap, so
-the row that explains a value can be deleted while the gate keeps passing on a
-row about something else. Demonstrated 2026-10-09 rather than argued: the row
-explaining the component state `degraded` was deleted from its own section and
-the gate exited 0, because the word survives where it counts degraded
-transports. Nothing is currently undocumented — every value is explained in its
-own section, and the gate passes for the right reason by luck. The change keys
-each check to the section that owns its vocabulary, refuses when that section is
-absent rather than widening, and refuses a value explained there that the code no
-longer declares.
+None.
+
+`key-every-check-to-its-section` closed on 2026-10-09. The documentation gate's
+seven remaining checks required their values to appear as a backtick-quoted word
+anywhere in the reference, and the vocabularies overlap, so the row explaining a
+value could be deleted while the gate kept passing on a row about something
+else. Demonstrated rather than argued: the row explaining the component state
+`degraded` was deleted from its own section and the gate exited 0, because the
+word survives where it counts degraded transports. The audit came first and
+found nothing actually undocumented — every value was explained in its own
+section, and the gate passed for the right reason by luck.
+
+Each check now reads only the section that owns its vocabulary, refuses when
+that section is absent rather than widening, and the four sections whose rows
+are their vocabulary also refuse a row for a value the code does not declare.
+The three whose tables belong to another vocabulary are required to accept such
+a row, so the withholding is a decision rather than an oversight. Proven by
+seven removals, one per vocabulary, each inside its own section with the
+reference restored between them.
+
+Seven mutations. The first run killed four, and all three survivors survived
+because the proofs never reached them rather than because the reader was right —
+one of them a task record claiming a verification that had not been performed.
+The gate gained fixtures for an absent section, an empty vocabulary and an
+explanation leaking in from the next section; the second run killed all seven.
+
+What it leaves open is recorded in its tasks, and the largest part was found by
+its own audit: **ten published vocabularies have no check at all.** Sixteen are
+published and the gate holds six — `Reason`, `Lifecycle`, `LinkClass`,
+`AuthorizationReason`, `AggregateState`, `ExpiryClass`, `ResolverClass`,
+`PathClass`, `SelectedClass` and `ProfileClass`, 47 values between them. Several
+have no owning section yet, so that change decides document structure as well as
+adding checks.
 
 `explain-every-quantity-a-component-reports` closed on 2026-10-09. The
 connectivity reference explained one of the eight component payloads, and the
