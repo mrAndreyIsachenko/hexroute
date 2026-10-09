@@ -24,58 +24,44 @@ done
 
 status=0
 
-# named collects the quoted values of a typed string constant block.
-named() {
-  local file="$1" suffix="$2"
-  grep -oE "$suffix = \"[a-z_]+\"" "$file" \
-    | sed -E 's/.* = "([a-z_]+)"/\1/' | sort -u
-}
-
-require() {
-  local value="$1" document="$2" what="$3"
-  grep -qF "\`$value\`" "$document" || {
-    printf '%s %s is not explained in %s\n' "$what" "$value" "$document" >&2
+# Every published vocabulary is held to the section that owns it, not to the
+# document as a whole.
+#
+# A check for a backtick-quoted word anywhere in the reference cannot notice an
+# explanation being removed, because these vocabularies overlap: `degraded` is a
+# component state and a transport count, `missing` is a scoped-routes quantity
+# and a diff classification, `none` is a diff reason and a value of six payload
+# classes. Measured 2026-10-09: the row explaining the component state
+# `degraded` was deleted from its own section and this gate exited 0.
+#
+# --rows adds the reverse direction, that every row in the section is a value of
+# the vocabulary. It is given to the four sections whose rows are their
+# vocabulary and withheld from the three whose tables belong to another one:
+# `## Authorization` tabulates the authorization reasons, `## The diff`
+# tabulates the classifications, and the declared sources sit in the second
+# column of the component table.
+vocabulary() {
+  if ! python3 tests/reference_documentation.py vocabulary "$@" "$reference"; then
     status=1
-  }
+  fi
 }
 
-while read -r component; do
-  [ -n "$component" ] || continue
-  require "$component" "$reference" "component"
-done <<<"$(named internal/connectivity/model.go 'Component')"
-
-while read -r state; do
-  [ -n "$state" ] || continue
-  require "$state" "$reference" "component state"
-done <<<"$(named internal/connectivityreduce/snapshot.go 'ComponentState')"
-
-while read -r value; do
-  [ -n "$value" ] || continue
-  require "$value" "$reference" "aggregate or authorization value"
-done <<<"$(named internal/connectivityreduce/snapshot.go 'Authorization')"
-
-while read -r class; do
-  [ -n "$class" ] || continue
-  require "$class" "$reference" "diff classification"
-done <<<"$(named internal/connectivityreduce/diff.go 'Classification')"
-
-while read -r reason; do
-  [ -n "$reason" ] || continue
-  require "$reason" "$reference" "diff reason"
-done <<<"$(named internal/connectivityreduce/diff.go 'DiffReason')"
-
-while read -r class; do
-  [ -n "$class" ] || continue
-  require "$class" "$reference" "proposal class"
-done <<<"$(named internal/connectivityreduce/proposal.go 'ProposalClass')"
-
-# Every declared source is named, so a new collector cannot be introduced
-# without saying which component it speaks for.
-while read -r source; do
-  [ -n "$source" ] || continue
-  require "$source" "$reference" "source"
-done <<<"$(grep -oE '\{"[a-z]+\.[a-z]+"' internal/safety/connectivity.go \
-  | sed -E 's/\{"([a-z.]+)"/\1/' | sort -u)"
+vocabulary "component" "## Who owns what" \
+  internal/connectivity/model.go Component --rows
+vocabulary "component state" "### Component states" \
+  internal/connectivityreduce/snapshot.go ComponentState --rows
+vocabulary "diff classification" "## The diff" \
+  internal/connectivityreduce/diff.go Classification --rows
+vocabulary "proposal class" "## The proposals" \
+  internal/connectivityreduce/proposal.go ProposalClass --rows
+vocabulary "authorization value" "## Authorization" \
+  internal/connectivityreduce/snapshot.go Authorization
+vocabulary "diff reason" "## The diff" \
+  internal/connectivityreduce/diff.go DiffReason
+# A new collector cannot be introduced without saying which component it speaks
+# for: the sources are the first column of the table that pairs them.
+vocabulary "declared source" "## Who owns what" \
+  internal/safety/connectivity.go @sources
 
 # The rollout names arguments an operator will type. They have to be the ones
 # the installed jobs actually take.
@@ -97,15 +83,91 @@ done
 # reason. Measured 2026-10-09: it called the managed_transports payload fully
 # explained because `configured` matched a row about routes and `ready` and
 # `degraded` matched rows about component states.
-if ! python3 tests/payload_documentation.py \
+if ! python3 tests/reference_documentation.py payloads \
   internal/connectivity/payload.go "$reference"; then
+  status=1
+fi
+
+# The vocabulary reader is held to refusing too, on the two paths the proof
+# harnesses for this change could not reach: an absent section and a vocabulary
+# with no values. A mutation run found both unheld, and the task that claimed
+# otherwise was corrected.
+vocabulary_fixture="$(mktemp -d "${TMPDIR:-/tmp}/hexroute-vocabulary-gate.XXXXXX")"
+trap 'rm -rf "$payload_fixture" "$vocabulary_fixture"' EXIT
+
+cat >"$vocabulary_fixture/source.go" <<'SOURCE'
+package example
+
+type Thing string
+
+const (
+	ThingFirst  Thing = "first"
+	ThingSecond Thing = "second"
+)
+
+type Empty string
+SOURCE
+
+cat >"$vocabulary_fixture/reference.md" <<'DOC'
+## The things
+
+| Value | What it says |
+| --- | --- |
+| `first` | the first one |
+| `second` | the second one |
+
+## Something else
+DOC
+
+reader() {
+  python3 tests/reference_documentation.py vocabulary "$@" >/dev/null 2>&1
+}
+
+if ! reader thing "## The things" "$vocabulary_fixture/source.go" Thing \
+  "$vocabulary_fixture/reference.md" --rows; then
+  printf 'the vocabulary reader refused a fully explained fixture\n' >&2
+  status=1
+fi
+
+# An absent section is a refusal, not a search of the whole document: widening
+# is the defect this change removed.
+if reader thing "## A section that is not there" "$vocabulary_fixture/source.go" \
+  Thing "$vocabulary_fixture/reference.md"; then
+  printf 'the vocabulary reader widened to the document when its section was absent\n' >&2
+  status=1
+fi
+
+# A vocabulary it read nothing from is a broken query, not an empty answer.
+if reader empty "## The things" "$vocabulary_fixture/source.go" Empty \
+  "$vocabulary_fixture/reference.md"; then
+  printf 'the vocabulary reader passed with no values to check\n' >&2
+  status=1
+fi
+
+# The section ends at the next heading: a value explained after it does not
+# count as explained in it.
+cat >"$vocabulary_fixture/leaked.md" <<'DOC'
+## The things
+
+| Value | What it says |
+| --- | --- |
+| `first` | the first one |
+
+## Something else
+
+| Value | What it says |
+| --- | --- |
+| `second` | explained in the wrong place |
+DOC
+if reader thing "## The things" "$vocabulary_fixture/source.go" Thing \
+  "$vocabulary_fixture/leaked.md"; then
+  printf 'the vocabulary reader accepted an explanation from the next section\n' >&2
   status=1
 fi
 
 # And the payload gate is held to refusing, because a gate that only ever
 # passes is indistinguishable from one that checks nothing.
 payload_fixture="$(mktemp -d "${TMPDIR:-/tmp}/hexroute-payload-gate.XXXXXX")"
-trap 'rm -rf "$payload_fixture"' EXIT
 
 cat >"$payload_fixture/payload.go" <<'SOURCE'
 package connectivity
@@ -122,7 +184,7 @@ SOURCE
 
 refuses() {
   local what="$1" reference="$2"
-  if python3 tests/payload_documentation.py "$payload_fixture/payload.go" \
+  if python3 tests/reference_documentation.py payloads "$payload_fixture/payload.go" \
     "$reference" >/dev/null 2>&1; then
     printf 'the payload gate accepted %s\n' "$what" >&2
     status=1
@@ -164,7 +226,7 @@ refuses "an explanation no field carries" "$payload_fixture/stale.md"
 
 # And it refuses to pass when there is nothing to check.
 printf 'package connectivity\n' >"$payload_fixture/empty.go"
-if python3 tests/payload_documentation.py "$payload_fixture/empty.go" \
+if python3 tests/reference_documentation.py payloads "$payload_fixture/empty.go" \
   "$reference" >/dev/null 2>&1; then
   printf 'the payload gate passed with no payloads to check\n' >&2
   status=1
@@ -180,7 +242,7 @@ cat >"$payload_fixture/whole.md" <<'DOC'
 | `counted` | what it counts |
 | `other` | the other one |
 DOC
-if ! python3 tests/payload_documentation.py "$payload_fixture/payload.go" \
+if ! python3 tests/reference_documentation.py payloads "$payload_fixture/payload.go" \
   "$payload_fixture/whole.md" >/dev/null 2>&1; then
   printf 'the payload gate refused a fully explained payload\n' >&2
   status=1

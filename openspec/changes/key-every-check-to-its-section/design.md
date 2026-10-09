@@ -48,17 +48,25 @@ A check whose section is absent refuses. The flat behaviour — treating the
 whole document as the section — is the defect being removed, and keeping it as a
 fallback would reintroduce it the first time a heading changed.
 
-### Both directions, per vocabulary
+### Forward for all seven, reverse only where the rows align
 
-A value the section does not explain fails; so does a row in that section for a
-value the code no longer declares. The second keeps the reference from
-describing a narrowed vocabulary, and it is the check that would have caught the
-`degraded` deletion from the other side.
+A value its section does not explain fails. That is the fix for the
+demonstrated defect, and it applies to all seven checks.
 
-One care is needed: a section may legitimately carry rows that are not values of
-its vocabulary — `### A component row` explains record fields, not states. The
-reverse check applies only to the sections keyed to a vocabulary, and names the
-rows it did not expect rather than assuming they are stale.
+The reverse direction — a row in the section for a value the code no longer
+declares — applies to four of them. Measured: `component`, `component state`,
+`classification` and `proposal class` have exactly as many rows as values and
+nothing else. `authorization` and `diff reason` do not: their sections' tables
+are occupied by **another vocabulary** — `## Authorization` tabulates the
+authorization *reasons* and explains `authorized` and `unauthorized` in prose;
+`## The diff` tabulates the classifications and explains the twelve reasons in
+prose. The `source` check's values sit in the second column of the component
+table rather than the first.
+
+So the reverse check is applied where it is sound and not where it would demand
+restructuring the document. Requiring rows everywhere is a second tightening
+with its own justification, and conflating it with this one would mean rewriting
+three sections to satisfy a gate rather than a reader.
 
 ### One helper, not seven
 
