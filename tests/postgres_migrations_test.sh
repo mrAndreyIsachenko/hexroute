@@ -9,16 +9,85 @@ cd "$repo_root"
 migration_dir="$repo_root/internal/database/migrations/postgres"
 container="hexroute-postgres-migrations-$$"
 
+# postgres:17-alpine, named by the digest of its image index rather than by its
+# tag. The index and not one of its sixteen entries, because the daemon picks
+# the entry for the host and the two hosts that run this gate do not share one:
+# CI is linux/amd64 and the development Mac is linux/arm64.
+#
+# A tag would let two runs a week apart apply these migrations to two different
+# servers and report success both times, with nothing in either record saying
+# which server it measured.
+#
+# Three registries serving that digest, measured 2026-10-09 returning
+# byte-identical manifests. The digest is written out at each one rather than
+# shared through a variable, so that "all sources carry the same digest" is a
+# claim a gate can check instead of one the file makes true by construction.
+#
+# Docker Hub is asked first so that an operator's own configured pull-through
+# mirror is used: a daemon mirror applies to Docker Hub references only, and
+# writing a public mirror's name here would route past it. The other two are
+# reached for when the origin refuses, which is the reason this list exists —
+# on 2026-10-09 Docker Hub refused an anonymous pull from a shared CI address
+# twice in fourteen minutes and this gate could not start. That budget is
+# counted per source address and GitHub's runners share addresses, so nothing
+# in this repository can stop it recurring.
+#
+# Because every source names the same digest, a mirror cannot serve different
+# content than the origin. It can only refuse to serve.
+image_sources=(
+  "docker.io/library/postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+  "mirror.gcr.io/library/postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+  "public.ecr.aws/docker/library/postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+)
+image=""
+
 cleanup() {
   docker rm -f "$container" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
+# The image is pulled before the container is started. Pulling implicitly
+# inside `docker run` leaves nowhere to put the fallback: by the time the run
+# has failed there is no way to ask another registry without also retrying the
+# container.
+resolve_image() {
+  local ref output
+  local refusals=()
+
+  # An image already on disk is not asked for again. Under a rate limit even a
+  # manifest request spends part of the budget, and a gate that cannot start
+  # while holding the image it needs is the worst of both.
+  for ref in "${image_sources[@]}"; do
+    if docker image inspect "$ref" >/dev/null 2>&1; then
+      image="$ref"
+      printf 'postgres image already present, served by %s\n' "${ref%%@*}" >&2
+      return 0
+    fi
+  done
+
+  for ref in "${image_sources[@]}"; do
+    if output="$(docker pull --quiet "$ref" 2>&1)"; then
+      image="$ref"
+      printf 'postgres image pulled from %s\n' "${ref%%@*}" >&2
+      return 0
+    fi
+    refusals+=("${ref%%@*}: ${output}")
+  done
+
+  # Every registry's answer, not the last one's. A gate that cannot start
+  # should name what would not serve it.
+  printf 'no registry served the pinned postgres image\n' >&2
+  printf '  %s\n' "${refusals[@]}" >&2
+  return 1
+}
+
+resolve_image
+
 docker run --detach --rm \
   --name "$container" \
   --env POSTGRES_HOST_AUTH_METHOD=trust \
   --publish 127.0.0.1::5432 \
-  postgres:17-alpine >/dev/null
+  "$image" >/dev/null
 
 # Both waits below say what they saw when they give up. This script used to
 # fail here without printing anything: it ran `docker exec` before the
