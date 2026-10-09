@@ -91,6 +91,46 @@ while nothing references `connectivity.ReasonExpired`. The change holds each
 value to having a producer or to being written down as having none, and fails in
 both directions.
 
+`pin-the-images-the-gates-pull` closed on 2026-10-10. The schema gate could
+not start: `make postgres-test` failed twice in fourteen minutes on 2026-10-09,
+once on `main` and once on a pull request, because Docker Hub refused an
+anonymous pull of `postgres:17-alpine` from a shared runner address. That budget
+is counted per source address and GitHub's runners share addresses, so nothing
+in the repository had caused it and nothing in the repository could stop it
+recurring.
+
+The quieter half was that the image had never been pinned. Two references here
+reach a registry: the one that ships carries a digest and a contract test holds
+it there, and the one the schema gate pulled was a bare tag held by nobody — so
+two runs a week apart could apply the same migrations to two different servers
+and report success both times. The image is now named by the digest of its
+index, with three registries listed for it, measured returning byte-identical
+manifests; Docker Hub is asked first so an operator's own configured mirror is
+still used, and the public mirrors are reached for only when the origin
+refuses. Because every source names the same digest, a mirror cannot serve
+different content, only refuse to serve.
+
+`tests/image_pins.py` holds the rule rather than the line: every reference in
+the repository carries a digest, is `scratch`, or names an image built here,
+with that name read from the Makefile rather than from a list beside the gate.
+A script that pulls must name at least two sources carrying one digest.
+
+The reader was wrong three times and each correction is in it. Scanning every
+token of every docker command refused twenty-nine harmless things, `psql` and
+`pg_isready` among them, because `docker exec` is followed by the command the
+container runs — so it reads only the three subcommands that take an image, and
+only up to the image. It then refused its own fixtures, because the harness
+writes them as heredocs and a heredoc body is data, not commands this
+repository runs. And it reported an empty scan before it reported failures,
+which said the reader was lost when it had found the defect. Fourteen
+mutations: eleven killed, then three survivors that all turned out to be
+fixtures refused for a reason other than their own; after isolating them, all
+fourteen killed.
+
+What it leaves open is in its tasks: the Dockerfile's builder still has one
+registry, nothing says when either digest has gone stale, and a reference
+assembled from pieces is refused for a reason that does not describe it.
+
 `hold-the-ten-unheld-vocabularies` closed on 2026-10-09. Sixteen string
 vocabularies are published by the connectivity packages and the gate held six;
 all sixteen are held now, confirmed by reading the code rather than counting the
