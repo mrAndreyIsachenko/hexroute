@@ -144,6 +144,7 @@ shell-test: shell-test-tools build-observe-root build-observe-user build-policy-
 	tests/baseline_archives_test.sh
 	tests/emergency_restore_test.sh
 	tests/container_contract_test.sh
+	tests/image_pin_test.sh
 	tests/observe_root_launchd_test.sh
 	tests/install_reduction_guard_test.sh
 	tests/assertion_shape_test.sh
