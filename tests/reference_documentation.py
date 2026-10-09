@@ -14,7 +14,25 @@ The payloads, their components and their fields all come from the code: the
 Payload struct's json tags are the component names and they name each payload
 type, so this holds no list of its own.
 
-Usage: payload_documentation.py SOURCE REFERENCE
+Two entry points:
+
+  reference_documentation.py payloads SOURCE REFERENCE
+  reference_documentation.py vocabulary LABEL HEADING SOURCE SUFFIX REFERENCE [--rows]
+
+The second holds a published vocabulary to the section that owns it, for the
+same reason and in the same way. Measured 2026-10-09: the row explaining the
+component state `degraded` was deleted from its own section and the gate passed,
+because the word survives where it counts degraded transports. A check keyed on
+the word cannot notice an explanation being removed.
+
+`--rows` adds the reverse direction, that every row in the section is a value of
+the vocabulary. It is given only to the sections whose rows are their
+vocabulary: the component names, the component states, the classifications and
+the proposal classes. `## Authorization` tabulates the authorization reasons and
+explains its own two values in prose, `## The diff` tabulates the
+classifications and explains its twelve reasons in prose, and the declared
+sources sit in the second column of the component table — for those, requiring
+rows would mean rewriting the document to satisfy a gate rather than a reader.
 """
 import re
 import sys
@@ -37,7 +55,60 @@ def sections(reference: str, component: str) -> str | None:
     return reference[start:] if end < 0 else reference[start:end]
 
 
-def main(source_path: str, reference_path: str) -> int:
+def vocabulary(
+    label: str,
+    heading: str,
+    source_path: str,
+    suffix: str,
+    reference_path: str,
+    rows_are_the_vocabulary: bool,
+) -> int:
+    """Hold one published vocabulary to the section that owns it."""
+    source = open(source_path).read()
+    reference = open(reference_path).read()
+
+    # Two shapes are declared in this code: a typed constant block, and the
+    # source table, whose first column is the value. The suffix names which.
+    if suffix == "@sources":
+        values = sorted(set(re.findall(r'\{"([a-z]+\.[a-z]+)"', source)))
+    else:
+        values = sorted(set(re.findall(rf'{re.escape(suffix)} = "([a-z_.]+)"', source)))
+    if not values:
+        print(f"{label}: no values were read from {source_path} as {suffix};",
+              "this check is not looking at anything", file=sys.stderr)
+        return 1
+
+    start = reference.find(heading)
+    if start < 0:
+        # Widening to the whole document is the defect being removed, so an
+        # absent section is a refusal rather than a fallback.
+        print(f"{label}: the section {heading!r} is not in {reference_path}", file=sys.stderr)
+        return 1
+    start += len(heading)
+    ends = [index for index in (reference.find("\n## ", start),
+                                reference.find("\n### ", start)) if index > 0]
+    section = reference[start:min(ends)] if ends else reference[start:]
+
+    status = 0
+    for value in values:
+        if f"`{value}`" not in section:
+            print(f"{label} {value} is not explained under {heading!r}", file=sys.stderr)
+            status = 1
+    if rows_are_the_vocabulary:
+        declared = set(values)
+        for row in sorted(set(ROW.findall(section))):
+            if row not in declared:
+                print(f"{label}: `{row}` is explained under {heading!r} and is not a value of it",
+                      file=sys.stderr)
+                status = 1
+    if status != 0:
+        return 1
+    print(f"ok: every {label} is explained under its own section "
+          f"({len(values)} values)")
+    return 0
+
+
+def payloads(source_path: str, reference_path: str) -> int:
     source = open(source_path).read()
     reference = open(reference_path).read()
 
@@ -101,7 +172,15 @@ def main(source_path: str, reference_path: str) -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print(__doc__, file=sys.stderr)
-        raise SystemExit(2)
-    raise SystemExit(main(sys.argv[1], sys.argv[2]))
+    arguments = sys.argv[1:]
+    if len(arguments) == 3 and arguments[0] == "payloads":
+        raise SystemExit(payloads(arguments[1], arguments[2]))
+    if arguments and arguments[0] == "vocabulary":
+        # The flag is read wherever it sits, so a caller assembling the command
+        # need not know where to put it.
+        rows = "--rows" in arguments
+        positional = [argument for argument in arguments[1:] if argument != "--rows"]
+        if len(positional) == 5:
+            raise SystemExit(vocabulary(*positional, rows))
+    print(__doc__, file=sys.stderr)
+    raise SystemExit(2)

@@ -68,7 +68,20 @@ the pattern.
 
 ## Not in this change
 
-The vocabularies are wider than what any mapper produces — `link_class`
+**Ten published vocabularies have no check at all**, which the audit for this
+change turned up and which is the larger half of the hole. Sixteen string
+vocabularies are published by these packages and the gate holds six:
+`Reason` (12 values), `Lifecycle` (5), `LinkClass` (5), `AuthorizationReason`
+(5), `AggregateState` (4), `ExpiryClass` (4), `ResolverClass` (4), `PathClass`
+(3), `SelectedClass` (3) and `ProfileClass` (2) are unheld — 47 values. Six of
+them are mentioned in prose in the payload sections written last change, which
+is a mention and not an explanation held by anything.
+
+They are left for their own change deliberately: section keying is the pattern
+those ten checks will need, and building it here on the four vocabularies whose
+sections are already row-aligned gives them a shape to adopt rather than one to
+invent.
+
+The vocabularies are also wider than what any mapper produces — `link_class`
 declares three values nothing emits, `expiry_class` two — and this change does
-not hold a value to having a producer. That is the other half of the same
-reading and is recorded as open.
+not hold a value to having a producer either.

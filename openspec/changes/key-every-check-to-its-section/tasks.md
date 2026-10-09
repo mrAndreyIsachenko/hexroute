@@ -28,53 +28,125 @@
 
 ## 2. The reader
 
-- [ ] 2.1 Give the payload helper a second entry point: a vocabulary, a section and a document; verified by a test over a fixture section.
+- [x] 2.1 Give the payload helper a second entry point: a vocabulary, a section and a document; verified by all seven checks running through it.
 
-- [ ] 2.2 Refuse when the section is absent, rather than reading the whole document; verified by a test over a document with no such heading.
+      `tests/payload_documentation.py` became
+      `tests/reference_documentation.py` with two entry points, `payloads` and
+      `vocabulary`. The seven checks are seven calls, and the shell gate holds
+      only the seven headings — the values still come from the code.
 
-- [ ] 2.3 Refuse a value the section explains and the code no longer declares, naming it; verified by a test over a fixture with a row for a value not in the vocabulary.
+- [x] 2.2 Refuse when the section is absent, rather than reading the whole document; verified by a fixture asking for a heading the document does not have.
 
-- [ ] 2.4 Name rows the section carries that are not values of its vocabulary, rather than treating them as stale; verified by a test over a section holding both.
+      This record first claimed verification that had not happened. The reader
+      refused an absent heading, but nothing exercised that path, and the
+      mutation run found it: "widen to the whole document when the heading is
+      absent" survived. The gate now carries a fixture for it, and two more the
+      harnesses could not reach — an empty vocabulary, and a value explained in
+      the *next* section rather than this one.
 
-      `### A component row` explains record fields rather than states, so a
-      section legitimately carrying other rows must not be read as describing a
-      narrowed vocabulary.
+      Widening is the defect being removed, so an absent section is a refusal
+      and not a fallback.
 
-- [ ] 2.5 Say how many sections and values were held; verified by the line it prints.
+- [x] 2.3 Refuse a value the section explains and the code no longer declares, naming it; verified by a stray row added to each of the four sections the check is given.
+
+      All four refuse `a_value_nothing_declares`.
+
+- [x] 2.4 Apply the reverse check only where a section's rows are its vocabulary, and record which four those are; verified by the measurement that decides it.
+
+      Measured 2026-10-09. Four sections have exactly as many rows as values and
+      nothing else: the component names, the component states, the
+      classifications and the proposal classes.
+
+      Three do not. `## Authorization` tabulates the authorization **reasons**
+      and explains `authorized` and `unauthorized` in prose; `## The diff`
+      tabulates the classifications and explains its twelve reasons in prose;
+      the declared sources sit in the second column of the component table. For
+      those, a row-strict reverse check would demand rewriting the document to
+      satisfy a gate rather than a reader, which is a separate tightening.
+
+- [x] 2.5 Say how many sections and values were held; verified by the eight lines it prints.
+
+      `8 values`, `7 values`, `8 values`, `4 values`, `2 values`, `12 values`,
+      `9 values`, and the payload line's `8 payloads, 25 fields`.
 
 ## 3. The seven checks
 
-- [ ] 3.1 Key the component check to the section that owns the component names; verified by the gate refusing when a name's row is removed from it.
+- [x] 3.1 Key the component check to `## Who owns what`; verified by the gate refusing when `scoped_routes` is removed from it.
 
-- [ ] 3.2 Key the component state check to `### Component states`; verified by the `degraded` deletion from 1.2 now being refused.
+- [x] 3.2 Key the component state check to `### Component states`; verified by the `degraded` deletion from 1.2 now being refused.
 
-- [ ] 3.3 Key the authorization check to `## Authorization`.
+- [x] 3.3 Key the authorization check to `## Authorization`, without the reverse direction.
 
-- [ ] 3.4 Key the classification and diff reason checks to `## The diff`.
+- [x] 3.4 Key the classification and diff reason checks to `## The diff` — the first with the reverse direction, the second without, because that section's table is the classifications.
 
-- [ ] 3.5 Key the proposal class check to `## The proposals`.
+- [x] 3.5 Key the proposal class check to `## The proposals`, with the reverse direction.
 
-- [ ] 3.6 Key the source check to the section that owns the declared sources.
+- [x] 3.6 Key the source check to `## Who owns what`; verified by the gate refusing when `root.relays` is removed from it.
 
-- [ ] 3.7 Record any value that turns out to be explained outside its own section, and move its explanation rather than widening the check; verified by the gate passing without a widened check.
+      The sources are declared as a table in the code rather than as a typed
+      constant block, so the reader takes `@sources` as the name of that shape.
+      One reader, two shapes, named at the call site.
+
+- [x] 3.7 Record any value that turns out to be explained outside its own section, and move its explanation rather than widening the check; verified by the gate passing without a widened check.
+
+      None had to move. Every value of all seven vocabularies was already
+      explained in its own section — which the audit in 1.1 established before
+      any code was written, and which is why this change touches the gate and
+      not the document.
 
 ## 4. The gate holds
 
-- [ ] 4.1 Prove each of the seven refuses a removed explanation; verified by one deletion per vocabulary, each expected to fail.
+- [x] 4.1 Prove each of the seven refuses a removed explanation; verified by one deletion per vocabulary, each expected to fail.
+
+      Seven deletions, each applied inside its own section only, the reference
+      restored and compared byte for byte between them: `scoped_routes`,
+      `degraded`, `missing`, `observe`, `unauthorized`, `stale_observation`,
+      `root.relays`. All seven refused.
+
+      The harness refuses its own fixture too: if the value it means to remove
+      is not mentioned in that section, it reports that the fixture proves
+      nothing rather than counting a pass.
 
       Seven deletions, not one. The `degraded` case is the one already
       demonstrated; the other six are the ones this change is for.
 
-- [ ] 4.2 Prove it fails on the parent commit; verified by its exit status before and after.
+- [x] 4.4 Prove the reverse check on the four row-aligned vocabularies; verified by one undeclared row per section, each expected to fail.
 
-- [ ] 4.3 Prove a fully explained reference still passes, so the refusals are about what is missing; verified by the gate's exit status on the document as it stands.
+      All four refuse. And the three it is withheld from are required to
+      **accept** the same row, so the withholding is visibly a decision rather
+      than an oversight — a check that refused there would be refusing the
+      document's own shape.
+
+- [x] 4.2 Prove it fails on the parent commit; verified by its exit status before and after.
+
+      The before is 1.2: with the parent's flat check, deleting the row that
+      explains the component state `degraded` left the gate exiting **0**. With
+      this change the same deletion is refused. The gate now sees a loss it
+      could not see.
+
+- [x] 4.3 Prove a fully explained reference still passes, so the refusals are about what is missing; verified by all eight checks passing on the document as it stands and by `make check` returning 0.
 
 ## 5. Mutation discipline
 
-- [ ] 5.1 Mutate the section bounding and both refusals; verified by every survivor closed by a test or recorded with the reason it was left.
+- [x] 5.1 Mutate the section bounding and both refusals; verified by every survivor closed by a test or recorded with the reason it was left.
 
-      A mutation that does not compile — or, for a shell gate, does not run — is
-      rewritten, not counted.
+      Seven mutations over the reader: widening when the heading is absent,
+      reading past the next heading, starting before the heading, never
+      reporting a missing value, never reporting a stray row, applying the
+      reverse check where it is withheld, and passing an empty vocabulary.
+
+      First run: **4 killed, 3 survived** — and all three survived because my
+      own proofs did not reach them, not because the reader was right. Two were
+      paths nothing exercised, and the third I had mis-targeted: the string
+      `start += len(heading)` appears in the payload reader as well, and the
+      replacement hit that one, which the two harnesses do not run.
+
+      So the gate gained fixtures for the unreached paths and the harness now
+      judges by the gate as well as by its own two proofs. Second run:
+      **7 killed, 0 survived.**
+
+      The run's real finding is in 2.2: a task of mine claimed a verification
+      that had not been performed, and the mutation is what caught it.
 
 ## 6. Close
 
@@ -89,4 +161,11 @@
 
 - [ ] 6.3 Sync the delta into the baseline, validate and archive, with every task above ticked first; verified by the drift gate.
 
-- [ ] 6.4 Record what this leaves open.
+- [ ] 6.4 Record what this leaves open, including the ten vocabularies with no check at all.
+
+      Found by this change's audit and larger than what it fixes: sixteen string
+      vocabularies are published and the gate holds six. `Reason`, `Lifecycle`,
+      `LinkClass`, `AuthorizationReason`, `AggregateState`, `ExpiryClass`,
+      `ResolverClass`, `PathClass`, `SelectedClass` and `ProfileClass` are
+      unheld — 47 values, six of them mentioned in prose in the payload sections
+      and held by nothing.
