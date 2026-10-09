@@ -91,6 +91,101 @@ for argument in --connectivity-read-model --publish-connectivity-to \
   }
 done
 
+# Every quantity a component payload carries is explained under that component.
+# Not by the require() above: its match is a backtick-quoted word anywhere in
+# the document, and these vocabularies overlap, so it passes for the wrong
+# reason. Measured 2026-10-09: it called the managed_transports payload fully
+# explained because `configured` matched a row about routes and `ready` and
+# `degraded` matched rows about component states.
+if ! python3 tests/payload_documentation.py \
+  internal/connectivity/payload.go "$reference"; then
+  status=1
+fi
+
+# And the payload gate is held to refusing, because a gate that only ever
+# passes is indistinguishable from one that checks nothing.
+payload_fixture="$(mktemp -d "${TMPDIR:-/tmp}/hexroute-payload-gate.XXXXXX")"
+trap 'rm -rf "$payload_fixture"' EXIT
+
+cat >"$payload_fixture/payload.go" <<'SOURCE'
+package connectivity
+
+type Payload struct {
+	Example *ExamplePayload `json:"example,omitempty"`
+}
+
+type ExamplePayload struct {
+	Counted uint16 `json:"counted"`
+	Other   uint16 `json:"other"`
+}
+SOURCE
+
+refuses() {
+  local what="$1" reference="$2"
+  if python3 tests/payload_documentation.py "$payload_fixture/payload.go" \
+    "$reference" >/dev/null 2>&1; then
+    printf 'the payload gate accepted %s\n' "$what" >&2
+    status=1
+  fi
+}
+
+# A row under another component does not explain this one.
+cat >"$payload_fixture/elsewhere.md" <<'DOC'
+### The `other_thing` payload
+
+| Field | What it says |
+| --- | --- |
+| `counted` | something else entirely |
+| `other` | also something else |
+DOC
+refuses "an explanation under another component" "$payload_fixture/elsewhere.md"
+
+# A field with no row at all.
+cat >"$payload_fixture/partial.md" <<'DOC'
+### The `example` payload
+
+| Field | What it says |
+| --- | --- |
+| `counted` | what it counts |
+DOC
+refuses "a payload with one field unexplained" "$payload_fixture/partial.md"
+
+# A row for a quantity nothing reports.
+cat >"$payload_fixture/stale.md" <<'DOC'
+### The `example` payload
+
+| Field | What it says |
+| --- | --- |
+| `counted` | what it counts |
+| `other` | the other one |
+| `removed` | a quantity nothing carries any more |
+DOC
+refuses "an explanation no field carries" "$payload_fixture/stale.md"
+
+# And it refuses to pass when there is nothing to check.
+printf 'package connectivity\n' >"$payload_fixture/empty.go"
+if python3 tests/payload_documentation.py "$payload_fixture/empty.go" \
+  "$reference" >/dev/null 2>&1; then
+  printf 'the payload gate passed with no payloads to check\n' >&2
+  status=1
+fi
+
+# The whole fixture, explained, is accepted — so the refusals above are about
+# what is missing rather than about the gate refusing everything.
+cat >"$payload_fixture/whole.md" <<'DOC'
+### The `example` payload
+
+| Field | What it says |
+| --- | --- |
+| `counted` | what it counts |
+| `other` | the other one |
+DOC
+if ! python3 tests/payload_documentation.py "$payload_fixture/payload.go" \
+  "$payload_fixture/whole.md" >/dev/null 2>&1; then
+  printf 'the payload gate refused a fully explained payload\n' >&2
+  status=1
+fi
+
 # Every architectural reference stays pinned to the commit that was reviewed.
 # An unpinned reference is a claim nobody can check once the project moves on,
 # and each of these was read out of code that has since moved.

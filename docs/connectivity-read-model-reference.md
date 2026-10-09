@@ -77,7 +77,7 @@ other is the most likely mistake here. `observed: ready` with `state: stale`
 does not mean the component is ready; it means it was, and nothing has said so
 recently enough to still count.
 
-### The scoped routes payload
+### The `scoped_routes` payload
 
 | Field | What it says |
 | --- | --- |
@@ -107,6 +107,81 @@ reached, so the component had reported `degraded` in every cycle it ever ran.
 A residue of 2 is expected and is not this runtime's to clear: the host's two
 ingress routes stand on each other's links, which is the arrangement the
 runtime that owns the tunnel enforces, read on 2026-09-25 and unchanged since.
+
+### The `physical_network` payload
+
+| Field | What it says |
+| --- | --- |
+| `link_class` | `wired` whenever the interface reports up, `none` otherwise. The observer cannot tell wired from wireless, so `wired` here means *up* and not *not wireless* — the vocabulary also holds `wireless`, `cellular` and `virtual`, and nothing emits them |
+| `link_up` | the interface reported up |
+| `has_carrier` | **a default gateway was observed on the interface.** Not a link-layer carrier, despite the name: it is set from the gateway being valid |
+
+A link that is up without a gateway reads `degraded`, which is the only reason
+`has_carrier` is separate from `link_up`.
+
+### The `default_path` payload
+
+| Field | What it says |
+| --- | --- |
+| `path_class` | `tunneled` when the default route leaves through the managed tunnel, `direct` when it leaves without one, `none` when neither could be established |
+| `gateway_present` | under `tunneled`, that a gateway was observed; under `direct`, nothing — it is set to true with the class |
+
+The two classes do not make the same claim with this field, which is why the
+class is read first.
+
+### The `dns` payload
+
+| Field | What it says |
+| --- | --- |
+| `resolver_class` | which kind of resolver answers: `system`, `scoped`, `encrypted`, or `none` |
+| `responding` | the resolver answered |
+| `scoped_domains` | how many domains are configured to resolve through the scoped resolver |
+| `failing_domains` | how many of those did not resolve |
+
+**Nothing produces this component.** No mapper can emit a DNS observation, and
+a test asserts that none does, so the fields above describe what the payload is
+shaped to carry rather than anything a reader will meet today. The component is
+in the snapshot's vocabulary so the shape is fixed before a collector exists.
+
+### The `managed_transports` payload
+
+| Field | What it says |
+| --- | --- |
+| `configured` | how many managed transports the caller declared. The root cycle passes **one**, literally, so this is not a count of anything observed |
+| `ready` | one when the tunnel process is running, zero when it is not |
+| `degraded` | **never set.** No mapper writes it; it is zero in every fact this runtime has produced |
+
+`configured`, `ready` and `degraded` are also words in other vocabularies here —
+`configured` counts routes in the `scoped_routes` payload and relays in
+`relay_ingress`, and `ready` and `degraded` are component states. They are
+different subjects with the same names.
+
+### The `relay_ingress` payload
+
+| Field | What it says |
+| --- | --- |
+| `configured` | how many ingress endpoints were probed this cycle |
+| `reachable` | how many of them answered ready |
+| `reserve` | how many are held in reserve. The root cycle passes **zero**, so this reports nothing it measured |
+| `selected_class` | which class is in use: `primary`, `reserve`, or `none` when nothing is configured. The root cycle passes `primary`, and a `reserve` selection with no reserve is corrected to `primary` |
+
+Two of the four are the call site's constants rather than observations. They
+exist for a fleet that selects a reserve, and nothing selects one yet.
+
+### The `user_access` payload
+
+| Field | What it says |
+| --- | --- |
+| `profile_class` | `configured` when a profile was found, `none` when it was not |
+| `authenticated` | a session was accepted. It is **inferred**, not checked: carrying traffic implies it, and so does a profile that is connecting or active |
+| `connected` | the profile is carrying traffic |
+
+### The `session_expiry` payload
+
+| Field | What it says |
+| --- | --- |
+| `expiry_class` | `valid` while a session is active, `none` otherwise. The vocabulary also holds `expiring` and `expired`, and no mapper emits either |
+| `sessions` | one while a session is active, zero otherwise. It is a count that has never been anything else |
 
 ### Component states
 
