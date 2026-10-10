@@ -2,40 +2,174 @@
 
 ## 1. The ground
 
-- [ ] 1.1 Read the live machine before proposing anything that touches it: what
+- [x] 1.1 Read the live machine before proposing anything that touches it: what
       holds the tunnel, which generation is active, what the root runtime's
       state and pending count are, and whether the soak window recorded as
       ending about 2026-10-05 has in fact ended. Report what was seen, not what
       was expected.
-- [ ] 1.2 Measure the spool as it stands: its size against its bound, how many
+
+      Measured 2026-10-10. **Twilight holds the tunnel**: `sing-box` runs
+      under `sudo -n` from `twilight/supervisor/client/`, started 2026-10-09
+      12:44 local, beside the supervisor running since 2026-09-26 and its
+      `caffeinate -i -s -w`. The soak window has ended and ownership went back.
+
+      `hexrouted` answers its socket as the operator: `HEALTHY`,
+      `observe-only`, generation 2428 then 2429 a moment later so the cycle is
+      keeping its period, `pending_operations: 2`, `safe_mode: false`,
+      `consecutive_failures: 0`, `last_reason: probe_succeeded`. The recovery
+      quantities are absent, which is what `KeepsNoRecovery` means. Policy:
+      active, `bundle_generation: 5`, `policy_generation: 4`, activated
+      2026-09-26T00:15:59Z, **expires 2026-10-25T22:45:57Z**, no authorization
+      suspension.
+
+      `tunnel-state.json` carries `known: true`, `link_present: true`,
+      `payload_failures: 0`, `link_failures: 0` and a carrier signature of three
+      paths. It has **no owner field at all**, so it does not answer who holds
+      the tunnel. The process listing does. A plan that reads this file for
+      ownership would read nothing and conclude whatever it already believed.
+
+      `node-id` is on disk, so this host already has an identity; what it lacks
+      is a key and a registration.
+- [x] 1.2 Measure the spool as it stands: its size against its bound, how many
       records it holds, and whether it is overflowing now. The correlation
       decision rests on this being the steady state; if it is not, say so.
-- [ ] 1.3 Confirm that a record reaches the spool on every cycle, so a node
+
+      Overflow is the steady state, and the arithmetic says so rather than a
+      log. The newest record is sequence 233,347 and the spool holds 83,036
+      files, so 150,311 records are already gone: it sits at its bound and
+      refuses non-critical records, which is what records an overflow incident.
+      The correlation decision stands on measurement.
+
+      And a second thing fell out, which no requirement covers. The root spool
+      occupies 332,148 KiB for 83,036 records, and 83,036 × 4 KiB = 332,144 KiB
+      — the bound is computed over record content, while the disk pays a block
+      for each record of a few hundred bytes. The user spool is the same: 83,573
+      records, 334,292 KiB. **Two spools bounded at 100 MiB each occupy 650
+      MiB.** Recorded in the roadmap's Owed rather than fixed here.
+
+      Measured beside it: `readmodel` holds 5,807 checkpoints in 468,116 KiB,
+      against 5,650 in 336 MiB when it was last read — the unbounded store is
+      growing. The event archive is 545,580 KiB. Hexroute's state on this
+      machine is about 1.6 GiB.
+
+      How many overflow incidents the spool currently holds is **not measured**:
+      the command written for it used `grep -rlc`, which with both flags counted
+      files rather than matches and returned exactly the file count for two
+      different patterns. A plausible number meaning something else. Re-run
+      with `grep -rl` before any claim about how many would upload.
+- [x] 1.3 Confirm that a record reaches the spool on every cycle, so a node
       registered with a heartbeat expectation is heard from while the machine is
       awake and doing nothing in particular. If the spool can be idle on a
       running machine, the expectation is wrong and this says why.
 
+      The newest spool record was written 3 minutes before it was read, on a
+      machine doing nothing in particular, and the cycle's period is 60
+      seconds. The spool is not idle on a running machine, so a 24-hour
+      expectation is met while awake with three orders of magnitude to spare.
+
 ## 2. The incident reaches the upload queue
 
-- [ ] 2.1 `connectivityjournal.AppendIncident(event.Incident)`: one closed type,
+- [x] 2.1 `connectivityjournal.AppendIncident(event.Incident)`: one closed type,
       its own validation, mirrored to the archive like any written record.
-- [ ] 2.2 Prove the journal's readers skip it — `Records`, `RecordsAfter`,
+
+      The urgency hook went in beside `Mirror` rather than at the call site,
+      for the reason `Mirror` is there: "an incident makes the upload due" is a
+      property of writing one, not something every caller must remember. A
+      caller that forgets costs an alert its latency and says nothing about
+      having forgotten. A failing marker is counted, never fatal — the record is
+      written and only its promptness is lost, which the records themselves do
+      not show.
+- [x] 2.2 Prove the journal's readers skip it — `Records`, `RecordsAfter`,
       `Newest`, `LatestBaselines` and checkpoint verification — rather than
       trusting that they do because the spool's own incidents are already there.
-- [ ] 2.3 Refuse a payload that is not an incident, and refuse an incident whose
+
+      Each reader is compared before and against after, by digest and by
+      sequence, not merely by count. `Newest` is the one that would have been
+      wrong if the skip were missing, because an incident is written after the
+      newest fact. Checkpoint verification reads through these same readers, so
+      it is covered by them rather than by a second fixture of its own — stated
+      here so the reasoning is visible instead of implied.
+- [x] 2.3 Refuse a payload that is not an incident, and refuse an incident whose
       fields the schema does not accept.
+
+      Six refusals: empty, no identity, and one each for a status, severity,
+      category and component outside their closed lists. After all six the
+      journal holds nothing, the mirror took nothing and the upload was never
+      marked due — a refused incident must not leave an upload waiting for a
+      record that is not there.
+
+      And the other direction: a fact does **not** mark the upload due. Every
+      cycle writes one, so a fact that marked it would start the agent every
+      minute and the marker would stop meaning anything.
 - [ ] 2.4 Touch the marker from this one place and nowhere else; verified by a
       gate, not by reading.
 
+      Waits for section 4: the gate holds the marker's implementation, and
+      there is nothing to hold until the agent that reads it exists. The
+      structure is already in place — `Urgent` is only reachable through
+      `AppendIncident` — and the gate is what keeps it that way.
+
 ## 3. Handing the tunnel back opens a condition
 
-- [ ] 3.1 Record an availability incident at the handback site, beside the
+- [x] 3.1 Record an availability incident at the handback site, beside the
       existing `tunnel.handback` record, carrying the reason from its closed
       list.
-- [ ] 3.2 Record the end of it where the operator's resume takes the tunnel
+
+      The reason reaches the alert through the identity, because
+      `event.Incident` has no field for a reason and `event.Decode` is strict —
+      a new field would make an older build refuse the record and, on the host,
+      quarantine its own incidents after a rollback. An event identity admits
+      `.`, `:` and `-` and **not** the underscore these reasons are written
+      with, so `tunnelexec.Handback.Reference()` spells the three of them once,
+      enumerated, and a reason outside the three has no spelling at all. A
+      replacement of underscores would have answered for any string it was
+      handed.
+
+      The reason is carried because the three mean three different things to
+      do: a lapsed grant is an expiry to renew, a reached bound is a loop, and
+      a tunnel carrying nothing is the network. An alert without it sends the
+      operator to the machine, which is what this change exists to avoid.
+
+      While doing it the handback vocabulary became single-sourced:
+      `Handbacks()` is the list, `Valid()` reads it, and the notice's own
+      validation stopped keeping a second switch of the same three.
+- [x] 3.2 Record the end of it where the operator's resume takes the tunnel
       again.
-- [ ] 3.3 Prove a handback with no reporting available still hands back, leaves
+
+      **Written against something that is not true, and corrected by reading.**
+      `resume` clears the rebuild bound and nothing else — `rate.go:86` says so
+      — and `Handback()` returns nothing when `!Owns`, so a runtime holding
+      nothing gives nothing back. The tunnel is taken by the operator's
+      ceremony, not by `resume`.
+
+      So the end is read from ownership: on every cycle that owns the tunnel,
+      the word left for the operator says whether there is an ending to
+      record. That word already is the state — "a handback that has not been
+      superseded is what the machine is now" — so it gained a field rather than
+      a third file gaining the same subject. It is marked, not removed, because
+      the one case where removal bites is the case the notice exists for:
+      nobody was at the machine to read it. Its decoder has never been strict,
+      so a build that does not know the field announces the handback exactly as
+      before, which rollback needs.
+- [x] 3.3 Prove a handback with no reporting available still hands back, leaves
       its word and observes; the incident waits in the queue.
+
+      True by construction rather than by a fixture: the incident is written to
+      the local journal, and the network is the agent's business on its own
+      schedule. Nothing in the handback path waits on a registry.
+
+      What the writing of it must not do is end the runtime, and the first
+      version did. A reason with no spelling returned an error and the cycle
+      returned `invalid_runtime` — which is the failure of 2026-10-05 in a new
+      place: *"A runtime SHALL NOT end because it cannot name something it was
+      going to write down"*, measured as twenty minutes with no tunnel while the
+      claim was still held. It now keeps `incident_unnameable` as the cycle's
+      cause and finishes. The cause is documented beside the other ten in
+      `docs/macos/root-observe.md`, which no gate required: the documentation
+      and producer gates hold `internal/connectivity` and
+      `internal/connectivityreduce`, and `internal/control` is one of the
+      vocabularies the last change recorded as unheld. I added a value to an
+      unheld vocabulary and the repository said nothing.
 - [ ] 3.4 Prove the word in the file is unchanged — the operator's session still
       announces it once — because the reason that file exists has not changed.
 
@@ -104,6 +238,24 @@
 - [ ] 9.2 The named case, once: a real handback opens the incident, the alert
       arrives, and `resume` clears it. Record the three in order with their
       times.
+
+      **This task cannot be run as written, and task 1.1 is why.** A handback
+      is something only the owner can do, and Twilight owns the tunnel. None of
+      the three causes — the rate bound, the grant lapsing, the tunnel carrying
+      nothing — can occur for a runtime that holds nothing. The grant expiring
+      on 2026-10-25 does not produce one either, for the same reason.
+
+      So the named case costs a third handover, which is its own act: the second
+      one found twelve defects, nine of them by running it, and three were worth
+      carrying forward.
+
+      Decided 2026-10-10: **this task waits for the next handover** and is owed
+      rather than dropped. Alert delivery and tunnel ownership are different
+      risks, and performing them in one act means neither can fail by itself.
+      Task 9.1 proves the whole chain on a real producer — signature,
+      transport, cursor, signal, correlation, policy, Telegram — so what waits
+      is only that the recording sits where the handback is, which tests hold
+      and a handover confirms.
 - [ ] 9.3 Prove the night window is not involved either way, because both are
       actionable; say what that means for how an alert at 03:00 will read.
 - [ ] 9.4 Measure HEX-19's eviction cost again once records leave on
@@ -114,5 +266,6 @@
 - [ ] 10.1 Sync the delta into the baseline, validate and archive, with every
       task that can be ticked beforehand ticked; verified by the drift gate.
 - [ ] 10.2 Record what this leaves open: the spool's condition that nothing
-      closes, the second and third changes and what each needs, and whether the
-      single alert contact is still the right one now that a host can reach it.
+      closes, the second and third changes and what each needs, whether the
+      single alert contact is still the right one now that a host can reach it,
+      and task 9.2 owed against the next handover.

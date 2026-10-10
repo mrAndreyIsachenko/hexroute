@@ -31,13 +31,18 @@ func (clock *advancingClock) MonotonicNow() time.Duration {
 
 func openJournal(t *testing.T, domain policy.Domain, maxBytes int64) *Journal {
 	t.Helper()
+	return openJournalWith(t, domain, Options{
+		MaxBytes: maxBytes, NodeID: testNodeID, Clock: &advancingClock{},
+	})
+}
+
+func openJournalWith(t *testing.T, domain policy.Domain, options Options) *Journal {
+	t.Helper()
 	name := "root"
 	if domain == policy.DomainUser {
 		name = "user"
 	}
-	journal, err := Open(filepath.Join(t.TempDir(), name), domain, Options{
-		MaxBytes: maxBytes, NodeID: testNodeID, Clock: &advancingClock{},
-	})
+	journal, err := Open(filepath.Join(t.TempDir(), name), domain, options)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}

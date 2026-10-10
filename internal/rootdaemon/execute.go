@@ -3,12 +3,14 @@ package rootdaemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/netip"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/mrAndreyIsachenko/hexroute/internal/control"
 	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/observe"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelclaim"
@@ -564,3 +566,58 @@ func payloadThreshold(config RuntimeConfig) uint32 {
 	}
 	return config.TunnelSupervision.Policy.PayloadFailures
 }
+
+// handbackIncident is the condition a handback opens, in the vocabulary the
+// cloud correlates on.
+//
+// The identity names the occurrence and carries the reason, because the reason
+// is the first thing whoever reads the alert needs: a lapsed grant is their own
+// expiry to renew, a reached bound is a loop, and a tunnel that carries nothing
+// is the network. Three different things to do. It is not what the condition is
+// correlated by — that is the node, the category and the component — because a
+// host names an occurrence and the record it reaches holds a condition.
+//
+// A reason with no spelling for an identity is refused rather than written
+// around. An incident whose identity the schema will not accept is not written
+// at all, and silently dropping the reason would make the alert say less than
+// it could while looking complete.
+func handbackIncident(
+	handback event.TunnelHandback,
+	generation uint64,
+) (event.Incident, error) {
+	reference, ok := tunnelexec.Handback(handback.Reason).Reference()
+	if !ok {
+		return event.Incident{}, fmt.Errorf("%w: handback reason %q",
+			ErrInvalidConfig, handback.Reason)
+	}
+	return incident(tunnelOwnershipIncidentID+":"+reference,
+		event.IncidentOpened, generation), nil
+}
+
+// handbackEnded is the same condition, ended. A condition that can only ever
+// open teaches whoever reads the channel to stop reading it, because the next
+// alert arrives against the background of one that never closed.
+func handbackEnded(generation uint64) event.Incident {
+	return incident(tunnelOwnershipIncidentID+":taken-back",
+		event.IncidentResolved, generation)
+}
+
+func incident(
+	identity string,
+	status event.IncidentStatus,
+	generation uint64,
+) event.Incident {
+	return event.Incident{
+		IncidentID: identity,
+		Status:     status,
+		Severity:   event.SeverityCritical,
+		Category:   event.IncidentAvailability,
+		Component:  control.ComponentRuntime,
+		Generation: generation,
+	}
+}
+
+// tunnelOwnershipIncidentID is what both records are about. What correlates
+// them where they are read is the category and the component; this prefix is
+// how they read to a person.
+const tunnelOwnershipIncidentID = "tunnel-ownership"

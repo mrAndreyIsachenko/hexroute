@@ -1411,6 +1411,16 @@ Findings from grills that no change has taken. They are not unwired code, so the
 census below does not see them, and they are recorded here rather than left to
 be found again.
 
+**A spool's bound is over its records and the disk charges by the block.**
+`internal/spool` keeps a record per file and bounds itself at 100 MiB of record
+content. Measured 2026-10-10, the root spool held 83,036 records in 332,148 KiB
+and the user spool 83,573 in 334,292 KiB — 4 KiB of disk per record of a few
+hundred bytes, confirmed to the kilobyte by 83,036 x 4. Two stores bounded at
+100 MiB each occupy 650 MiB, and nothing in the bound or in
+`bounded-spool-operation-cost` says so. It is adjacent to HEX-19, whose eviction
+scan reads every record: at this count the scan is 83,000 file operations.
+Found 2026-10-10.
+
 **The external monitor has one alert contact, and it is Telegram.** Every check
 in `terraform/modules/uptime-checks` delivers through a single integration.
 UptimeRobot supports mail, SMS and push; the module exposes none of them. All

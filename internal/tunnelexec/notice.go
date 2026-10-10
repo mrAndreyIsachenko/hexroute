@@ -28,6 +28,19 @@ type Notice struct {
 	Reason string `json:"reason"`
 	At     string `json:"at"`
 	Given  bool   `json:"given"`
+	// TakenBack says this runtime has the tunnel again, so the state the rest
+	// of this notice describes has ended.
+	//
+	// It is here rather than in a file of its own because this notice already
+	// is the state: a handback that has not been superseded is what the machine
+	// is now. And the word is not removed when the state ends, because the one
+	// case where that matters is the one this notice exists for — nobody was at
+	// the machine to read it.
+	//
+	// A reader that does not know this field ignores it, which is what makes
+	// the field safe to add: the decoder here has never been strict, and an
+	// older build announces the handback exactly as it did before.
+	TakenBack bool `json:"taken_back,omitempty"`
 }
 
 // NoticeSchema is the shape above, so a reader can refuse anything else.
@@ -45,6 +58,37 @@ func WriteNotice(path string, notice Notice) error {
 	if path == "" || notice.Reason == "" || notice.At == "" {
 		return ErrInvalidNotice
 	}
+	// A handback being written is one that has just happened, so whatever the
+	// caller passed, the tunnel has not been taken back since. Clearing it here
+	// rather than trusting the caller is what keeps the field from surviving
+	// into the next handback, where it would say a condition had ended before
+	// it began.
+	notice.TakenBack = false
+	return writeNotice(path, notice)
+}
+
+// MarkNoticeTakenBack records that the state this notice describes has ended.
+//
+// It reads and rewrites rather than replacing, because the reason, the time and
+// whether the tunnel went back are the account of what happened and are not
+// this runtime's to restate. No notice is not a failure: there is nothing to
+// end, which is the ordinary case.
+func MarkNoticeTakenBack(path string) (bool, error) {
+	notice, found, err := ReadNotice(path)
+	if err != nil || !found {
+		return false, err
+	}
+	if notice.TakenBack {
+		return false, nil
+	}
+	notice.TakenBack = true
+	if err := writeNotice(path, notice); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func writeNotice(path string, notice Notice) error {
 	notice.Schema = NoticeSchema
 	content, err := json.Marshal(notice)
 	if err != nil {
@@ -84,9 +128,7 @@ func ReadNotice(path string) (Notice, bool, error) {
 	if _, err := time.Parse(time.RFC3339Nano, notice.At); err != nil {
 		return Notice{}, false, ErrInvalidNotice
 	}
-	switch Handback(notice.Reason) {
-	case HandbackRate, HandbackGrantLapsed, HandbackDeadTunnel:
-	default:
+	if !Handback(notice.Reason).Valid() {
 		return Notice{}, false, ErrInvalidNotice
 	}
 	return notice, true, nil

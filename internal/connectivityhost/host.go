@@ -193,6 +193,16 @@ func (reader *Reader) ArchiveMisses() uint64 {
 	return reader.rootJournal.MirrorFailures() + reader.userJournal.MirrorFailures()
 }
 
+// UploadsNotHurried reports how many incidents were written without the upload
+// being marked due. The records are all there; what was lost is how long one of
+// them waited, and nothing in the records shows that.
+func (reader *Reader) UploadsNotHurried() uint64 {
+	if reader == nil {
+		return 0
+	}
+	return reader.rootJournal.UrgentFailures() + reader.userJournal.UrgentFailures()
+}
+
 // Open builds the read model under the given root.
 //
 // The preconditions are passed as claims rather than probed, matching the
@@ -796,6 +806,20 @@ func (reader *Reader) RecordTunnelExecution(execution event.TunnelExecution) err
 	}
 	_, err = reader.archive.Append(encoded)
 	return err
+}
+
+// RecordIncident writes down a condition on this host where the upload queue
+// can carry it.
+//
+// It goes to the root journal rather than to the archive, and that is the whole
+// difference: the archive is not an upload source — archiving a record is not a
+// decision to send it — while the journal mirrors into the archive anyway. One
+// write, both places, and the only one of them anything reads to send.
+func (reader *Reader) RecordIncident(incident event.Incident) error {
+	if reader == nil || reader.rootJournal == nil {
+		return nil
+	}
+	return reader.rootJournal.AppendIncident(incident)
 }
 
 // RecordTunnelHandback writes down this runtime giving the tunnel up.

@@ -42,6 +42,15 @@ type Options struct {
 	// the same fact the same way is an agreement that eventually stops
 	// holding, and the copy would then silently describe something else.
 	Mirror Sink
+	// Urgent is told when a record is written that nobody should wait for an
+	// interval to send.
+	//
+	// It is here for the same reason Mirror is. The one record anybody is
+	// waiting for is an incident, and "an incident makes the upload due" is a
+	// property of writing one, not an instruction a caller has to remember
+	// beside every call. A caller that forgets costs an alert its latency and
+	// says nothing about having forgotten.
+	Urgent Urgent
 }
 
 // Sink receives records the journal wrote, for durable local retention.
@@ -51,6 +60,15 @@ type Options struct {
 // counted and reported, never returned.
 type Sink interface {
 	Append(encoded []byte) (uint64, error)
+}
+
+// Urgent is told that an upload is due sooner than the next interval.
+//
+// The journal knows nothing about how that is said. What it is given here is
+// the saying of it, so that nothing in a store of records has to hold an
+// opinion about schedulers or files.
+type Urgent interface {
+	Mark() error
 }
 
 // Journal is one domain's connectivity fact store.
@@ -64,6 +82,10 @@ type Journal struct {
 	mirror         Sink
 	mirrorMu       sync.Mutex
 	mirrorFailures uint64
+
+	urgent         Urgent
+	urgentMu       sync.Mutex
+	urgentFailures uint64
 }
 
 // MirrorFailures reports how many records the journal wrote and the sink did
@@ -154,7 +176,7 @@ func Open(path string, domain policy.Domain, options Options) (*Journal, error) 
 		return nil, fmt.Errorf("%w: %v", ErrCorruptRecord, err)
 	}
 	return &Journal{spool: store, domain: domain, superseded: superseded,
-		mirror: options.Mirror}, nil
+		mirror: options.Mirror, urgent: options.Urgent}, nil
 }
 
 // supersedeForeignFormat moves aside a journal whose records this build cannot
@@ -249,6 +271,60 @@ func (journal *Journal) Append(
 	}
 	journal.mirrorRecord(encoded)
 	return nil
+}
+
+// AppendIncident writes down a condition on this host, where the upload queue
+// can carry it.
+//
+// It is a second door and it is as narrow as the first: one closed type,
+// validated by its own schema, rather than a way to put any event into the
+// journal. The spool keeps one writer because the sequence it hands out is what
+// the server's cursor and its gap detection are built on, and two writers
+// advancing one counter make a hole indistinguishable from a record that was
+// lost.
+//
+// It adds no new kind of content to the store. The spool already writes
+// incidents of its own when it overflows or sets a record aside, and the
+// journal's readers already skip an entry that is not a connectivity fact —
+// they were built to, because those entries have always been there.
+//
+// An incident is critical by its schema, so it is taken even when the spool is
+// at its bound, where a record of any lower priority would be refused.
+func (journal *Journal) AppendIncident(incident event.Incident) error {
+	encoded, err := event.Encode(event.SchemaIncident, incident)
+	if err != nil {
+		return err
+	}
+	if _, err := journal.spool.Append(encoded); err != nil {
+		return err
+	}
+	journal.mirrorRecord(encoded)
+	journal.markUrgent()
+	return nil
+}
+
+// markUrgent says an upload is due. Like the mirror, it runs after the journal
+// has already succeeded, so nothing here may fail the append: a marker that was
+// not written costs the record its promptness, and the interval collects it.
+func (journal *Journal) markUrgent() {
+	if journal.urgent == nil {
+		return
+	}
+	if err := journal.urgent.Mark(); err != nil {
+		journal.urgentMu.Lock()
+		journal.urgentFailures++
+		journal.urgentMu.Unlock()
+	}
+}
+
+// UrgentFailures reports how many incidents were written without the upload
+// being marked due. It is exposed for the same reason MirrorFailures is: the
+// records are all there, and the only thing lost is how long one waited, which
+// is invisible from the records themselves.
+func (journal *Journal) UrgentFailures() uint64 {
+	journal.urgentMu.Lock()
+	defer journal.urgentMu.Unlock()
+	return journal.urgentFailures
 }
 
 // mirrorRecord copies a written record to the sink. The journal has already

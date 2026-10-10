@@ -161,6 +161,13 @@ not read was reported as an intentional sleep. The reasons a cycle can now give:
 | `endpoint_unreadable` | an endpoint probe could not run |
 | `probe_failed` | the probes ran and left no outer path ready |
 | `plan_refused` | the planner refused the observations it was given |
+| `incident_unnameable` | a condition it was going to report has no name it can write |
+
+The last one is a cause rather than an ending on purpose. A runtime that ends
+because it cannot name something it was going to write down is the failure of
+2026-10-05 — twenty minutes with no tunnel, the claim still held, and the one
+runtime that could have rebuilt never finishing a cycle. So the condition goes
+unreported, the cycle says why, and the cycle finishes.
 
 A cycle that fails more than once reports the first failure in configuration
 order, which is the order the cycle observes in. The probes run together and are

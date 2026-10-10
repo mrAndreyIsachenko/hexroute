@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelclaim"
+	"github.com/mrAndreyIsachenko/hexroute/internal/tunnelexec"
 	"io"
 	"os"
 	"os/signal"
@@ -635,6 +636,40 @@ func observeLoop(
 		)); handback != nil {
 			if err := reader.RecordTunnelHandback(*handback); err != nil {
 				return logging.ReasonArchiveUnwritable, err
+			}
+			// The same event, said twice to two audiences. The record above is
+			// the local account and stays where every review of this machine
+			// begins; the incident below is the one that can leave, because the
+			// archive is not an upload source and the journal is.
+			// A reason with no spelling costs the report and not the
+			// runtime. Ending here would be the failure of 2026-10-05 in a new
+			// place: a cycle that could not name something it was going to
+			// write down, ending over it, while the machine needs the next
+			// cycle more than it needs the record.
+			opened, nameErr := handbackIncident(
+				*handback, operatorSnapshot.Generation)
+			if nameErr != nil {
+				summary.fail(control.ReasonIncidentUnnameable)
+			} else if err := reader.RecordIncident(opened); err != nil {
+				return logging.ReasonJournalUnwritable, err
+			}
+		}
+		// The condition a handback opens ends when this runtime has the tunnel
+		// again — which is the operator's ceremony and not `resume`, because
+		// `resume` clears the rebuild bound and nothing else. So the end is
+		// read from ownership rather than from a command, on every cycle that
+		// owns, and the word left for the operator is what says whether there
+		// is an ending to record at all.
+		if performer.owns() && performer.notice != "" {
+			ended, err := tunnelexec.MarkNoticeTakenBack(performer.notice)
+			if err != nil {
+				return logging.ReasonArchiveUnwritable, err
+			}
+			if ended {
+				if err := reader.RecordIncident(handbackEnded(
+					operatorSnapshot.Generation)); err != nil {
+					return logging.ReasonJournalUnwritable, err
+				}
 			}
 		}
 		if err := emitSummary(logger, gate, summary); err != nil {

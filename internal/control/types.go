@@ -66,7 +66,7 @@ const (
 )
 
 // An observation cycle's own causes. A reason beside a health result has to
-// name what failed, and the eleven places a root cycle can fail are not probes:
+// name what failed, and the twelve places a root cycle can fail are not probes:
 // reporting them all as a failed probe sent a reader looking for one that had
 // not run. These names are what the cycle kept, not what its state implies.
 const (
@@ -80,6 +80,12 @@ const (
 	ReasonEndpointUnreadable     Reason = "endpoint_unreadable"
 	ReasonOuterPathAbsent        Reason = "outer_path_absent"
 	ReasonPlanRefused            Reason = "plan_refused"
+	// ReasonIncidentUnnameable is a condition this runtime wanted to report and
+	// could not name. It is a cause rather than an ending because a runtime
+	// that ends over a record it cannot write is the failure of 2026-10-05:
+	// twenty minutes with no tunnel, the claim still held, and the one runtime
+	// that could have rebuilt never finishing a cycle.
+	ReasonIncidentUnnameable Reason = "incident_unnameable"
 )
 
 func (reason Reason) Valid() bool {
@@ -104,7 +110,8 @@ func (reason Reason) Valid() bool {
 		ReasonManagedTUNAbsent,
 		ReasonRouteUnreadable,
 		ReasonEndpointUnreadable,
-		ReasonPlanRefused:
+		ReasonPlanRefused,
+		ReasonIncidentUnnameable:
 		return true
 	default:
 		return false
