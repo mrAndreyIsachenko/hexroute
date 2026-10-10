@@ -30,6 +30,40 @@ cursor, applies acknowledgements, detects sequence gaps and repairs them — the
 machinery of something that resumes on its own schedule, not of something driven
 once per cycle.
 
+## The agent does not open the store, and that was found by reading
+
+The first shape of this had the scheduled job open the spool and drain it. That
+is wrong, and not subtly.
+
+Opening a spool is a recovery operation. `recover()` reads every unfinished
+write and either publishes it or removes it when it cannot be read — correct for
+the only writer, and destructive for a second one. The runtime appends every
+sixty seconds. So a job that opened the store could delete a record mid-write or
+publish one the runtime had not committed, taking its sequence; and the sequence
+is what the server's cursor advances along, so the result is not a lost record
+but a hole in the account, indistinguishable from one.
+
+The alternatives were a cross-process lock on the spool directory, a staging
+directory, and giving the upload back to the daemon. The lock would sit on the
+append path, whose cost requirement is explicit and was found the hard way —
+"appending costs the write and nothing that grows with how many records are
+stored" — and putting cross-process contention there risks the fault that took
+four hours of a live runtime to find. A staging directory is a second store with
+the same sequence semantics to keep in step. Giving the upload back to the daemon
+is the thing the previous section exists to prevent.
+
+So the job asks the runtime for a batch over the socket the runtime already
+has, and hands the acknowledgement back. One owner of the store, which is the
+invariant everything else rests on — the sequence counter, the index, the
+recovery on open. It is also the same invariant the journal's second door was
+shaped around, and letting another process open the store would have undone it
+from the other end.
+
+The division is the one that was wanted all along: the runtime keeps the records
+and the job keeps the network. The runtime's share — reading a bounded batch and
+removing what was accepted — is work that is now bounded, which it was not when
+this was designed. What had to stay out of the cycle was the call that can hang.
+
 ## Two triggers, and the urgent one does not watch the spool
 
 The spool gains a record every cycle, so watching the spool would start a process

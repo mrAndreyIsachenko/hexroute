@@ -6,10 +6,26 @@ A host whose events can matter to someone away from it SHALL upload them, and
 the upload SHALL NOT run inside the loop that observes and acts. The runtime
 that owns the tunnel is the runtime whose cycle must keep its period; a network
 call in that cycle is a tunnel nobody is supervising for as long as the call
-hangs. The uploader SHALL therefore run as its own scheduled privileged job,
-reading the upload spool and never the local event archive — which the
-acknowledgement-driven gap repair requirement already states, for the reason it
-already gives.
+hangs. The uploader SHALL therefore run as its own scheduled privileged job.
+
+The upload store SHALL have one owner. The scheduled job SHALL obtain the batch
+from the runtime that owns the store and SHALL hand the acknowledgement back to
+it, rather than opening the store itself. Opening a spool is a recovery
+operation: it reads each unfinished write and either completes it or discards
+it, which is correct for the only writer and destructive for a second one.
+Measured 2026-10-10, the runtime appends every sixty seconds, so a second
+process opening the store could discard a record being written or publish one
+not yet committed, taking its sequence. The sequence is what the server's cursor
+advances along, so that is not a lost record but a hole in the account.
+
+What the job keeps is the network. The runtime's share is reading the batch it
+hands over, which is bounded by the batch, and removing what was accepted; the
+reason to keep the runtime out of uploading was the call that can hang, not the
+records it can read.
+
+The store read for upload SHALL be the journal and never the local event
+archive, which the acknowledgement-driven gap repair requirement already states,
+for the reason it already gives.
 
 That job SHALL run on two triggers and SHALL say which one woke it. One is an
 interval, for the ordinary stream nobody is waiting for. The other is the
@@ -52,6 +68,18 @@ and nothing says that nothing arrived.
 - **WHEN** the registry or the network does not answer
 - **THEN** the cycle that observes and acts keeps its period
 - **AND** the failure is the upload job's, which reports what refused it
+
+#### Scenario: The upload job asks for a batch
+
+- **WHEN** the scheduled job needs records to send
+- **THEN** the runtime that owns the store hands it a bounded batch
+- **AND** the job does not open the store itself
+
+#### Scenario: Something other than the owner opens the store
+
+- **WHEN** a second process opens the upload store while the owner is appending
+- **THEN** a gate refuses, because opening it completes or discards unfinished
+  writes and only the owner may do that
 
 #### Scenario: A key is already present at installation
 

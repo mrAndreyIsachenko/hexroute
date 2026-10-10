@@ -209,8 +209,23 @@
       A pass now opens exactly what it sends, and draining a store costs the
       store once.
 
-- [ ] 4.1 A root binary that drains the spool through `telemetry.Uploader` and
-      `cloudingest.NewHTTPTransport`, reporting which trigger woke it.
+- [ ] 4.1 A root binary that carries the upload: it asks the runtime for a
+      batch, signs and sends it through `cloudingest.NewHTTPTransport`, hands
+      the acknowledgement back, and reports which trigger woke it. It does not
+      open the store.
+
+      Decided 2026-10-10 after reading what opening a spool does. `recover()`
+      completes or discards every unfinished write, which is correct for the
+      only writer and destructive for a second one, and the runtime appends
+      every sixty seconds. A cross-process lock was rejected because it would
+      sit on the append path whose cost requirement was found the hard way.
+
+- [ ] 4.1a The runtime serves a batch and takes an acknowledgement over its
+      socket: two bounded actions, the reply doing nothing locally but removing
+      what was accepted.
+- [ ] 4.1b Prove the socket's new actions cannot be used to make the runtime do
+      anything else, and that an acknowledgement naming records the runtime did
+      not hand out is refused.
 - [ ] 4.2 Its launchd plist and wrapper: an interval for the stream, `WatchPaths`
       on the marker for the incident. Disjoint from Twilight, held by the
       existing launchd gate.

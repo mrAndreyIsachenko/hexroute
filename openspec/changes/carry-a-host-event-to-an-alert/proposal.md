@@ -40,10 +40,13 @@ gives the local channel a claimer.
 
 ## What Changes
 
-- A scheduled root agent drains the upload spool through the existing uploader
-  and the existing signed-ingestion transport. It runs on a relaxed interval for
-  the ordinary stream, and immediately when the runtime writes an incident,
-  because that is the only record anybody is waiting for.
+- A scheduled root agent carries the upload. It asks the runtime that owns the
+  store for a batch, signs and sends it through the existing transport, and
+  hands the acknowledgement back. The store keeps one owner: opening a spool
+  completes or discards unfinished writes, which is correct for the only writer
+  and destructive for a second one. The agent runs on a relaxed interval for the
+  ordinary stream, and immediately when the runtime writes an incident, because
+  that is the only record anybody is waiting for.
 - The runtime records an incident where the upload queue can carry it. The
   connectivity journal gains a second door as narrow as its first,
   `AppendIncident(event.Incident)`, so the spool keeps one writer and one
