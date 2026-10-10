@@ -339,6 +339,19 @@ func (spool *Spool) Entry(sequence uint64) (Entry, bool, error) {
 	return entry, true, nil
 }
 
+// Opens is how many stored records this spool has read since it was opened.
+//
+// It is exported because the bound this repository keeps on a spool operation
+// is stated in records opened, and a caller's cost is not observable from
+// anywhere else: the records it hands back say nothing about how many it
+// decoded to find them. A stopwatch would measure the machine, and a threshold
+// tuned until it passed would measure the threshold.
+func (spool *Spool) Opens() int {
+	spool.mu.Lock()
+	defer spool.mu.Unlock()
+	return spool.opens
+}
+
 func (spool *Spool) Size() (int64, error) {
 	spool.mu.Lock()
 	defer spool.mu.Unlock()
@@ -349,35 +362,45 @@ func (spool *Spool) Size() (int64, error) {
 	return indexTotalSize(records), nil
 }
 
-func (spool *Spool) Acknowledge(eventIDs []metadata.UUID) (int, error) {
+// Acknowledge removes the records at these sequences.
+//
+// It takes sequences and not event identities, and that is the difference
+// between a bounded operation and a scan. Finding a record by its identity
+// means decoding records until it is found, so acknowledging a batch of two
+// hundred and fifty-six cost reading every record the spool held — and a spool
+// that nothing drained has eighty-odd thousand. The caller translating is not
+// extra work for it: it has just read these records and holds both numbers.
+//
+// The record is not re-read to confirm it is the one the caller meant. A
+// sequence is never reused — the counter only advances — and a stored record is
+// immutable, so the file at a sequence is either that record or gone. Opening
+// it to check would cost an open per removal for an answer that cannot differ.
+//
+// A sequence that is already gone is not an error, for the reason reading one
+// is not: records leave by eviction as well as by acknowledgement, and a caller
+// is always working from a listing a moment old.
+func (spool *Spool) Acknowledge(sequences []uint64) (int, error) {
 	// Acknowledging removes stable records. It is rare beside appending, so
 	// the listing is dropped rather than amended.
 	defer spool.forgetIndex()
 
-	acknowledged := make(map[metadata.UUID]struct{}, len(eventIDs))
-	for _, eventID := range eventIDs {
-		if _, err := metadata.ParseUUID(string(eventID)); err != nil {
-			return 0, err
-		}
-		acknowledged[eventID] = struct{}{}
-	}
-	if len(acknowledged) == 0 {
+	if len(sequences) == 0 {
 		return 0, nil
 	}
 
 	spool.mu.Lock()
 	defer spool.mu.Unlock()
 
-	entries, err := spool.scanStable()
-	if err != nil {
-		return 0, err
-	}
 	removed := 0
-	for _, entry := range entries {
-		if _, ok := acknowledged[entry.Metadata.EventID]; !ok {
+	for _, sequence := range sequences {
+		if sequence == 0 {
+			return removed, ErrCorruptSpool
+		}
+		err := os.Remove(spool.stablePath(sequence))
+		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
-		if err := os.Remove(spool.stablePath(entry.Sequence)); err != nil {
+		if err != nil {
 			return removed, fmt.Errorf("remove acknowledged spool record: %w", err)
 		}
 		removed++

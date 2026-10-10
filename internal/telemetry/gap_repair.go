@@ -21,10 +21,15 @@ type GapReplayBudget struct {
 }
 
 type GapReplayRequest struct {
-	Envelope       signing.SignedEnvelope
-	Body           []byte
-	BatchID        metadata.UUID
-	RequestID      metadata.UUID
+	Envelope  signing.SignedEnvelope
+	Body      []byte
+	BatchID   metadata.UUID
+	RequestID metadata.UUID
+	// Entries are the records this request carries, kept so that acknowledging
+	// them costs nothing beyond the removal. The acknowledgement names event
+	// identities and the spool removes by sequence, and this is where both are
+	// already known.
+	Entries        []spool.Entry
 	FirstSequence  uint64
 	LastSequence   uint64
 	ReplayedEvents int
@@ -97,6 +102,7 @@ func PrepareGapReplay(
 		Body:           body,
 		BatchID:        batchID,
 		RequestID:      requestID,
+		Entries:        entries,
 		FirstSequence:  entries[0].Sequence,
 		LastSequence:   entries[len(entries)-1].Sequence,
 		ReplayedEvents: len(entries),

@@ -191,9 +191,9 @@ func TestAppendAfterAcknowledgementKeepsMonotonicSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Entries() error = %v", err)
 	}
-	_, err = spool.Acknowledge([]metadata.UUID{
-		entries[0].Metadata.EventID,
-		entries[1].Metadata.EventID,
+	_, err = spool.Acknowledge([]uint64{
+		entries[0].Sequence,
+		entries[1].Sequence,
 	})
 	if err != nil {
 		t.Fatalf("Acknowledge() error = %v", err)

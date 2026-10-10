@@ -175,6 +175,40 @@
 
 ## 4. The agent
 
+- [x] 4.0 The drain path could not be used as it stood, and this is what it
+      cost to find out.
+
+      `Uploader.RunOnce` asked the spool for **every** record and kept the
+      first 256. On this machine the root spool holds 83,036 — because nothing
+      has ever drained it — so one pass read 83,036 records to send 256, and
+      draining the store would have cost that scan once per batch: 325 passes,
+      roughly 13 million file reads, the same work squared.
+
+      `bounded-spool-operation-cost` already forbids this: *"A spool operation
+      SHALL read and decode only the records it hands out."* The same
+      requirement records that this machine has been bitten at this exact scale
+      before — "the daemon decoded eighty-four thousand records on an append,
+      never returned, and recorded nothing about it" — and the append path was
+      fixed. The drain path was never exercised, so it kept the defect.
+
+      Fixed by reading the listing (which opens no record) and then the records
+      being sent, one open each. Held by a cost test that counts opens rather
+      than seconds, for the reason the eviction cost test gives: a stopwatch
+      measures the machine and a tuned threshold measures the threshold.
+
+      **The cost test then found a second scan**, which is why it exists:
+      `spool.Acknowledge` took event identities and decoded records until it
+      found each one, so acknowledging a batch cost reading the whole store
+      again. 1,280 opens to send 256 of 1,024 — 1,024 + 256, which named itself.
+      It now takes sequences, and the translation lives in
+      `ApplyAcknowledgement`, the one place that already holds both numbers. A
+      record is not re-read to confirm it: a sequence is never reused and a
+      stored record is immutable, so the file at a sequence is that record or
+      gone.
+
+      A pass now opens exactly what it sends, and draining a store costs the
+      store once.
+
 - [ ] 4.1 A root binary that drains the spool through `telemetry.Uploader` and
       `cloudingest.NewHTTPTransport`, reporting which trigger woke it.
 - [ ] 4.2 Its launchd plist and wrapper: an interval for the stream, `WatchPaths`

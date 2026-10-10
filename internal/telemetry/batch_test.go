@@ -115,7 +115,7 @@ func TestAcknowledgementDeletesOnlyExplicitEventIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeAcknowledgement() error = %v", err)
 	}
-	removed, err := ApplyAcknowledgement(journal, testBatchID, testNodeID, testRequestID, decoded)
+	removed, err := ApplyAcknowledgement(journal, entries, testBatchID, testNodeID, testRequestID, decoded)
 	if err != nil || removed != 1 {
 		t.Fatalf("ApplyAcknowledgement() = %d, %v; want 1, nil", removed, err)
 	}
@@ -128,7 +128,7 @@ func TestAcknowledgementDeletesOnlyExplicitEventIDs(t *testing.T) {
 		t.Fatalf("remaining entries = %+v", remaining)
 	}
 
-	removed, err = ApplyAcknowledgement(journal, testBatchID, testNodeID, testRequestID, decoded)
+	removed, err = ApplyAcknowledgement(journal, entries, testBatchID, testNodeID, testRequestID, decoded)
 	if err != nil || removed != 0 {
 		t.Fatalf("duplicate acknowledgement = %d, %v; want 0, nil", removed, err)
 	}
@@ -152,6 +152,7 @@ func TestMismatchedAcknowledgementCannotDeleteSpoolRecords(t *testing.T) {
 	}
 	if _, err := ApplyAcknowledgement(
 		journal,
+		entries,
 		testBatchID,
 		testNodeID,
 		testRequestID,
