@@ -77,7 +77,34 @@ Status date: 2026-09-04.
 
 ## Active Changes
 
-None.
+`carry-a-host-event-to-an-alert` is open, the first of three that close what item
+9 left owing: there is no path from the root runtime to an alert. The runtime
+that gives the tunnel up leaves word in a file the operator's own session reads,
+so an operator who is not at the machine learns nothing — about a machine with no
+supervised tunnel until someone resumes it.
+
+Both ends of the path were already built and are tested. The cloud has the night
+window, the transactional outbox, the processor and the Telegram client, and it
+correlates, opens and clears durable incidents. The host has an uploader that
+signs batches, applies acknowledgements, finds sequence gaps and repairs them.
+The cloud's silent-node evaluator even carries a branch for a Mac that is asleep.
+What was missing is the leg between them: measured 2026-10-09, the host has never
+uploaded anything, the cloud's only way to make a signal is from absence, and
+three vocabularies on this path are fed by nothing but tests.
+
+Two defects were found in the measuring. Every actionable incident plans a
+`local_macos` delivery that no worker can claim and that retention cannot remove,
+so the row is created and then kept forever. And the spool records a critical
+overflow incident on every append that meets its size bound, numbering each by
+its own sequence — which, since records leave the spool only by eviction until an
+uploader exists, is its steady state. Correlating on the identity a host gives an
+occurrence would therefore have turned the first upload into a flood of critical
+alerts at any hour, because an actionable incident's delivery ignores the night
+window. The cloud correlates on the condition instead.
+
+The change also keeps silence evaluated for this host, with a 24-hour
+expectation that nightly sleep cannot trip. That is what detects this path
+failing: an uploader that stops is the one failure a pushed alert cannot report.
 
 `hold-a-value-to-having-a-producer` closed on 2026-10-10. The read model
 publishes 88 values across sixteen vocabularies; 74 are emitted by something in
