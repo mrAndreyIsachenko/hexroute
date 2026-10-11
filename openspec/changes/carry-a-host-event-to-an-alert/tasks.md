@@ -220,12 +220,40 @@
       every sixty seconds. A cross-process lock was rejected because it would
       sit on the append path whose cost requirement was found the hard way.
 
-- [ ] 4.1a The runtime serves a batch and takes an acknowledgement over its
-      socket: two bounded actions, the reply doing nothing locally but removing
-      what was accepted.
-- [ ] 4.1b Prove the socket's new actions cannot be used to make the runtime do
-      anything else, and that an acknowledgement naming records the runtime did
-      not hand out is refused.
+- [ ] 4.1a A second socket, root-only, with its own handler and a closed set of
+      actions.
+
+      Decided 2026-10-11 after reading the authorization. The root daemon's
+      socket admits exactly `config.OperatorUID` and `validateRootSocketPath`
+      refuses `operatorUID <= 0`, so root is excluded on purpose and the agent
+      cannot use it. Admitting a second uid would weaken a check written
+      deliberately, and these two actions are not operator actions at all.
+
+      `Handler` is `HandleIPC(ctx, Request) Response` with no peer context, so
+      one dispatcher cannot tell which socket a request arrived on. Each socket
+      therefore has its own handler with a closed set, and the operator's
+      refuses the telemetry actions.
+
+- [ ] 4.1b The uploader stops depending on a concrete store.
+
+      This is the cost of 4.1a that was not counted when it was chosen, and it
+      is recorded rather than discovered twice. `Uploader` holds a
+      `*spool.Spool`, and that dependency is exactly what made the agent open
+      the store. It needs three things from one — a bounded oldest batch,
+      entries by sequence range for gap repair, and acknowledgement — and the
+      gap reporter writes a record as a fourth. So the dependency becomes an
+      interface with a spool-backed implementation, held by the runtime's
+      handler, and a socket-backed one held by the agent.
+
+      The bounded batch read fixed in 4.0 moves to the runtime's side with it.
+      The fix is not wasted — it is the same reading, done where the store is —
+      but it no longer runs in the agent.
+
+- [ ] 4.1c Prove each handler answers only its own actions: the telemetry
+      socket refuses an operator action and the operator socket refuses a
+      telemetry one.
+- [ ] 4.1d Prove an acknowledgement naming records the runtime did not hand out
+      is refused, and that nothing else the reply can say reaches the store.
 - [ ] 4.2 Its launchd plist and wrapper: an interval for the stream, `WatchPaths`
       on the marker for the incident. Disjoint from Twilight, held by the
       existing launchd gate.
