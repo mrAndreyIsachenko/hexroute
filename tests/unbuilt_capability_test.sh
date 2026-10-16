@@ -50,6 +50,14 @@ ACCEPTED = {
     # can share it.
     "internal/reconciler.NewCrashFixtureSyntheticAdapter":
         "crash fixture shared across test packages",
+
+    # The uploader stopped holding a spool so that the thing which uploads need
+    # not open one: opening a spool completes or discards unfinished writes, and
+    # only its owner may do that. This is the owner's side of that seam, and its
+    # caller is the runtime's telemetry handler — task 4.1a of
+    # carry-a-host-event-to-an-alert.
+    "internal/telemetry.NewSpoolStore":
+        "the runtime's telemetry handler, task 4.1a of carry-a-host-event-to-an-alert",
 }
 
 production = {}

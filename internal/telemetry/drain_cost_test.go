@@ -8,7 +8,6 @@ import (
 
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/signing"
-	"github.com/mrAndreyIsachenko/hexroute/internal/spool"
 )
 
 // acceptingTransport takes a batch and acknowledges every event in it.
@@ -60,6 +59,7 @@ func (transport *acceptingTransport) Upload(
 // tuned until it passes measures the threshold.
 func TestAPassOpensOnlyTheRecordsItSends(t *testing.T) {
 	journal := newJournal(t)
+	store := newStore(t, journal)
 	const stored = MaxBatchEvents * 4
 	for index := 0; index < stored; index++ {
 		appendObservation(t, journal)
@@ -67,7 +67,7 @@ func TestAPassOpensOnlyTheRecordsItSends(t *testing.T) {
 
 	settled := journal.Opens()
 	transport := &acceptingTransport{}
-	uploader := newTestUploader(t, journal, transport)
+	uploader := newTestUploader(t, store, transport)
 
 	if err := uploader.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce: %v", err)
@@ -89,6 +89,7 @@ func TestAPassOpensOnlyTheRecordsItSends(t *testing.T) {
 // pass pays for its own batch and for nothing it leaves behind.
 func TestDrainingTheStoreCostsTheStoreOnce(t *testing.T) {
 	journal := newJournal(t)
+	store := newStore(t, journal)
 	const stored = MaxBatchEvents * 3
 	for index := 0; index < stored; index++ {
 		appendObservation(t, journal)
@@ -96,7 +97,7 @@ func TestDrainingTheStoreCostsTheStoreOnce(t *testing.T) {
 
 	settled := journal.Opens()
 	transport := &acceptingTransport{}
-	uploader := newTestUploader(t, journal, transport)
+	uploader := newTestUploader(t, store, transport)
 
 	for pass := 0; pass < 4; pass++ {
 		if err := uploader.RunOnce(context.Background()); err != nil {
@@ -125,6 +126,7 @@ func TestARecordThatWentSinceTheListingIsSkipped(t *testing.T) {
 	for index := 0; index < 3; index++ {
 		appendObservation(t, journal)
 	}
+	store := newStore(t, journal)
 	entries, err := journal.Entries()
 	if err != nil {
 		t.Fatalf("entries: %v", err)
@@ -135,7 +137,7 @@ func TestARecordThatWentSinceTheListingIsSkipped(t *testing.T) {
 	}
 
 	transport := &acceptingTransport{}
-	uploader := newTestUploader(t, journal, transport)
+	uploader := newTestUploader(t, store, transport)
 	if err := uploader.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce: %v", err)
 	}
@@ -152,13 +154,14 @@ func TestAPassSendsTheOldestRecordsFirst(t *testing.T) {
 	for index := 0; index < MaxBatchEvents+10; index++ {
 		appendObservation(t, journal)
 	}
+	store := newStore(t, journal)
 	held, err := journal.Sequences()
 	if err != nil {
 		t.Fatalf("sequences: %v", err)
 	}
 
 	sent := &recordingTransport{}
-	uploader := newTestUploader(t, journal, sent)
+	uploader := newTestUploader(t, store, sent)
 	if err := uploader.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce: %v", err)
 	}
@@ -208,7 +211,7 @@ func (transport *recordingTransport) Upload(
 
 func newTestUploader(
 	t *testing.T,
-	journal *spool.Spool,
+	store Store,
 	transport Transport,
 ) *Uploader {
 	t.Helper()
@@ -217,7 +220,7 @@ func newTestUploader(
 		randomBytes[index] = byte(index%251 + 1)
 	}
 	uploader, err := NewUploader(
-		journal,
+		store,
 		uploaderKey(t),
 		transport,
 		bytes.NewReader(randomBytes),

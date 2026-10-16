@@ -15,6 +15,7 @@ import (
 
 func TestPrepareGapReplayBuildsExactRetainedSignedBatch(t *testing.T) {
 	journal := newJournal(t)
+	store := newStore(t, journal)
 	appendObservation(t, journal)
 	appendTransition(t, journal)
 	appendObservation(t, journal)
@@ -27,7 +28,7 @@ func TestPrepareGapReplayBuildsExactRetainedSignedBatch(t *testing.T) {
 	batchID := metadata.UUID("33333333-3333-4333-8333-333333333333")
 	requestID := metadata.UUID("44444444-4444-4444-8444-444444444444")
 	request, err := PrepareGapReplay(
-		journal,
+		store,
 		key,
 		[]SequenceRange{{First: 2, Last: 3}},
 		batchID,
@@ -57,7 +58,7 @@ func TestPrepareGapReplayBuildsExactRetainedSignedBatch(t *testing.T) {
 		t.Fatalf("replay batch = %+v", batch)
 	}
 	if _, err := PrepareGapReplay(
-		journal,
+		store,
 		key,
 		[]SequenceRange{{First: 1, Last: 1}},
 		metadata.UUID("55555555-5555-4555-8555-555555555555"),
@@ -71,9 +72,10 @@ func TestPrepareGapReplayBuildsExactRetainedSignedBatch(t *testing.T) {
 
 func TestGapRepairDetectsExpiredEvidenceAndEmitsOneRedactedRecord(t *testing.T) {
 	journal := newJournal(t)
+	store := newStore(t, journal)
 	appendObservation(t, journal)
 	entries, complete, err := RetainedEntriesForRanges(
-		journal,
+		store,
 		[]SequenceRange{{First: 1, Last: 2}},
 	)
 	if err != nil || complete || len(entries) != 1 {
@@ -81,11 +83,11 @@ func TestGapRepairDetectsExpiredEvidenceAndEmitsOneRedactedRecord(t *testing.T) 
 	}
 
 	reporter := &GapUnrecoverableReporter{}
-	first, err := reporter.EmitOnce(journal, []SequenceRange{{First: 1, Last: 2}})
+	first, err := reporter.EmitOnce(store, []SequenceRange{{First: 1, Last: 2}})
 	if err != nil || !first {
 		t.Fatalf("EmitOnce(first) = %t, %v", first, err)
 	}
-	second, err := reporter.EmitOnce(journal, []SequenceRange{{First: 1, Last: 2}})
+	second, err := reporter.EmitOnce(store, []SequenceRange{{First: 1, Last: 2}})
 	if err != nil || second {
 		t.Fatalf("EmitOnce(second) = %t, %v", second, err)
 	}
@@ -106,6 +108,7 @@ func TestGapRepairDetectsExpiredEvidenceAndEmitsOneRedactedRecord(t *testing.T) 
 
 func TestGapRepairRejectsUnboundedOrReorderedRanges(t *testing.T) {
 	journal := newJournal(t)
+	store := newStore(t, journal)
 	appendObservation(t, journal)
 	tests := [][]SequenceRange{
 		{},
@@ -115,7 +118,7 @@ func TestGapRepairRejectsUnboundedOrReorderedRanges(t *testing.T) {
 		{{First: 2, Last: 3}, {First: 3, Last: 4}},
 	}
 	for _, ranges := range tests {
-		if _, _, err := RetainedEntriesForRanges(journal, ranges); !errors.Is(err, ErrInvalidAcknowledgement) {
+		if _, _, err := RetainedEntriesForRanges(store, ranges); !errors.Is(err, ErrInvalidAcknowledgement) {
 			t.Fatalf("RetainedEntriesForRanges(%+v) error = %v", ranges, err)
 		}
 	}

@@ -49,6 +49,7 @@ func TestIncidentBundleContainsOnlyValidatedEvents(t *testing.T) {
 
 func TestUploadFailureDoesNotBlockStateTransitionOrDeleteSpool(t *testing.T) {
 	journal := newJournal(t)
+	store := newStore(t, journal)
 	appendObservation(t, journal)
 	key := uploaderKey(t)
 	entered := make(chan struct{})
@@ -58,7 +59,7 @@ func TestUploadFailureDoesNotBlockStateTransitionOrDeleteSpool(t *testing.T) {
 	randomBytes[0] = 4
 	randomBytes[16] = 5
 	uploader, err := NewUploader(
-		journal,
+		store,
 		key,
 		transport,
 		bytes.NewReader(randomBytes),
@@ -113,6 +114,7 @@ func TestCloudLossRetainsEvidenceWhileLocalRecoveryContinuesAndDrainsOnReturn(
 	t *testing.T,
 ) {
 	journal := newJournal(t)
+	store := newStore(t, journal)
 	appendObservation(t, journal)
 	key := uploaderKey(t)
 	transport := &recoveringTransport{failuresRemaining: 2}
@@ -121,7 +123,7 @@ func TestCloudLossRetainsEvidenceWhileLocalRecoveryContinuesAndDrainsOnReturn(
 		randomBytes[index] = byte(index + 1)
 	}
 	uploader, err := NewUploader(
-		journal,
+		store,
 		key,
 		transport,
 		bytes.NewReader(randomBytes),
@@ -186,6 +188,7 @@ func TestCloudLossRetainsEvidenceWhileLocalRecoveryContinuesAndDrainsOnReturn(
 
 func TestUploaderReplaysRetainedGapExactlyOnce(t *testing.T) {
 	journal := newJournal(t)
+	store := newStore(t, journal)
 	appendObservation(t, journal)
 	appendTransition(t, journal)
 	appendObservation(t, journal)
@@ -196,7 +199,7 @@ func TestUploaderReplaysRetainedGapExactlyOnce(t *testing.T) {
 	key := uploaderKey(t)
 	transport := &gapReplayTransport{}
 	uploader, err := NewUploader(
-		journal,
+		store,
 		key,
 		transport,
 		bytes.NewReader(repeatedBytes(64)),
@@ -234,13 +237,14 @@ func TestUploaderReplaysRetainedGapExactlyOnce(t *testing.T) {
 
 func TestUploaderCanDisableGapRepairWithoutDisablingBaseUpload(t *testing.T) {
 	journal := newJournal(t)
+	store := newStore(t, journal)
 	appendObservation(t, journal)
 	appendTransition(t, journal)
 	appendObservation(t, journal)
 	key := uploaderKey(t)
 	transport := &gapReplayTransport{}
 	uploader, err := NewUploader(
-		journal,
+		store,
 		key,
 		transport,
 		bytes.NewReader(repeatedBytes(32)),
@@ -272,11 +276,12 @@ func TestUploaderCanDisableGapRepairWithoutDisablingBaseUpload(t *testing.T) {
 
 func TestUploaderReportsExpiredGapAndAllowsNewUploads(t *testing.T) {
 	journal := newJournal(t)
+	store := newStore(t, journal)
 	appendObservation(t, journal)
 	key := uploaderKey(t)
 	transport := &expiredGapTransport{}
 	uploader, err := NewUploader(
-		journal,
+		store,
 		key,
 		transport,
 		bytes.NewReader(repeatedBytes(128)),

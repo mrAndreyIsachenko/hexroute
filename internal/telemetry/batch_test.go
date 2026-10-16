@@ -93,9 +93,13 @@ func TestAcknowledgementDeletesOnlyExplicitEventIDs(t *testing.T) {
 	journal := newJournal(t)
 	appendObservation(t, journal)
 	appendTransition(t, journal)
-	entries, err := journal.Entries()
+	store := newStore(t, journal)
+	// The entries come from a batch and not from the spool, because an
+	// acknowledgement now removes only what the store handed out — which is
+	// what makes it unable to remove a record it never served.
+	entries, err := store.Batch(MaxBatchEvents)
 	if err != nil {
-		t.Fatalf("Entries() error = %v", err)
+		t.Fatalf("Batch() error = %v", err)
 	}
 
 	acknowledgement := Acknowledgement{
@@ -115,7 +119,7 @@ func TestAcknowledgementDeletesOnlyExplicitEventIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeAcknowledgement() error = %v", err)
 	}
-	removed, err := ApplyAcknowledgement(journal, entries, testBatchID, testNodeID, testRequestID, decoded)
+	removed, err := ApplyAcknowledgement(store, testBatchID, testNodeID, testRequestID, decoded)
 	if err != nil || removed != 1 {
 		t.Fatalf("ApplyAcknowledgement() = %d, %v; want 1, nil", removed, err)
 	}
@@ -128,7 +132,7 @@ func TestAcknowledgementDeletesOnlyExplicitEventIDs(t *testing.T) {
 		t.Fatalf("remaining entries = %+v", remaining)
 	}
 
-	removed, err = ApplyAcknowledgement(journal, entries, testBatchID, testNodeID, testRequestID, decoded)
+	removed, err = ApplyAcknowledgement(store, testBatchID, testNodeID, testRequestID, decoded)
 	if err != nil || removed != 0 {
 		t.Fatalf("duplicate acknowledgement = %d, %v; want 0, nil", removed, err)
 	}
@@ -137,9 +141,10 @@ func TestAcknowledgementDeletesOnlyExplicitEventIDs(t *testing.T) {
 func TestMismatchedAcknowledgementCannotDeleteSpoolRecords(t *testing.T) {
 	journal := newJournal(t)
 	appendObservation(t, journal)
-	entries, err := journal.Entries()
+	store := newStore(t, journal)
+	entries, err := store.Batch(MaxBatchEvents)
 	if err != nil {
-		t.Fatalf("Entries() error = %v", err)
+		t.Fatalf("Batch() error = %v", err)
 	}
 	acknowledgement := Acknowledgement{
 		Schema:           AcknowledgementSchema,
@@ -151,8 +156,7 @@ func TestMismatchedAcknowledgementCannotDeleteSpoolRecords(t *testing.T) {
 		AcceptedEventIDs: []metadata.UUID{entries[0].Metadata.EventID},
 	}
 	if _, err := ApplyAcknowledgement(
-		journal,
-		entries,
+		store,
 		testBatchID,
 		testNodeID,
 		testRequestID,
@@ -308,4 +312,16 @@ func appendTransition(t *testing.T, journal *spool.Spool) {
 	if _, err := journal.Append(encoded); err != nil {
 		t.Fatalf("append transition: %v", err)
 	}
+}
+
+// newStore wraps a spool the test owns, which is what the runtime does with the
+// one it owns. The uploader holds a Store and not a spool, because opening a
+// spool is only the owner's to do.
+func newStore(t *testing.T, journal *spool.Spool) *SpoolStore {
+	t.Helper()
+	store, err := NewSpoolStore(journal)
+	if err != nil {
+		t.Fatalf("NewSpoolStore() error = %v", err)
+	}
+	return store
 }

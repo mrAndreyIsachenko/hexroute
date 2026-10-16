@@ -234,7 +234,7 @@
       therefore has its own handler with a closed set, and the operator's
       refuses the telemetry actions.
 
-- [ ] 4.1b The uploader stops depending on a concrete store.
+- [x] 4.1b The uploader stops depending on a concrete store.
 
       This is the cost of 4.1a that was not counted when it was chosen, and it
       is recorded rather than discovered twice. `Uploader` holds a
@@ -248,6 +248,32 @@
       The bounded batch read fixed in 4.0 moves to the runtime's side with it.
       The fix is not wasted — it is the same reading, done where the store is —
       but it no longer runs in the agent.
+
+      Done. `telemetry.Store` is four operations and **no `Append`**: an
+      uploader that could put an arbitrary record into the store would be a path
+      from whatever answers it into the record of what this host observed. Both
+      writes are fixed shapes — remove what was accepted, and the one bounded
+      diagnostic saying a requested range is gone.
+
+      `SpoolStore` remembers the batch it handed out, because an
+      acknowledgement names identities and a spool removes by sequence. That
+      memory is what makes it unable to remove a record it never served, which
+      is the property the socket will rest on, and it is bounded by one batch
+      rather than growing over a process that runs for weeks.
+
+      Migrating the tests found the property is real: three of them took their
+      entries straight from the spool and expected an acknowledgement to remove
+      them. It does not any more, and they now ask for a batch.
+
+      One test asserted something untrue — that a new batch forgets the
+      identities of the one before. Records leave only by acknowledgement, so
+      two successive batches begin at the same record; the property is the
+      bound, not the forgetting, and the test says so now.
+
+      The reachability census then refused the commit, correctly:
+      `NewSpoolStore` has no caller outside tests until 4.1a exists. Recorded as
+      waiting with the task named, which is what that census accepts in place of
+      a caller, and the entry comes out when the handler lands.
 
 - [ ] 4.1c Prove each handler answers only its own actions: the telemetry
       socket refuses an operator action and the operator socket refuses a

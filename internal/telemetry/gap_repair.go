@@ -7,8 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mrAndreyIsachenko/hexroute/internal/control"
-	"github.com/mrAndreyIsachenko/hexroute/internal/event"
 	"github.com/mrAndreyIsachenko/hexroute/internal/metadata"
 	"github.com/mrAndreyIsachenko/hexroute/internal/signing"
 	"github.com/mrAndreyIsachenko/hexroute/internal/spool"
@@ -62,7 +60,7 @@ func (budget *GapReplayBudget) Claim() error {
 }
 
 func PrepareGapReplay(
-	journal *spool.Spool,
+	store Store,
 	key signing.Key,
 	ranges []SequenceRange,
 	batchID metadata.UUID,
@@ -76,7 +74,7 @@ func PrepareGapReplay(
 	if _, err := metadata.ParseUUID(string(requestID)); err != nil {
 		return GapReplayRequest{}, ErrGapRepairRejected
 	}
-	entries, complete, err := RetainedEntriesForRanges(journal, ranges)
+	entries, complete, err := RetainedEntriesForRanges(store, ranges)
 	if err != nil {
 		return GapReplayRequest{}, err
 	}
@@ -110,37 +108,20 @@ func PrepareGapReplay(
 }
 
 func RetainedEntriesForRanges(
-	journal *spool.Spool,
+	store Store,
 	ranges []SequenceRange,
 ) ([]spool.Entry, bool, error) {
-	if journal == nil {
+	if store == nil {
 		return nil, false, ErrGapRepairRejected
 	}
-	if err := validateMissingRanges(ranges, ^uint64(0)); err != nil {
-		return nil, false, err
-	}
-	spoolRanges := make([]spool.SequenceRange, 0, len(ranges))
-	for _, item := range ranges {
-		spoolRanges = append(spoolRanges, spool.SequenceRange{
-			First: item.First,
-			Last:  item.Last,
-		})
-	}
-	entries, complete, err := journal.EntriesBySequenceRanges(
-		spoolRanges,
-		MaxBatchEvents,
-	)
-	if err != nil {
-		return nil, false, ErrGapRepairRejected
-	}
-	return entries, complete, nil
+	return store.Range(ranges, MaxBatchEvents)
 }
 
 func (reporter *GapUnrecoverableReporter) EmitOnce(
-	journal *spool.Spool,
+	store Store,
 	ranges []SequenceRange,
 ) (bool, error) {
-	if reporter == nil || journal == nil ||
+	if reporter == nil || store == nil ||
 		validateMissingRanges(ranges, ^uint64(0)) != nil {
 		return false, ErrGapRepairRejected
 	}
@@ -154,15 +135,7 @@ func (reporter *GapUnrecoverableReporter) EmitOnce(
 	if _, exists := reporter.seen[key]; exists {
 		return false, nil
 	}
-	encoded, err := event.Encode(event.SchemaDiagnostic, event.Diagnostic{
-		Component: control.ComponentRuntime,
-		Code:      event.DiagnosticTelemetryGapUnrecoverable,
-		Count:     1,
-	})
-	if err != nil {
-		return false, err
-	}
-	if _, err := journal.Append(encoded); err != nil {
+	if err := store.RecordGapUnrecoverable(); err != nil {
 		return false, err
 	}
 	reporter.seen[key] = struct{}{}

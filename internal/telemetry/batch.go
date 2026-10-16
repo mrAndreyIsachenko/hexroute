@@ -151,25 +151,19 @@ func DecodeAcknowledgement(encoded []byte) (Acknowledgement, error) {
 
 // ApplyAcknowledgement removes what the server durably accepted.
 //
-// It is given the records that were sent, because the acknowledgement names
-// event identities and the spool removes by sequence. The translation belongs
-// here: this is the one place that holds both, and the alternative is a spool
-// decoding records until it finds each identity — which cost reading every
-// record it held, eighty-odd thousand of them, to remove a batch of at most two
-// hundred and fifty-six.
-//
-// An identity the server accepted that is not in what was sent is ignored
-// rather than treated as an error. It is not a record this pass can act on, and
-// a reply naming one is already refused by the bindings above.
+// The bindings are checked here because this is where the reply arrives and the
+// request that earned it is known. What the reply may cause is one thing: the
+// store removing records whose identities it handed out. It cannot name a
+// record that was never handed over, because the store translates identities
+// from what it served and has nothing to translate for anything else.
 func ApplyAcknowledgement(
-	journal *spool.Spool,
-	sent []spool.Entry,
+	store Store,
 	expectedBatchID metadata.UUID,
 	expectedNodeID metadata.UUID,
 	expectedRequestID metadata.UUID,
 	acknowledgement Acknowledgement,
 ) (int, error) {
-	if journal == nil ||
+	if store == nil ||
 		acknowledgement.BatchID != expectedBatchID ||
 		acknowledgement.NodeID != expectedNodeID ||
 		acknowledgement.RequestID != expectedRequestID {
@@ -178,19 +172,7 @@ func ApplyAcknowledgement(
 	if err := validateAcknowledgement(acknowledgement); err != nil {
 		return 0, err
 	}
-	sequences := make(map[metadata.UUID]uint64, len(sent))
-	for _, entry := range sent {
-		sequences[entry.Metadata.EventID] = entry.Sequence
-	}
-	accepted := make([]uint64, 0, len(acknowledgement.AcceptedEventIDs))
-	for _, eventID := range acknowledgement.AcceptedEventIDs {
-		sequence, ok := sequences[eventID]
-		if !ok {
-			continue
-		}
-		accepted = append(accepted, sequence)
-	}
-	return journal.Acknowledge(accepted)
+	return store.Accept(acknowledgement.AcceptedEventIDs)
 }
 
 func SequenceGaps(batch Batch, expectedNext uint64) ([]SequenceRange, error) {
